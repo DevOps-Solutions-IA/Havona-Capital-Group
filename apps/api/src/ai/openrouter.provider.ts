@@ -103,7 +103,11 @@ export class OpenRouterProvider implements AIProvider {
         }),
       });
     } catch (error) {
-      const timeoutError = error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
+      const errorName =
+        error && typeof error === 'object' && 'name' in error
+          ? String((error as { name?: unknown }).name)
+          : '';
+      const timeoutError = errorName === 'TimeoutError' || errorName === 'AbortError';
       throw new AIProviderError(
         timeoutError ? 'AI_PROVIDER_TIMEOUT' : 'AI_PROVIDER_UNAVAILABLE',
         timeoutError ? 'El proveedor AI excedió el tiempo permitido' : 'No fue posible contactar al proveedor AI',
