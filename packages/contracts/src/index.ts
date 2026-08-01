@@ -58,3 +58,27 @@ export const prospectListQuerySchema = z.object({
 
 export type CaptureProspectInput = z.infer<typeof captureProspectSchema>;
 export type ProspectListQuery = z.infer<typeof prospectListQuerySchema>;
+
+const uuid = z.string().uuid();
+const isoDate = z.string().datetime({ offset: true });
+const crmPriority = z.enum(['LOW','MEDIUM','HIGH','URGENT']);
+export const crmProspectListQuerySchema = z.object({
+  page:z.coerce.number().int().min(1).default(1),pageSize:z.coerce.number().int().min(1).max(100).default(25),
+  search:z.string().trim().max(120).optional(),stage:slug(40).optional(),ownerId:uuid.optional(),interest:slug(60).optional(),
+  source:slug(40).optional(),priority:crmPriority.optional(),tagId:uuid.optional(),
+  dateFrom:isoDate.optional(),dateTo:isoDate.optional(),sortBy:z.enum(['lastCapturedAt','name','createdAt']).default('lastCapturedAt'),sortOrder:z.enum(['asc','desc']).default('desc'),
+});
+export const opportunityListQuerySchema = z.object({page:z.coerce.number().int().min(1).default(1),pageSize:z.coerce.number().int().min(1).max(100).default(50),stage:slug(40).optional(),ownerId:uuid.optional(),status:z.enum(['OPEN','WON','LOST','CANCELLED']).optional(),priority:crmPriority.optional()});
+export const createOpportunitySchema = z.object({prospectId:uuid,title:plainText(160),priority:crmPriority.default('MEDIUM')});
+export const moveOpportunityStageSchema = z.object({stageId:uuid,outcome:z.enum(['WON','LOST']).optional()});
+export const assignProspectSchema = z.object({assigneeId:uuid});
+export const createTaskSchema = z.object({prospectId:uuid,opportunityId:uuid.optional(),assigneeId:uuid,title:plainText(160),description:optionalPlainText(1200),dueAt:isoDate,priority:crmPriority.default('MEDIUM')});
+export const taskListQuerySchema = z.object({page:z.coerce.number().int().min(1).default(1),pageSize:z.coerce.number().int().min(1).max(100).default(25),assigneeId:uuid.optional(),prospectId:uuid.optional(),status:z.enum(['PENDING','IN_PROGRESS','COMPLETED','CANCELLED']).optional(),overdue:z.enum(['true','false']).transform(v=>v==='true').optional()});
+export const updateTaskStatusSchema = z.object({status:z.enum(['PENDING','IN_PROGRESS','COMPLETED','CANCELLED'])});
+export const createNoteSchema = z.object({prospectId:uuid,opportunityId:uuid.optional(),body:plainText(4000)});
+export const updateNoteSchema = z.object({body:plainText(4000)});
+export const createInteractionSchema = z.object({prospectId:uuid,opportunityId:uuid.optional(),method:z.enum(['PHONE','EMAIL','MEETING','VIDEO','OTHER']),summary:plainText(1200),occurredAt:isoDate});
+export const createTagSchema = z.object({name:plainText(60),color:z.string().regex(/^#[0-9A-Fa-f]{6}$/)});
+export const prospectTagSchema = z.object({tagId:uuid});
+export type CrmProspectListQuery=z.infer<typeof crmProspectListQuerySchema>;
+export type OpportunityListQuery=z.infer<typeof opportunityListQuerySchema>;
