@@ -1,4 +1,18 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-*{box-sizing:border-box} html{background:#f3f6fa} body{margin:0;color:#1d2939;background:radial-gradient(circle at 90% 0%,#eaf4ff 0,transparent 34%),#f3f6fa} ::selection{background:#d6eafe;color:#071a33}
+*{box-sizing:border-box} html{background:#f3f6fa;scroll-behavior:smooth} body{margin:0;color:#1d2939;background:radial-gradient(circle at 90% 0%,#eaf4ff 0,transparent 34%),#f3f6fa} ::selection{background:#d6eafe;color:#071a33} :focus-visible{outline:3px solid #1478d4;outline-offset:3px}
+@layer components{
+ .public-page{@apply min-h-screen overflow-x-hidden bg-[#F3F6FA] text-[#1D2939]}
+ .public-container{@apply relative mx-auto w-full max-w-[1440px] px-5 sm:px-8 lg:px-12 xl:px-16}
+ .eyebrow{@apply text-xs font-bold uppercase tracking-[.22em] text-brand-700}
+ .section-title{@apply max-w-3xl font-display text-4xl font-semibold leading-[1.08] tracking-[-.035em] text-brand-800 sm:text-5xl}
+ .button-primary{@apply inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-brand-800 px-6 text-sm font-semibold text-white shadow-lg shadow-blue-950/10 transition hover:-translate-y-0.5 hover:bg-brand-700}
+ .button-secondary{@apply inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-slate-300 bg-white/80 px-6 text-sm font-semibold text-brand-800 transition hover:-translate-y-0.5 hover:border-brand-500 hover:bg-white}
+ .field{@apply min-h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-[16px] text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-brand-500 focus:ring-4 focus:ring-blue-100}
+ .field-error{@apply border-red-500 focus:border-red-500 focus:ring-red-100}
+ .public-orb{@apply pointer-events-none absolute rounded-full blur-3xl}
+}
+.hero-composition{position:relative;overflow:hidden;border:1px solid rgba(255,255,255,.75);border-radius:2rem;background:linear-gradient(145deg,rgba(255,255,255,.9),rgba(214,234,250,.78));box-shadow:0 32px 90px rgba(7,26,51,.14)}
+.city-grid{position:absolute;inset:0;opacity:.42;background-image:linear-gradient(rgba(10,61,115,.11) 1px,transparent 1px),linear-gradient(90deg,rgba(10,61,115,.11) 1px,transparent 1px);background-size:42px 42px;mask-image:linear-gradient(to bottom,transparent,#000 18%,#000 85%,transparent)}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
