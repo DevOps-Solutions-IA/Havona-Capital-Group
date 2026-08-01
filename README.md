@@ -33,6 +33,10 @@ una bandeja administrativa inicial. Su [documentación técnica](docs/FASE_1_SIT
 [acta de cierre](docs/CIERRE_FASE_1.md) registran endpoints, datos, trazabilidad, pruebas, identidad
 corporativa y aprobación del lenguaje visual maestro.
 
+La Fase 2 mantiene el Pull Request en Draft. El CRM disponible para revisión incorpora pipeline
+real, ficha 360, tareas, actividad, clientes, empresas y paneles limitados por ámbito. Consulte
+[`docs/FASE_2_CRM.md`](docs/FASE_2_CRM.md). No existe todavía release `v0.3.0` ni merge.
+
 ## Requisitos
 
 - Node.js 22 LTS y Corepack.

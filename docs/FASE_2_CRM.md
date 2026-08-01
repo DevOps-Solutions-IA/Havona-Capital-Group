@@ -46,6 +46,8 @@ selector es obligatorio aun cuando exista drag and drop.
 - `Tag` y `ProspectTag`: clasificación controlada sin duplicar texto libre.
 - `Interaction`: registro manual de contacto y canal.
 - `ContactMethod`: tipo de interacción permitido.
+- `ClientProfile`: materializa la conversión ganada sin duplicar la identidad de `Prospect`.
+- `Company` y `CompanyContact`: organización y relación explícita con contactos captados.
 
 Los adjuntos se difieren hasta definir almacenamiento autorizado; no se almacenarán blobs ni rutas
 ficticias. Agenda futura podrá relacionarse mediante contratos con `Prospect`, `Opportunity` y `User`
@@ -89,6 +91,36 @@ introducir equipos o territorios se requiere un modelo explícito; no se simular
 - `/api/v1/crm/activities`: timeline paginado e interacciones.
 - `/api/v1/crm/tags`: catálogo y asociación.
 - `/api/v1/crm/dashboard`: métricas derivadas exclusivamente de datos persistidos.
+- `/api/v1/crm/clients`: clientes convertidos, paginados y limitados por ámbito.
+- `/api/v1/crm/companies`: organizaciones y contactos corporativos.
+- `/api/v1/crm/consultants`: carga real del equipo comercial.
+
+## Implementación disponible para revisión
+
+- Pulso comercial con métricas calculadas desde PostgreSQL.
+- Bandeja paginada con búsqueda y filtros backend por etapa, responsable, interés, origen, fecha,
+  prioridad y etiqueta.
+- Pipeline completo de diez carriles con paginación por etapa y alternativa accesible al drag.
+- Ficha 360 con contexto, consentimiento, eventos de captación, responsables, oportunidades, notas,
+  tareas, interacciones, etiquetas e historial.
+- Espacios operativos de clientes, empresas, consultores y tareas.
+- Conversión a cliente transaccional al alcanzar la etapa `Cliente`.
+- Restricción de CONSULTOR a relaciones asignadas y dashboard global denegado.
+- Validación de coherencia entre prospecto y oportunidad para notas, tareas e interacciones.
+
+## Evidencia local y CI
+
+En el HEAD de revisión se aprobaron Prisma generate/validate, migraciones, doble seed idempotente,
+lint, typecheck, pruebas unitarias, pruebas de integración con PostgreSQL/Redis, builds de API y web,
+y smoke tests autenticados. La integración cubre asignación, pipeline, cierre, conversión, auditoría,
+CSRF y aislamiento de CONSULTOR. GitHub Actions de push y Pull Request permanecen verdes.
+
+Runtime local de revisión:
+
+- Web: `http://localhost:3000`
+- API: `http://localhost:3001/api/v1`
+- Health: `http://localhost:3001/health`
+- Readiness: `http://localhost:3001/health/ready`
 
 Los listados usan paginación backend y filtros allowlisted. Toda mutación usa sesión, CSRF, permisos,
 validación, transacción cuando corresponda y auditoría.
