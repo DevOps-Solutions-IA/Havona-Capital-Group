@@ -18,6 +18,8 @@ CRM, Jitsi y WhatsApp permanecen fuera de esta fase.
 
 **Fase 1 — COMPLETADA (`v0.2.0`)**
 
+**Fase 2 — EN DESARROLLO (`feature/fase-02-crm`)**
+
 La fundación técnica fue aprobada con evidencia del entorno local oficial y GitHub Actions. Las
 validaciones de infraestructura final (VPS, DNS, HTTPS público, SMTP productivo, firewall,
 hardening, monitoreo, backup/restauración y persistencia del servidor) pertenecen a
