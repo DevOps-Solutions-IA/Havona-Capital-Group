@@ -28,7 +28,7 @@ const links = [
     href: '/crm',
     label: 'Pulso comercial',
     icon: BriefcaseBusiness,
-    permission: 'crm.read_assigned',
+    permission: 'crm.dashboard',
   },
   {
     href: '/crm/prospectos',
