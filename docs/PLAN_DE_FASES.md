@@ -71,7 +71,7 @@ bloqueos ni pendientes críticos de desarrollo de esta fase.
 
 ## Fase 1 — Sitio público y captación
 
-**Estado: EN DESARROLLO**
+**Estado: EN VALIDACIÓN — PR DRAFT**
 
 Rama: `feature/fase-01-web-captacion`
 
@@ -79,6 +79,9 @@ La fase construye la entrada pública real al ecosistema HAVONA CAPITAL. Incluye
 premium, captación persistente con consentimiento y trazabilidad, y consulta administrativa
 inicial. El CRM completo, Henry AI, automatizaciones y canales posteriores permanecen fuera de
 alcance.
+
+La implementación está construida y documentada en `docs/FASE_1_SITIO_CAPTACION.md`. El cierre,
+commit release, versión y merge requieren aprobación independiente de HAVONA CAPITAL.
 
 Entregables:
 

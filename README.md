@@ -12,6 +12,8 @@ CRM, Jitsi y WhatsApp permanecen fuera de esta fase.
 
 **Fase 0 — COMPLETADA (`v0.1.0`)**
 
+**Fase 1 — EN VALIDACIÓN (`feature/fase-01-web-captacion`)**
+
 La fundación técnica fue aprobada con evidencia del entorno local oficial y GitHub Actions. Las
 validaciones de infraestructura final (VPS, DNS, HTTPS público, SMTP productivo, firewall,
 hardening, monitoreo, backup/restauración y persistencia del servidor) pertenecen a
@@ -19,6 +21,11 @@ preproducción/producción y no constituyen pendientes críticos de desarrollo d
 
 Consulte el [acta de cierre de la Fase 0](docs/CIERRE_FASE_0.md) para conocer el alcance validado,
 la evidencia de CI y las tareas diferidas.
+
+La Fase 1 incorpora el sitio público, nueve landings, captación persistente con consentimiento y
+una bandeja administrativa inicial. Su [documentación técnica](docs/FASE_1_SITIO_CAPTACION.md)
+registra endpoints, datos, trazabilidad, pruebas y límites de alcance. La fase permanece en Draft
+y no está cerrada ni versionada hasta recibir aprobación expresa.
 
 ## Requisitos
 
