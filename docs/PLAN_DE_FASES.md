@@ -130,6 +130,14 @@ Versión: `v0.3.0`
 
 ## Fase 3 — Henry web
 
+**Estado: EN CONSTRUCCIÓN**
+
+Rama: `feature/fase-03-henry-web`
+
+La arquitectura, seguridad, dominio conversacional, integración CRM y límites se definen en
+`docs/FASE_3_HENRY_WEB.md`. En esta fase solo se activa el canal web; WhatsApp, email conversacional,
+voz, agenda completa y Havona Meet permanecen fuera de alcance.
+
 Entregables:
 
 - Chat web.
