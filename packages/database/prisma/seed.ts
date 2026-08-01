@@ -3,12 +3,13 @@ import * as argon2 from 'argon2';
 const db = new PrismaClient();
 const permissions = [
   ['users.read','Consultar usuarios'],['users.create','Crear usuarios'],['users.update','Editar usuarios'],['users.status','Activar o desactivar usuarios'],['users.roles','Asignar roles'],['users.reset_password','Restablecer contraseñas'],
-  ['roles.read','Consultar roles y permisos'],['settings.read','Consultar configuración'],['settings.update','Modificar configuración'],['audit.read','Consultar auditoría']
+  ['roles.read','Consultar roles y permisos'],['settings.read','Consultar configuración'],['settings.update','Modificar configuración'],['audit.read','Consultar auditoría'],
+  ['prospects.read','Consultar prospectos captados']
 ] as const;
 const grants: Record<string,string[]> = {
   SUPER_ADMIN: permissions.map(([key]) => key),
   ADMIN: permissions.map(([key]) => key).filter(key => !['settings.update'].includes(key)),
-  GERENTE: ['users.read','roles.read','settings.read'],
+  GERENTE: ['users.read','roles.read','settings.read','prospects.read'],
   CONSULTOR: ['settings.read'],
 };
 async function main() {
@@ -20,6 +21,9 @@ async function main() {
     for (const permission of granted) await db.rolePermission.upsert({where:{roleId_permissionId:{roleId:role.id,permissionId:permission.id}},update:{},create:{roleId:role.id,permissionId:permission.id}});
   }
   await db.systemSetting.upsert({where:{key:'security.session_ttl_hours'},update:{},create:{key:'security.session_ttl_hours',value:12,description:'Duración de sesiones en horas'}});
+  for (const [key, name] of [['direct','Directo'],['organic','Orgánico'],['campaign','Campaña'],['referral','Referido'],['henry-entry','Entrada Henry']] as const) {
+    await db.leadSource.upsert({where:{key},update:{name,isActive:true},create:{key,name}});
+  }
   const email = process.env.INITIAL_SUPER_ADMIN_EMAIL?.trim().toLowerCase();
   const password = process.env.INITIAL_SUPER_ADMIN_PASSWORD;
   const name = process.env.INITIAL_SUPER_ADMIN_NAME?.trim() || 'Super Administrador';

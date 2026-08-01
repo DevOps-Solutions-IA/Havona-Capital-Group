@@ -1,8 +1,8 @@
-# AGENTS.md — HAVONA CAPITAL
+# AGENTS.md — HAVONA CAPITAL GROUP
 
 ## Propósito
 
-Este archivo contiene las reglas permanentes que todo agente de desarrollo debe seguir al trabajar en HAVONA CAPITAL.
+Este archivo contiene las reglas permanentes que todo agente de desarrollo debe seguir al trabajar en HAVONA CAPITAL GROUP.
 
 Antes de modificar el repositorio, el agente debe leer:
 
@@ -15,7 +15,18 @@ Antes de modificar el repositorio, el agente debe leer:
 
 ## Objetivo del sistema
 
-HAVONA CAPITAL es una plataforma empresarial de prospección, CRM, inteligencia artificial, agendamiento, videollamadas y gestión comercial.
+HAVONA CAPITAL GROUP es una plataforma empresarial de prospección, CRM, inteligencia artificial, agendamiento, videollamadas y gestión comercial.
+
+## Identidad corporativa permanente
+
+El nombre corporativo oficial del ecosistema es **HAVONA CAPITAL GROUP**. Ningún módulo, nueva
+interfaz, documento institucional o contenido visible debe presentar `HAVONA CAPITAL` como
+denominación corporativa completa salvo que exista una decisión explícita de abreviación de marca.
+La abreviación `HAVONA` puede utilizarse con intención editorial; no modifica el nombre oficial.
+
+Esta regla no obliga a renombrar identificadores técnicos estables como paquetes `@havona/*`,
+rutas, servicios, bases de datos, colas, directorios, repositorio ni dominios aprobados. La marca
+visible y el naming de infraestructura se revisan de forma separada para evitar cambios riesgosos.
 
 Henry AI será el agente central encargado de conversar, calificar, hacer seguimiento y agendar prospectos autorizados.
 

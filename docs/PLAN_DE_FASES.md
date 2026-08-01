@@ -1,4 +1,9 @@
-# PLAN DE FASES — HAVONA CAPITAL
+# PLAN DE FASES — HAVONA CAPITAL GROUP
+
+Todas las fases adoptan **HAVONA CAPITAL GROUP** como nombre corporativo oficial. La Home aprobada
+en Fase 1 define el ADN visual que deben interpretar —sin copiar composiciones literalmente— CRM,
+Henry, Agenda, Havona Meet, administración, dashboards, portal cliente, academia, mobile y módulos
+futuros. Los identificadores técnicos y dominios previstos permanecen sin cambios.
 
 ## Regla
 
@@ -70,6 +75,19 @@ infraestructura final y persistencia tras reinicios del VPS se ejecutarán en pr
 bloqueos ni pendientes críticos de desarrollo de esta fase.
 
 ## Fase 1 — Sitio público y captación
+
+**Estado: COMPLETADA**
+
+Rama: `feature/fase-01-web-captacion`
+
+La fase construye la entrada pública real al ecosistema HAVONA CAPITAL GROUP. Incluye experiencia web
+premium, captación persistente con consentimiento y trazabilidad, y consulta administrativa
+inicial. El CRM completo, Henry AI, automatizaciones y canales posteriores permanecen fuera de
+alcance.
+
+La implementación y su evidencia de cierre están documentadas en
+`docs/FASE_1_SITIO_CAPTACION.md` y `docs/CIERRE_FASE_1.md`. HAVONA CAPITAL GROUP aprobó la Home
+como lenguaje visual maestro del ecosistema y autorizó el cierre mediante `v0.2.0`.
 
 Entregables:
 

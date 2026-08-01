@@ -1,8 +1,8 @@
-# PLAN MAESTRO DE DESARROLLO — HAVONA CAPITAL
+# PLAN MAESTRO DE DESARROLLO — HAVONA CAPITAL GROUP
 
 ## 1. Visión
 
-HAVONA CAPITAL será una plataforma digital de prospección, atención, calificación, agendamiento, reuniones y gestión comercial para consultores patrimoniales.
+HAVONA CAPITAL GROUP será una plataforma digital de prospección, atención, calificación, agendamiento, reuniones y gestión comercial para consultores patrimoniales.
 
 Henry AI será el núcleo inteligente del sistema.
 
@@ -203,4 +203,4 @@ Condiciones iniciales:
 
 ## 5. Resultado de la primera versión
 
-Una persona entra a HAVONA CAPITAL, autoriza el contacto, conversa con Henry, explica su necesidad, queda registrada, recibe horarios, agenda una reunión en Havona Meet y el consultor recibe el contexto completo.
+Una persona entra a HAVONA CAPITAL GROUP, autoriza el contacto, conversa con Henry, explica su necesidad, queda registrada, recibe horarios, agenda una reunión en Havona Meet y el consultor recibe el contexto completo.

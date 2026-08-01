@@ -3,6 +3,8 @@ import { Test } from '@nestjs/testing';
 import cookieParser from 'cookie-parser';
 import Redis from 'ioredis';
 import request from 'supertest';
+import { randomUUID } from 'node:crypto';
+import { hashPassword } from '@havona/auth';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/common/prisma.service';
 
@@ -78,5 +80,48 @@ describe('Fase 0 (PostgreSQL + Redis)', () => {
         expect.objectContaining({ resource: 'User', resourceId: created.body.id }),
       ]),
     );
+  });
+
+  it('captura un prospecto de forma idempotente y permite consulta administrativa', async () => {
+    const submissionId = randomUUID();
+    const email = `prospecto-${Date.now()}@example.com`;
+    const payload = {
+      submissionId, name: 'Prospecto Integración', phone: '+57 300 555 1212', email,
+      city: 'Bogotá', source: 'organic', landing: 'pension', interest: 'pension',
+      consent: { accepted: true, privacyVersion: 'v1' }, website: '',
+    };
+    const first = await request(app.getHttpServer()).post('/api/v1/prospects/public').send(payload).expect(201);
+    const repeated = await request(app.getHttpServer()).post('/api/v1/prospects/public').send(payload).expect(201);
+    expect(repeated.body.data.id).toBe(first.body.data.id);
+    expect(await db.prospect.count({ where: { normalizedEmail: email } })).toBe(1);
+    expect(await db.consent.count({ where: { prospectId: first.body.data.id } })).toBe(1);
+    expect(await db.leadEvent.count({ where: { submissionId } })).toBe(1);
+
+    const agent = request.agent(app.getHttpServer());
+    const login = await agent.post('/api/v1/auth/login').send({
+      email: process.env.INITIAL_SUPER_ADMIN_EMAIL, password: process.env.INITIAL_SUPER_ADMIN_PASSWORD,
+    }).expect(201);
+    const cookies = login.headers['set-cookie'] as unknown as string[];
+    const csrfCookie = cookies.find(cookie => cookie.startsWith('havona_csrf='));
+    expect(csrfCookie).toBeDefined();
+    await agent.get(`/api/v1/prospects?search=${encodeURIComponent(email)}`).expect(200)
+      .expect(response => expect(response.body.data).toEqual(expect.arrayContaining([expect.objectContaining({ id: first.body.data.id })])));
+    await agent.get(`/api/v1/prospects/${first.body.data.id}`).expect(200)
+      .expect(response => expect(response.body.consents[0]).toEqual(expect.objectContaining({ accepted: true, privacyVersion: 'v1' })));
+  });
+
+  it('aplica la matriz RBAC de prospectos a ADMIN, GERENTE y CONSULTOR', async () => {
+    await request(app.getHttpServer()).get('/api/v1/prospects').expect(401);
+    const password = 'Role-Test-Password-2026!';
+    for (const [roleName, expected] of [['ADMIN', 200], ['GERENTE', 200], ['CONSULTOR', 403]] as const) {
+      const role = await db.role.findUniqueOrThrow({ where: { name: roleName } });
+      const user = await db.user.create({ data: {
+        email: `${roleName.toLowerCase()}-${randomUUID()}@example.com`, name: `${roleName} Integración`,
+        passwordHash: await hashPassword(password), roles: { create: { roleId: role.id } },
+      } });
+      const agent = request.agent(app.getHttpServer());
+      await agent.post('/api/v1/auth/login').send({ email: user.email, password }).expect(201);
+      await agent.get('/api/v1/prospects').expect(expected);
+    }
   });
 });

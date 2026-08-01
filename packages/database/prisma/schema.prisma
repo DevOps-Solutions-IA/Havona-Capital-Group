@@ -23,6 +23,93 @@ model User {
   auditLogs AuditLog[] @relation("AuditActor")
   @@map("users")
 }
+
+enum ProspectStatus {
+  NEW
+  REVIEWED
+  ARCHIVED
+}
+
+enum ConsentType {
+  DATA_PROCESSING
+}
+
+enum LeadEventType {
+  CAPTURED
+  RECAPTURED
+}
+
+model LeadSource {
+  id String @id @default(uuid()) @db.Uuid
+  key String @unique @db.VarChar(40)
+  name String @db.VarChar(80)
+  isActive Boolean @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  prospects Prospect[]
+  events LeadEvent[]
+  @@map("lead_sources")
+}
+
+model Prospect {
+  id String @id @default(uuid()) @db.Uuid
+  name String @db.VarChar(120)
+  phone String? @db.VarChar(30)
+  normalizedPhone String? @unique @map("normalized_phone") @db.VarChar(20)
+  email String? @db.VarChar(254)
+  normalizedEmail String? @unique @map("normalized_email") @db.VarChar(254)
+  city String @db.VarChar(100)
+  sourceId String @db.Uuid @map("source_id")
+  campaign String? @db.VarChar(100)
+  landing String @db.VarChar(80)
+  interest String @db.VarChar(60)
+  message String? @db.VarChar(1200)
+  status ProspectStatus @default(NEW)
+  firstCapturedAt DateTime @default(now()) @map("first_captured_at")
+  lastCapturedAt DateTime @default(now()) @map("last_captured_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  source LeadSource @relation(fields: [sourceId], references: [id], onDelete: Restrict)
+  consents Consent[]
+  events LeadEvent[]
+  @@index([status, createdAt])
+  @@index([sourceId, createdAt])
+  @@index([landing, createdAt])
+  @@map("prospects")
+}
+
+model Consent {
+  id String @id @default(uuid()) @db.Uuid
+  prospectId String @db.Uuid @map("prospect_id")
+  type ConsentType @default(DATA_PROCESSING)
+  accepted Boolean
+  privacyVersion String @map("privacy_version") @db.VarChar(40)
+  ipAddress String? @map("ip_address") @db.VarChar(64)
+  userAgent String? @map("user_agent") @db.VarChar(512)
+  acceptedAt DateTime @default(now()) @map("accepted_at")
+  prospect Prospect @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  @@index([prospectId, acceptedAt])
+  @@map("consents")
+}
+
+model LeadEvent {
+  id String @id @default(uuid()) @db.Uuid
+  prospectId String @db.Uuid @map("prospect_id")
+  submissionId String @unique @db.Uuid @map("submission_id")
+  type LeadEventType
+  sourceId String @db.Uuid @map("source_id")
+  landing String @db.VarChar(80)
+  campaign String? @db.VarChar(100)
+  interest String @db.VarChar(60)
+  metadata Json?
+  createdAt DateTime @default(now()) @map("created_at")
+  prospect Prospect @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  source LeadSource @relation(fields: [sourceId], references: [id], onDelete: Restrict)
+  @@index([prospectId, createdAt])
+  @@index([type, createdAt])
+  @@index([sourceId, createdAt])
+  @@map("lead_events")
+}
 model Role {
   id String @id @default(uuid()) @db.Uuid
   name String @unique @db.VarChar(40)

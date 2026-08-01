@@ -77,7 +77,7 @@ export class QueueService implements OnModuleInit, OnApplicationShutdown {
     const result = await this.mailer.sendMail({
       from: this.config.SMTP_FROM,
       to: payload.to,
-      subject: 'Restablece tu contraseña de HAVONA CAPITAL',
+      subject: 'Restablece tu contraseña de HAVONA CAPITAL GROUP',
       text: [
         'Recibimos una solicitud para restablecer tu contraseña.',
         `Abre este enlace seguro: ${payload.resetUrl}`,

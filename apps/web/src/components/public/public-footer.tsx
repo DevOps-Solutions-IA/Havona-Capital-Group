@@ -1,0 +1,6 @@
+import Link from 'next/link';
+import {ArrowUpRight} from 'lucide-react';
+import {BrandMark} from '../brand-mark';
+
+const solutionLinks=[['Protección','/proteccion'],['Pensión','/pension'],['Educación','/educacion'],['Patrimonio','/patrimonio'],['Empresas','/empresarios']];
+export function PublicFooter(){return <footer className="premium-footer"><div className="public-container"><div className="footer-top"><BrandMark className="footer-mark" inverse/><p>Patrimonio, protección y tecnología conectados por una visión consultiva.</p><Link href="/#consultoria" className="footer-conversation">Iniciar conversación <ArrowUpRight/></Link></div><div className="footer-map"><div><p>Soluciones</p>{solutionLinks.map(([label,href])=><Link href={href} key={href}>{label}</Link>)}</div><div><p>Ecosistema</p><Link href="/?experiencia=henry#consultoria">Henry</Link><Link href="/consultores">Consultores</Link><Link href="/socios">Socios</Link><Link href="/socio-unico">Socio único</Link></div><div><p>Institucional</p><Link href="/privacidad">Privacidad y datos</Link><Link href="/#consultoria">Contacto</Link><Link href="/login">Portal interno</Link></div></div><div className="footer-bottom"><span>© {new Date().getFullYear()} HAVONA CAPITAL GROUP</span><span>Consultoría patrimonial · Colombia</span><Link href="/privacidad">Tratamiento de datos</Link></div></div></footer>}

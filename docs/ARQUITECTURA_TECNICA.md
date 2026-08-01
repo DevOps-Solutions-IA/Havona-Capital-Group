@@ -1,8 +1,8 @@
-# ARQUITECTURA TÉCNICA — HAVONA CAPITAL
+# ARQUITECTURA TÉCNICA — HAVONA CAPITAL GROUP
 
 ## 1. Enfoque
 
-HAVONA CAPITAL se construirá como un monorepo con monolito modular, preparado para separar servicios cuando el crecimiento lo requiera.
+HAVONA CAPITAL GROUP se construirá como un monorepo con monolito modular, preparado para separar servicios cuando el crecimiento lo requiera.
 
 ## 2. Aplicaciones
 

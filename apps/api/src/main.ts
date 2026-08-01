@@ -8,6 +8,7 @@ import { HttpExceptionFilter } from './common/http-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { logger: new ConsoleLogger({ json: true }) });
+  app.getHttpAdapter().getInstance().set('trust proxy', 1);
   app.setGlobalPrefix('api/v1', { exclude: ['health', 'health/ready'] });
   app.use(helmet());
   app.use(cookieParser());

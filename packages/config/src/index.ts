@@ -30,7 +30,7 @@ export const workerEnvironmentSchema = commonSchema
     SMTP_SECURE: booleanFromEnvironment.default(false),
     SMTP_USER: z.string().min(1).optional(),
     SMTP_PASSWORD: z.string().min(1).optional(),
-    SMTP_FROM: z.string().min(3).default('HAVONA CAPITAL <no-reply@localhost>'),
+    SMTP_FROM: z.string().min(3).default('HAVONA CAPITAL GROUP <no-reply@localhost>'),
   })
   .superRefine((environment, context) => {
     if (environment.NODE_ENV === 'production') {

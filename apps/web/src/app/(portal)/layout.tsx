@@ -1,1 +1,1 @@
-import {AuthProvider} from '@/lib/auth'; import {AppShell} from '@/components/app-shell'; export default function Layout({children}:{children:React.ReactNode}){return <AuthProvider><AppShell>{children}</AppShell></AuthProvider>}
+import type {Metadata} from 'next';import {AuthProvider} from '@/lib/auth'; import {AppShell} from '@/components/app-shell';export const metadata:Metadata={robots:{index:false,follow:false}}; export default function Layout({children}:{children:React.ReactNode}){return <AuthProvider><AppShell>{children}</AppShell></AuthProvider>}

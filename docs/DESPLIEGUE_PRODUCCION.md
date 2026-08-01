@@ -20,6 +20,7 @@ POSTGRES_USER=havona
 POSTGRES_PASSWORD=<secreto>
 REDIS_PASSWORD=<secreto-de-al-menos-16-caracteres>
 APP_ORIGIN=https://app.havonacapital.com
+COOKIE_DOMAIN=.havonacapital.com
 NEXT_PUBLIC_API_URL=https://api.havonacapital.com/api/v1
 APP_DOMAIN=app.havonacapital.com
 API_DOMAIN=api.havonacapital.com
@@ -34,7 +35,7 @@ SMTP_PORT=587
 SMTP_SECURE=false
 SMTP_USER=<usuario-smtp>
 SMTP_PASSWORD=<secreto-smtp>
-SMTP_FROM=HAVONA CAPITAL <no-reply@havonacapital.com>
+SMTP_FROM=HAVONA CAPITAL GROUP <no-reply@havonacapital.com>
 BACKUP_PATH=/srv/havona/backups
 BACKUP_RETENTION_DAYS=14
 ```

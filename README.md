@@ -1,8 +1,12 @@
-# HAVONA CAPITAL
+# HAVONA CAPITAL GROUP
 
-Fundación técnica de la plataforma empresarial HAVONA CAPITAL. Este repositorio es un monorepo
+Fundación técnica de la plataforma empresarial HAVONA CAPITAL GROUP. Este repositorio es un monorepo
 TypeScript con Next.js, NestJS, PostgreSQL, Prisma, Redis y BullMQ, desplegable mediante Docker
 Compose y Caddy.
+
+El nombre corporativo oficial de la plataforma y del ecosistema es **HAVONA CAPITAL GROUP**.
+Identificadores técnicos históricos como `@havona/*`, `havona-capital` y los dominios previstos se
+conservan deliberadamente y no representan una denominación institucional alternativa.
 
 La Fase 0 implementa autenticación por sesiones, recuperación de contraseña, RBAC, administración
 de usuarios, configuración, auditoría, health checks, worker de correo, backups y CI. Henry AI,
@@ -12,6 +16,8 @@ CRM, Jitsi y WhatsApp permanecen fuera de esta fase.
 
 **Fase 0 — COMPLETADA (`v0.1.0`)**
 
+**Fase 1 — COMPLETADA (`v0.2.0`)**
+
 La fundación técnica fue aprobada con evidencia del entorno local oficial y GitHub Actions. Las
 validaciones de infraestructura final (VPS, DNS, HTTPS público, SMTP productivo, firewall,
 hardening, monitoreo, backup/restauración y persistencia del servidor) pertenecen a
@@ -19,6 +25,11 @@ preproducción/producción y no constituyen pendientes críticos de desarrollo d
 
 Consulte el [acta de cierre de la Fase 0](docs/CIERRE_FASE_0.md) para conocer el alcance validado,
 la evidencia de CI y las tareas diferidas.
+
+La Fase 1 incorpora el sitio público, nueve landings, captación persistente con consentimiento y
+una bandeja administrativa inicial. Su [documentación técnica](docs/FASE_1_SITIO_CAPTACION.md) y
+[acta de cierre](docs/CIERRE_FASE_1.md) registran endpoints, datos, trazabilidad, pruebas, identidad
+corporativa y aprobación del lenguaje visual maestro.
 
 ## Requisitos
 

@@ -1,4 +1,12 @@
-# REGLAS DE DESARROLLO — HAVONA CAPITAL
+# REGLAS DE DESARROLLO — HAVONA CAPITAL GROUP
+
+## Identidad corporativa
+
+El nombre corporativo oficial del ecosistema es **HAVONA CAPITAL GROUP**. Ningún módulo, nueva
+interfaz, documento institucional o contenido visible debe presentar `HAVONA CAPITAL` como
+denominación corporativa completa salvo que exista una decisión explícita de abreviación de marca.
+Los identificadores internos, paquetes, rutas, dominios y servicios no se renombran por sustitución
+automática: deben conservarse cuando el cambio no aporta valor funcional o introduce riesgo.
 
 ## 0. Entorno y fuente oficial
 
