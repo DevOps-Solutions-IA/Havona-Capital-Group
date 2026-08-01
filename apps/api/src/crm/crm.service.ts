@@ -46,17 +46,28 @@ export class CrmService {
       where: {
         id,
         isActive: true,
-        roles: { some: { role: { name: { in: ['SUPER_ADMIN', 'ADMIN', 'GERENTE', 'CONSULTOR'] } } } },
+        roles: {
+          some: { role: { name: { in: ['SUPER_ADMIN', 'ADMIN', 'GERENTE', 'CONSULTOR'] } } },
+        },
       },
       select: { id: true, name: true },
     });
-    if (!user) throw new UnprocessableEntityException('Responsable inválido, inactivo o sin rol comercial');
+    if (!user)
+      throw new UnprocessableEntityException('Responsable inválido, inactivo o sin rol comercial');
     return user;
   }
-  private async validateOpportunityLink(prospectId: string, opportunityId: string | undefined, db: DbClient) {
+  private async validateOpportunityLink(
+    prospectId: string,
+    opportunityId: string | undefined,
+    db: DbClient,
+  ) {
     if (!opportunityId) return;
-    const linked = await db.opportunity.findFirst({ where: { id: opportunityId, prospectId }, select: { id: true } });
-    if (!linked) throw new UnprocessableEntityException('La oportunidad no pertenece al prospecto indicado');
+    const linked = await db.opportunity.findFirst({
+      where: { id: opportunityId, prospectId },
+      select: { id: true },
+    });
+    if (!linked)
+      throw new UnprocessableEntityException('La oportunidad no pertenece al prospecto indicado');
   }
   private context(request: any): AuditContext {
     return {
@@ -127,10 +138,11 @@ export class CrmService {
       where: { id },
       include: {
         source: true,
-        consents: { orderBy: { acceptedAt: 'desc' } },
-        events: { orderBy: { createdAt: 'desc' } },
+        consents: { orderBy: { acceptedAt: 'desc' }, take: 50 },
+        events: { orderBy: { createdAt: 'desc' }, take: 50 },
         assignments: {
           orderBy: { createdAt: 'desc' },
+          take: 50,
           include: {
             assignee: { select: { id: true, name: true, email: true } },
             assignedBy: { select: { id: true, name: true } },
@@ -139,14 +151,17 @@ export class CrmService {
         tags: { include: { tag: true } },
         opportunities: {
           orderBy: { createdAt: 'desc' },
+          take: 50,
           include: { stage: true, owner: { select: { id: true, name: true } } },
         },
         tasks: {
           orderBy: { dueAt: 'asc' },
+          take: 50,
           include: { assignee: { select: { id: true, name: true } } },
         },
         notes: {
           orderBy: { createdAt: 'desc' },
+          take: 50,
           include: { author: { select: { id: true, name: true } } },
         },
         activities: {
@@ -156,12 +171,51 @@ export class CrmService {
         },
         interactions: {
           orderBy: { occurredAt: 'desc' },
+          take: 50,
           include: { actor: { select: { id: true, name: true } } },
         },
+        client: true,
+        companyContacts: { include: { company: true } },
       },
     });
     await this.audit.record('CRM_PROSPECT_VIEWED', 'Prospect', id, this.context(request));
     return row;
+  }
+
+  async updateProspect(id: string, input: any, actor: Actor, request: any) {
+    await this.prospect(id, actor);
+    return this.db.$transaction(async (tx) => {
+      const row = await tx.prospect.update({ where: { id }, data: input });
+      await tx.activity.create({
+        data: {
+          prospectId: id,
+          actorId: actor.id,
+          type: ActivityType.PROSPECT_UPDATED,
+          summary: 'Información comercial actualizada',
+        },
+      });
+      await this.audit.record(
+        'CRM_PROSPECT_UPDATED',
+        'Prospect',
+        id,
+        this.context(request),
+        { fields: Object.keys(input) },
+        tx,
+      );
+      return row;
+    });
+  }
+
+  async assignments(prospectId: string, actor: Actor) {
+    await this.prospect(prospectId, actor);
+    return this.db.assignment.findMany({
+      where: { prospectId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        assignee: { select: { id: true, name: true, email: true } },
+        assignedBy: { select: { id: true, name: true } },
+      },
+    });
   }
 
   async assign(prospectId: string, assigneeId: string, actor: Actor, request: any) {
@@ -274,6 +328,26 @@ export class CrmService {
       return row;
     });
   }
+
+  async opportunityDetail(id: string, actor: Actor) {
+    await this.opportunity(id, actor);
+    return this.db.opportunity.findUnique({
+      where: { id },
+      include: {
+        stage: true,
+        prospect: true,
+        owner: { select: { id: true, name: true } },
+        stageHistory: {
+          orderBy: { createdAt: 'desc' },
+          include: {
+            previousStage: true,
+            newStage: true,
+            changedBy: { select: { id: true, name: true } },
+          },
+        },
+      },
+    });
+  }
   async moveOpportunity(id: string, input: any, actor: Actor, request: any) {
     const current = await this.opportunity(id, actor);
     const target = await this.db.pipelineStage.findFirst({
@@ -330,6 +404,22 @@ export class CrmService {
         { previousStageId: current.stageId, newStageId: target.id, status },
         tx,
       );
+      if (target.key === 'client') {
+        await tx.clientProfile.upsert({
+          where: { prospectId: current.prospectId },
+          update: { status: 'ACTIVE' },
+          create: { prospectId: current.prospectId, convertedById: actor.id },
+        });
+        await tx.activity.create({
+          data: {
+            prospectId: current.prospectId,
+            opportunityId: id,
+            actorId: actor.id,
+            type: ActivityType.CLIENT_CONVERTED,
+            summary: 'Prospecto convertido en cliente',
+          },
+        });
+      }
       return row;
     });
   }
@@ -507,6 +597,162 @@ export class CrmService {
   async tags() {
     return this.db.tag.findMany({ orderBy: { name: 'asc' } });
   }
+  async untagProspect(prospectId: string, tagId: string, actor: Actor, request: any) {
+    await this.prospect(prospectId, actor);
+    return this.db.$transaction(async (tx) => {
+      const existing = await tx.prospectTag.findUnique({
+        where: { prospectId_tagId: { prospectId, tagId } },
+      });
+      if (!existing) return { removed: false };
+      await tx.prospectTag.delete({ where: { prospectId_tagId: { prospectId, tagId } } });
+      await tx.activity.create({
+        data: {
+          prospectId,
+          actorId: actor.id,
+          type: ActivityType.TAG_DETACHED,
+          summary: 'Etiqueta retirada',
+          metadata: { tagId },
+        },
+      });
+      await this.audit.record(
+        'CRM_TAG_DETACHED',
+        'Prospect',
+        prospectId,
+        this.context(request),
+        { tagId },
+        tx,
+      );
+      return { removed: true };
+    });
+  }
+  async activities(query: any, actor: Actor) {
+    const where: Prisma.ActivityWhereInput = {
+      prospect: this.prospectScope(actor),
+      prospectId: query.prospectId,
+      opportunityId: query.opportunityId,
+    };
+    const [data, total] = await this.db.$transaction([
+      this.db.activity.findMany({
+        where,
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          actor: { select: { id: true, name: true } },
+          prospect: { select: { id: true, name: true } },
+          opportunity: { select: { id: true, title: true } },
+        },
+      }),
+      this.db.activity.count({ where }),
+    ]);
+    return { data, meta: { page: query.page, pageSize: query.pageSize, total } };
+  }
+  async clients(query: any, actor: Actor) {
+    const where: Prisma.ClientProfileWhereInput = {
+      prospect: {
+        ...this.prospectScope(actor),
+        OR: query.search
+          ? [
+              { name: { contains: query.search, mode: 'insensitive' } },
+              { email: { contains: query.search, mode: 'insensitive' } },
+            ]
+          : undefined,
+      },
+    };
+    const [data, total] = await this.db.$transaction([
+      this.db.clientProfile.findMany({
+        where,
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+        orderBy: { convertedAt: 'desc' },
+        include: {
+          prospect: {
+            include: {
+              assignments: {
+                where: { endedAt: null },
+                include: { assignee: { select: { id: true, name: true } } },
+              },
+            },
+          },
+          convertedBy: { select: { id: true, name: true } },
+        },
+      }),
+      this.db.clientProfile.count({ where }),
+    ]);
+    return { data, meta: { page: query.page, pageSize: query.pageSize, total } };
+  }
+  async companies(query: any, actor: Actor) {
+    if (!this.global(actor)) throw new ForbiddenException('No puede consultar empresas');
+    const where: Prisma.CompanyWhereInput = {
+      OR: query.search
+        ? [
+            { name: { contains: query.search, mode: 'insensitive' } },
+            { legalName: { contains: query.search, mode: 'insensitive' } },
+            { taxIdentifier: { contains: query.search } },
+          ]
+        : undefined,
+    };
+    const [data, total] = await this.db.$transaction([
+      this.db.company.findMany({
+        where,
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+        orderBy: { name: 'asc' },
+        include: {
+          contacts: {
+            include: { prospect: { select: { id: true, name: true, email: true, phone: true } } },
+          },
+        },
+      }),
+      this.db.company.count({ where }),
+    ]);
+    return { data, meta: { page: query.page, pageSize: query.pageSize, total } };
+  }
+  async createCompany(input: any, actor: Actor, request: any) {
+    if (!this.global(actor)) throw new ForbiddenException('No puede crear empresas');
+    return this.db.$transaction(async (tx) => {
+      if (input.prospectId) await this.validateProspectExists(input.prospectId, tx);
+      const { prospectId, position, ...data } = input;
+      const row = await tx.company.create({
+        data: {
+          ...data,
+          email: data.email || null,
+          contacts: prospectId ? { create: { prospectId, position, isPrimary: true } } : undefined,
+        },
+      });
+      await this.audit.record(
+        'CRM_COMPANY_CREATED',
+        'Company',
+        row.id,
+        this.context(request),
+        undefined,
+        tx,
+      );
+      return row;
+    });
+  }
+  private async validateProspectExists(id: string, db: DbClient) {
+    const row = await db.prospect.findUnique({ where: { id }, select: { id: true } });
+    if (!row) throw new UnprocessableEntityException('Prospecto de contacto inválido');
+  }
+  async consultants() {
+    return this.db.user.findMany({
+      where: { isActive: true, roles: { some: { role: { name: 'CONSULTOR' } } } },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        _count: {
+          select: {
+            assignedProspects: { where: { endedAt: null } },
+            crmTasks: { where: { status: { in: ['PENDING', 'IN_PROGRESS'] } } },
+            opportunities: { where: { status: 'OPEN' } },
+          },
+        },
+      },
+      orderBy: { name: 'asc' },
+    });
+  }
   async createTag(input: any, request: any) {
     return this.db.$transaction(async (tx) => {
       const row = await tx.tag.upsert({
@@ -514,7 +760,14 @@ export class CrmService {
         update: { color: input.color },
         create: input,
       });
-      await this.audit.record('CRM_TAG_UPSERTED', 'Tag', row.id, this.context(request), undefined, tx);
+      await this.audit.record(
+        'CRM_TAG_UPSERTED',
+        'Tag',
+        row.id,
+        this.context(request),
+        undefined,
+        tx,
+      );
       return row;
     });
   }
@@ -528,7 +781,23 @@ export class CrmService {
         update: {},
         create: { prospectId, tagId },
       });
-      await this.audit.record('CRM_TAG_ATTACHED', 'Prospect', prospectId, this.context(request), { tagId }, tx);
+      await tx.activity.create({
+        data: {
+          prospectId,
+          actorId: actor.id,
+          type: ActivityType.TAG_ATTACHED,
+          summary: 'Etiqueta asociada',
+          metadata: { tagId },
+        },
+      });
+      await this.audit.record(
+        'CRM_TAG_ATTACHED',
+        'Prospect',
+        prospectId,
+        this.context(request),
+        { tagId },
+        tx,
+      );
       return row;
     });
   }

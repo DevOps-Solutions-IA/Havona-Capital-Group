@@ -31,6 +31,7 @@ model User {
   notes               Note[]                    @relation("NoteAuthor")
   activities          Activity[]                @relation("ActivityActor")
   interactions        Interaction[]             @relation("InteractionActor")
+  convertedClients    ClientProfile[]           @relation("ClientConvertedBy")
 
   @@map("users")
 }
@@ -64,24 +65,24 @@ model LeadSource {
 }
 
 model Prospect {
-  id              String         @id @default(uuid()) @db.Uuid
-  name            String         @db.VarChar(120)
-  phone           String?        @db.VarChar(30)
-  normalizedPhone String?        @unique @map("normalized_phone") @db.VarChar(20)
-  email           String?        @db.VarChar(254)
-  normalizedEmail String?        @unique @map("normalized_email") @db.VarChar(254)
-  city            String         @db.VarChar(100)
-  sourceId        String         @map("source_id") @db.Uuid
-  campaign        String?        @db.VarChar(100)
-  landing         String         @db.VarChar(80)
-  interest        String         @db.VarChar(60)
-  message         String?        @db.VarChar(1200)
-  status          ProspectStatus @default(NEW)
-  firstCapturedAt DateTime       @default(now()) @map("first_captured_at")
-  lastCapturedAt  DateTime       @default(now()) @map("last_captured_at")
-  createdAt       DateTime       @default(now()) @map("created_at")
-  updatedAt       DateTime       @updatedAt @map("updated_at")
-  source          LeadSource     @relation(fields: [sourceId], references: [id], onDelete: Restrict)
+  id              String           @id @default(uuid()) @db.Uuid
+  name            String           @db.VarChar(120)
+  phone           String?          @db.VarChar(30)
+  normalizedPhone String?          @unique @map("normalized_phone") @db.VarChar(20)
+  email           String?          @db.VarChar(254)
+  normalizedEmail String?          @unique @map("normalized_email") @db.VarChar(254)
+  city            String           @db.VarChar(100)
+  sourceId        String           @map("source_id") @db.Uuid
+  campaign        String?          @db.VarChar(100)
+  landing         String           @db.VarChar(80)
+  interest        String           @db.VarChar(60)
+  message         String?          @db.VarChar(1200)
+  status          ProspectStatus   @default(NEW)
+  firstCapturedAt DateTime         @default(now()) @map("first_captured_at")
+  lastCapturedAt  DateTime         @default(now()) @map("last_captured_at")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  source          LeadSource       @relation(fields: [sourceId], references: [id], onDelete: Restrict)
   consents        Consent[]
   events          LeadEvent[]
   assignments     Assignment[]
@@ -91,6 +92,8 @@ model Prospect {
   activities      Activity[]
   tags            ProspectTag[]
   interactions    Interaction[]
+  client          ClientProfile?
+  companyContacts CompanyContact[]
 
   @@index([status, createdAt])
   @@index([sourceId, createdAt])
@@ -138,6 +141,60 @@ enum ActivityType {
   STAGE_CHANGED
   OPPORTUNITY_CREATED
   OPPORTUNITY_CLOSED
+  PROSPECT_UPDATED
+  TAG_ATTACHED
+  TAG_DETACHED
+  CLIENT_CONVERTED
+  COMPANY_CREATED
+}
+
+enum ClientStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model ClientProfile {
+  id            String       @id @default(uuid()) @db.Uuid
+  prospectId    String       @unique @map("prospect_id") @db.Uuid
+  convertedById String       @map("converted_by_id") @db.Uuid
+  status        ClientStatus @default(ACTIVE)
+  convertedAt   DateTime     @default(now()) @map("converted_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+  prospect      Prospect     @relation(fields: [prospectId], references: [id], onDelete: Restrict)
+  convertedBy   User         @relation("ClientConvertedBy", fields: [convertedById], references: [id], onDelete: Restrict)
+
+  @@index([status, convertedAt])
+  @@map("crm_clients")
+}
+
+model Company {
+  id            String           @id @default(uuid()) @db.Uuid
+  name          String           @db.VarChar(160)
+  legalName     String?          @map("legal_name") @db.VarChar(200)
+  taxIdentifier String?          @unique @map("tax_identifier") @db.VarChar(40)
+  city          String?          @db.VarChar(100)
+  email         String?          @db.VarChar(254)
+  phone         String?          @db.VarChar(30)
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @updatedAt @map("updated_at")
+  contacts      CompanyContact[]
+
+  @@index([name])
+  @@map("crm_companies")
+}
+
+model CompanyContact {
+  companyId  String   @map("company_id") @db.Uuid
+  prospectId String   @map("prospect_id") @db.Uuid
+  position   String?  @db.VarChar(120)
+  isPrimary  Boolean  @default(false) @map("is_primary")
+  createdAt  DateTime @default(now()) @map("created_at")
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  prospect   Prospect @relation(fields: [prospectId], references: [id], onDelete: Restrict)
+
+  @@id([companyId, prospectId])
+  @@index([prospectId])
+  @@map("crm_company_contacts")
 }
 
 enum ContactMethod {

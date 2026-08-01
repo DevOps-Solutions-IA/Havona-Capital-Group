@@ -224,5 +224,38 @@ export const createTagSchema = z.object({
   color: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
 });
 export const prospectTagSchema = z.object({ tagId: uuid });
+export const updateCrmProspectSchema = z
+  .object({
+    name: plainText(120).optional(),
+    city: plainText(100).optional(),
+    interest: slug(60).optional(),
+    message: optionalPlainText(1200),
+    status: z.enum(['NEW', 'REVIEWED', 'ARCHIVED']).optional(),
+  })
+  .refine(
+    (value) => Object.values(value).some((item) => item !== undefined),
+    'Debe incluir al menos un cambio',
+  );
+export const crmActivityQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25),
+  prospectId: uuid.optional(),
+  opportunityId: uuid.optional(),
+});
+export const crmListQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25),
+  search: z.string().trim().max(120).optional(),
+});
+export const createCompanySchema = z.object({
+  name: plainText(160),
+  legalName: optionalPlainText(200),
+  taxIdentifier: optionalPlainText(40),
+  city: optionalPlainText(100),
+  email: z.string().trim().email().max(254).optional().or(z.literal('')),
+  phone: optionalPlainText(30),
+  prospectId: uuid.optional(),
+  position: optionalPlainText(120),
+});
 export type CrmProspectListQuery = z.infer<typeof crmProspectListQuerySchema>;
 export type OpportunityListQuery = z.infer<typeof opportunityListQuerySchema>;

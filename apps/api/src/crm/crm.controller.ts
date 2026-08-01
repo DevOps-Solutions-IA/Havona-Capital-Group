@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
@@ -17,12 +18,16 @@ import {
   createOpportunitySchema,
   createTagSchema,
   createTaskSchema,
+  createCompanySchema,
+  crmActivityQuerySchema,
+  crmListQuerySchema,
   crmProspectListQuerySchema,
   moveOpportunityStageSchema,
   opportunityListQuerySchema,
   prospectTagSchema,
   taskListQuerySchema,
   updateNoteSchema,
+  updateCrmProspectSchema,
   updateTaskStatusSchema,
 } from '@havona/contracts';
 import { RequirePermissions } from '../common/decorators';
@@ -47,6 +52,19 @@ export class CrmController {
   ) {
     return this.crm.prospect360(id, actor(req), req);
   }
+  @Patch('prospects/:id') @RequirePermissions('crm.update') updateProspect(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodPipe(updateCrmProspectSchema)) body: any,
+    @Req() req: any,
+  ) {
+    return this.crm.updateProspect(id, body, actor(req), req);
+  }
+  @Get('prospects/:id/assignments') @RequirePermissions('crm.read_assigned') assignments(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: any,
+  ) {
+    return this.crm.assignments(id, actor(req));
+  }
   @Put('prospects/:id/assignment') @RequirePermissions('crm.assign') assign(
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodPipe(assignProspectSchema)) body: any,
@@ -62,6 +80,12 @@ export class CrmController {
     @Req() req: any,
   ) {
     return this.crm.opportunities(query, actor(req));
+  }
+  @Get('opportunities/:id') @RequirePermissions('crm.read_assigned') opportunity(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: any,
+  ) {
+    return this.crm.opportunityDetail(id, actor(req));
   }
   @Post('opportunities') @RequirePermissions('crm.opportunities') createOpportunity(
     @Body(new ZodPipe(createOpportunitySchema)) body: any,
@@ -129,6 +153,40 @@ export class CrmController {
     @Req() req: any,
   ) {
     return this.crm.tagProspect(id, body.tagId, actor(req), req);
+  }
+  @Delete('prospects/:id/tags/:tagId') @RequirePermissions('crm.update') untag(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('tagId', ParseUUIDPipe) tagId: string,
+    @Req() req: any,
+  ) {
+    return this.crm.untagProspect(id, tagId, actor(req), req);
+  }
+  @Get('activities') @RequirePermissions('crm.read_assigned') activities(
+    @Query(new ZodPipe(crmActivityQuerySchema)) query: any,
+    @Req() req: any,
+  ) {
+    return this.crm.activities(query, actor(req));
+  }
+  @Get('clients') @RequirePermissions('crm.read_assigned') clients(
+    @Query(new ZodPipe(crmListQuerySchema)) query: any,
+    @Req() req: any,
+  ) {
+    return this.crm.clients(query, actor(req));
+  }
+  @Get('companies') @RequirePermissions('crm.read_all') companies(
+    @Query(new ZodPipe(crmListQuerySchema)) query: any,
+    @Req() req: any,
+  ) {
+    return this.crm.companies(query, actor(req));
+  }
+  @Post('companies') @RequirePermissions('crm.update') createCompany(
+    @Body(new ZodPipe(createCompanySchema)) body: any,
+    @Req() req: any,
+  ) {
+    return this.crm.createCompany(body, actor(req), req);
+  }
+  @Get('consultants') @RequirePermissions('crm.assign') consultants() {
+    return this.crm.consultants();
   }
   @Get('dashboard') @RequirePermissions('crm.dashboard') dashboard(@Req() req: any) {
     return this.crm.dashboard(actor(req));
