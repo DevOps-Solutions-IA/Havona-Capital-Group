@@ -36,6 +36,12 @@ preproducción/producción.
 
 ## Fase 0 — Fundación técnica
 
+**Estado: COMPLETADA**
+
+La fase fue aprobada formalmente bajo el criterio vigente de desarrollo local más GitHub Actions.
+El detalle de alcance, evidencia y responsabilidades diferidas se encuentra en
+`docs/CIERRE_FASE_0.md`.
+
 Entregables:
 
 - Monorepo.
@@ -57,6 +63,11 @@ Entregables:
 - Documentación.
 
 Versión: `v0.1.0`
+
+Las comprobaciones operativas del VPS, Ubuntu 24.04 del servidor, Docker Engine del VPS, DNS,
+HTTPS público, SMTP productivo, firewall, hardening, monitoreo del host, backup/restauración en la
+infraestructura final y persistencia tras reinicios del VPS se ejecutarán en preproducción. No son
+bloqueos ni pendientes críticos de desarrollo de esta fase.
 
 ## Fase 1 — Sitio público y captación
 

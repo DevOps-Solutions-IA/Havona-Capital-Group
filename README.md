@@ -8,6 +8,18 @@ La Fase 0 implementa autenticación por sesiones, recuperación de contraseña, 
 de usuarios, configuración, auditoría, health checks, worker de correo, backups y CI. Henry AI,
 CRM, Jitsi y WhatsApp permanecen fuera de esta fase.
 
+## Estado del proyecto
+
+**Fase 0 — COMPLETADA (`v0.1.0`)**
+
+La fundación técnica fue aprobada con evidencia del entorno local oficial y GitHub Actions. Las
+validaciones de infraestructura final (VPS, DNS, HTTPS público, SMTP productivo, firewall,
+hardening, monitoreo, backup/restauración y persistencia del servidor) pertenecen a
+preproducción/producción y no constituyen pendientes críticos de desarrollo de la Fase 0.
+
+Consulte el [acta de cierre de la Fase 0](docs/CIERRE_FASE_0.md) para conocer el alcance validado,
+la evidencia de CI y las tareas diferidas.
+
 ## Requisitos
 
 - Node.js 22 LTS y Corepack.
