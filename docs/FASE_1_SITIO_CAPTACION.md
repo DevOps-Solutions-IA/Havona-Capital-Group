@@ -9,6 +9,11 @@ no cierra la fase: no existe commit `release(fase-01)`, etiqueta `v0.2.0` ni aut
 
 ## Experiencia pública
 
+La reconstrucción editorial de la Home, validada visualmente en agosto de 2026, es la referencia
+maestra de marca de **HAVONA CAPITAL GROUP**. Su dirección artística se documenta de forma
+permanente en `docs/DIRECTRIZ_VISUAL_FUNCIONAL.md`. Esta aprobación no cierra la Fase 1 ni extiende
+automáticamente el rediseño a las landings.
+
 - Home editorial premium con navegación fija y responsive.
 - Composición visual original basada en arquitectura, familia, empresa, protección y tecnología.
 - CTAs de consultoría conectados al formulario real.
@@ -124,4 +129,4 @@ estén protegidos.
 
 - Confirmar todos los checks del último commit en GitHub Actions.
 - Revisar el reporte integral de la fase.
-- Mantener el PR Draft hasta la decisión formal de HAVONA CAPITAL.
+- Mantener el PR Draft hasta la decisión formal de HAVONA CAPITAL GROUP.

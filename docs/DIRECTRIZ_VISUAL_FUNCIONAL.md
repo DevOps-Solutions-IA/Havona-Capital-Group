@@ -1,8 +1,12 @@
-# DIRECTRIZ VISUAL Y FUNCIONAL — HAVONA CAPITAL
+# DIRECTRIZ VISUAL Y FUNCIONAL — HAVONA CAPITAL GROUP
 
 ## Identidad
 
-HAVONA CAPITAL debe verse como una empresa multinacional de consultoría patrimonial, tecnología financiera y protección empresarial.
+HAVONA CAPITAL GROUP debe verse como una empresa multinacional de consultoría patrimonial, tecnología financiera y protección empresarial.
+
+El nombre corporativo completo y obligatorio es **HAVONA CAPITAL GROUP**. `HAVONA` puede emplearse
+como abreviación editorial cuando la composición lo justifique, pero `HAVONA CAPITAL` no debe
+presentarse como denominación corporativa completa sin una decisión expresa.
 
 La experiencia debe ser:
 
@@ -61,6 +65,48 @@ Evitar:
 - Datos falsos.
 - Elementos decorativos sin propósito.
 
+## Lenguaje visual maestro aprobado
+
+La Home reconstruida en Fase 1 y registrada por los commits `8678c5c`, `c413820` y `791f0a6`
+constituye la **dirección visual maestra de HAVONA CAPITAL GROUP**. Es la referencia obligatoria
+para las landings, CRM, Henry, Agenda, Havona Meet, administración, dashboards, portal cliente,
+academia, experiencias mobile y módulos futuros. Cada módulo debe adaptar este ADN a su función;
+no debe copiar mecánicamente la composición de la portada.
+
+### Principios
+
+- Editorial, premium y patrimonial.
+- Tecnológico e internacional.
+- Humano, sofisticado y claro.
+- Dinámico sin exceso.
+- Predominio de fondos claros y amplios espacios negativos.
+- Asimetría controlada, profundidad y ritmo narrativo.
+- Azul tecnológico integrado con champagne gold extremadamente moderado.
+
+### Patrones aprobados
+
+- Navegación flotante, translúcida y sensible al scroll.
+- Gran tipografía display tratada como composición editorial.
+- Composiciones asimétricas con jerarquía y aire.
+- Espacios negativos deliberados.
+- Motion controlado, performante y compatible con `prefers-reduced-motion`.
+- Navegación experiencial para explorar soluciones.
+- Geometría original y capas arquitectónicas con propósito.
+- Integración visual de Henry como capacidad estratégica del ecosistema.
+- Storytelling progresivo ligado al scroll.
+- Cambios de ritmo entre personas, empresas, metodología y conversión.
+
+### Patrones rechazados
+
+- Sitios corporativos genéricos y estética de plantilla SaaS.
+- Secciones repetitivas o grids consecutivos de cards.
+- Exceso de rectángulos, radios, sombras o glassmorphism.
+- Diseño completamente estático.
+- Imágenes stock genéricas o clichés corporativos.
+- Interfaces oscuras predominantes.
+- Gradientes llamativos, neón o estética cyberpunk.
+- Dashboards, métricas o visualizaciones ficticias.
+
 ## Navegación pública
 
 - Logo.
@@ -81,7 +127,7 @@ Título sugerido:
 
 Texto:
 
-> HAVONA CAPITAL integra consultoría patrimonial, protección financiera, tecnología e inteligencia artificial para personas, familias y empresas.
+> HAVONA CAPITAL GROUP integra consultoría patrimonial, protección financiera, tecnología e inteligencia artificial para personas, familias y empresas.
 
 Acciones:
 
@@ -99,7 +145,7 @@ Henry debe estar visible mediante:
 
 Presentación:
 
-> Henry, asistente virtual de HAVONA CAPITAL.
+> Henry, asistente virtual de HAVONA CAPITAL GROUP.
 
 ## Regla funcional
 

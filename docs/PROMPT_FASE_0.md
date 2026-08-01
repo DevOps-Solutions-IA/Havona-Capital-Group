@@ -1,6 +1,6 @@
 # PROMPT DEFINITIVO — FASE 0
 
-Construye la Fase 0 de HAVONA CAPITAL directamente en este repositorio.
+Construye la Fase 0 de HAVONA CAPITAL GROUP directamente en este repositorio.
 
 Lee antes de comenzar:
 

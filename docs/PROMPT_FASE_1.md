@@ -8,7 +8,7 @@ Rama oficial: `feature/fase-01-web-captacion`
 
 ## Objetivo
 
-Construir el sitio público premium de HAVONA CAPITAL y el sistema real de captación de prospectos.
+Construir el sitio público premium de HAVONA CAPITAL GROUP y el sistema real de captación de prospectos.
 No se construye una landing aislada: esta fase crea la entrada funcional al ecosistema y conecta
 cada captura con backend, persistencia, consentimiento, trazabilidad y administración inicial.
 
@@ -60,4 +60,4 @@ rentabilidades, coberturas o afirmaciones no aprobadas.
 
 La fase se mantiene en Draft hasta completar sitio público, landings, captación, administración
 inicial, responsive, accesibilidad, SEO, seguridad, pruebas, builds, CI y documentación. No se crea
-commit release, etiqueta ni merge sin aprobación expresa de HAVONA CAPITAL.
+commit release, etiqueta ni merge sin aprobación expresa de HAVONA CAPITAL GROUP.

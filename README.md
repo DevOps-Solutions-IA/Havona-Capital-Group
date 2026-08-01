@@ -1,8 +1,12 @@
-# HAVONA CAPITAL
+# HAVONA CAPITAL GROUP
 
-Fundación técnica de la plataforma empresarial HAVONA CAPITAL. Este repositorio es un monorepo
+Fundación técnica de la plataforma empresarial HAVONA CAPITAL GROUP. Este repositorio es un monorepo
 TypeScript con Next.js, NestJS, PostgreSQL, Prisma, Redis y BullMQ, desplegable mediante Docker
 Compose y Caddy.
+
+El nombre corporativo oficial de la plataforma y del ecosistema es **HAVONA CAPITAL GROUP**.
+Identificadores técnicos históricos como `@havona/*`, `havona-capital` y los dominios previstos se
+conservan deliberadamente y no representan una denominación institucional alternativa.
 
 La Fase 0 implementa autenticación por sesiones, recuperación de contraseña, RBAC, administración
 de usuarios, configuración, auditoría, health checks, worker de correo, backups y CI. Henry AI,

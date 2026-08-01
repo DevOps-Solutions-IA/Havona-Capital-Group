@@ -28,7 +28,7 @@ INITIAL_SUPER_ADMIN_PASSWORD=<contraseña-inicial-segura>
 LOG_LEVEL=debug
 WORKER_CONCURRENCY=5
 WORKER_QUEUE_NAME=havona-system
-SMTP_FROM=HAVONA CAPITAL <no-reply@localhost>
+SMTP_FROM=HAVONA CAPITAL GROUP <no-reply@localhost>
 ```
 
 Genere secretos con `openssl rand -base64 48`. Si un secreto contiene caracteres
