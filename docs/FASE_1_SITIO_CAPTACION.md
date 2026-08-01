@@ -2,17 +2,18 @@
 
 ## Estado
 
-**EN VALIDACIÓN — PULL REQUEST DRAFT**
+**FASE 1 — COMPLETADA**
 
-La implementación está construida y sometida a pruebas locales y GitHub Actions. Este documento
-no cierra la fase: no existe commit `release(fase-01)`, etiqueta `v0.2.0` ni autorización de merge.
+HAVONA CAPITAL GROUP aprobó formalmente el alcance técnico, funcional y visual el 1 de agosto de
+2026. La versión de cierre es `v0.2.0`; la evidencia consolidada se registra en
+`docs/CIERRE_FASE_1.md`.
 
 ## Experiencia pública
 
 La reconstrucción editorial de la Home, validada visualmente en agosto de 2026, es la referencia
 maestra de marca de **HAVONA CAPITAL GROUP**. Su dirección artística se documenta de forma
-permanente en `docs/DIRECTRIZ_VISUAL_FUNCIONAL.md`. Esta aprobación no cierra la Fase 1 ni extiende
-automáticamente el rediseño a las landings.
+permanente en `docs/DIRECTRIZ_VISUAL_FUNCIONAL.md`. Los refinamientos visuales progresivos no
+invalidan este cierre ni extienden automáticamente el rediseño a las landings.
 
 - Home editorial premium con navegación fija y responsive.
 - Composición visual original basada en arquitectura, familia, empresa, protección y tecnología.
@@ -125,8 +126,8 @@ estén protegidos.
 - Telefonía.
 - Analítica comercial avanzada.
 
-## Pendientes para aprobación
+## Cierre
 
-- Confirmar todos los checks del último commit en GitHub Actions.
-- Revisar el reporte integral de la fase.
-- Mantener el PR Draft hasta la decisión formal de HAVONA CAPITAL GROUP.
+No existen pendientes críticos dentro del alcance aprobado. Henry AI completo, CRM completo,
+WhatsApp, automatizaciones, Havona Meet, telefonía y analítica avanzada continúan asignados a sus
+fases posteriores.

@@ -76,7 +76,7 @@ bloqueos ni pendientes críticos de desarrollo de esta fase.
 
 ## Fase 1 — Sitio público y captación
 
-**Estado: EN VALIDACIÓN — PR DRAFT**
+**Estado: COMPLETADA**
 
 Rama: `feature/fase-01-web-captacion`
 
@@ -85,8 +85,9 @@ premium, captación persistente con consentimiento y trazabilidad, y consulta ad
 inicial. El CRM completo, Henry AI, automatizaciones y canales posteriores permanecen fuera de
 alcance.
 
-La implementación está construida y documentada en `docs/FASE_1_SITIO_CAPTACION.md`. El cierre,
-commit release, versión y merge requieren aprobación independiente de HAVONA CAPITAL GROUP.
+La implementación y su evidencia de cierre están documentadas en
+`docs/FASE_1_SITIO_CAPTACION.md` y `docs/CIERRE_FASE_1.md`. HAVONA CAPITAL GROUP aprobó la Home
+como lenguaje visual maestro del ecosistema y autorizó el cierre mediante `v0.2.0`.
 
 Entregables:
 
