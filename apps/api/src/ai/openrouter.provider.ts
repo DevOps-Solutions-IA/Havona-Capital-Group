@@ -32,6 +32,29 @@ type OpenRouterResponse = {
 const optionalNumber = (value: unknown) =>
   typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
 
+const safeErrorValue = (value: unknown, secret: string) => {
+  const text = typeof value === 'string' ? value : '';
+  return (secret ? text.split(secret).join('[REDACTED]') : text)
+    .replace(/Bearer\s+[A-Za-z0-9._~+\/-]+/gi, 'Bearer [REDACTED]')
+    .slice(0, 300);
+};
+
+const transportDetails = (error: unknown) => {
+  const record = error && typeof error === 'object' ? error as Record<string, unknown> : {};
+  const cause = record.cause && typeof record.cause === 'object' ? record.cause as Record<string, unknown> : {};
+  const name = typeof record.name === 'string' ? record.name : 'UnknownError';
+  const causeCode = typeof cause.code === 'string' ? cause.code : undefined;
+  return {
+    name,
+    constructorName: error && typeof error === 'object' ? error.constructor?.name ?? 'UnknownError' : typeof error,
+    code: typeof record.code === 'string' ? record.code : undefined,
+    causeName: typeof cause.name === 'string' ? cause.name : undefined,
+    causeCode,
+    timeout: name === 'TimeoutError' || name === 'AbortError',
+    transport: causeCode?.startsWith('UND_ERR_') ? 'UNDICI' : causeCode?.startsWith('EAI_') ? 'DNS' : causeCode?.includes('CERT') ? 'TLS' : causeCode ? 'SOCKET' : 'REQUEST_CONSTRUCTION',
+  };
+};
+
 @Injectable()
 export class OpenRouterProvider implements AIProvider {
   readonly name = 'openrouter';
@@ -73,44 +96,42 @@ export class OpenRouterProvider implements AIProvider {
   private async execute(request: AICompletionRequest): Promise<AICompletionResult> {
     const timeout = AbortSignal.timeout(this.config.timeoutMs);
     const signal = request.signal ? AbortSignal.any([request.signal, timeout]) : timeout;
+    const endpoint = `${this.config.baseUrl}/chat/completions`;
+    const tools = request.tools.length ? request.tools.map((tool) => ({
+      type: 'function',
+      function: { name: tool.name, description: tool.description, parameters: tool.parameters },
+    })) : undefined;
+    console.info(JSON.stringify({
+      level: 'info', event: 'openrouter_request', endpoint, provider: this.name, model: this.config.model,
+      messageCount: request.messages.length, toolsCount: request.tools.length,
+      maxTokens: Math.min(request.maxOutputTokens, this.config.maxOutputTokens), temperature: request.temperature,
+    }));
     let response: Response;
     try {
-      response = await fetch(`${this.config.baseUrl}/chat/completions`, {
+      response = await fetch(endpoint, {
         method: 'POST',
         signal,
         headers: {
           Authorization: `Bearer ${this.config.apiKey}`,
           'Content-Type': 'application/json',
           'HTTP-Referer': this.config.applicationUrl,
-          'X-Title': 'HAVONA CAPITAL GROUP — Henry',
+          'X-Title': 'HAVONA CAPITAL GROUP - Henry',
         },
         body: JSON.stringify({
           model: this.config.model,
           messages: request.messages.map((message) => this.mapMessage(message)),
-          tools: request.tools.map((tool) => ({
-            type: 'function',
-            function: {
-              name: tool.name,
-              description: tool.description,
-              parameters: tool.parameters,
-            },
-          })),
-          tool_choice: 'auto',
-          parallel_tool_calls: false,
-          max_completion_tokens: Math.min(request.maxOutputTokens, this.config.maxOutputTokens),
+          ...(tools ? { tools, tool_choice: 'auto', parallel_tool_calls: false } : {}),
+          max_tokens: Math.min(request.maxOutputTokens, this.config.maxOutputTokens),
           temperature: request.temperature,
           stream: false,
         }),
       });
     } catch (error) {
-      const errorName =
-        error && typeof error === 'object' && 'name' in error
-          ? String((error as { name?: unknown }).name)
-          : '';
-      const timeoutError = errorName === 'TimeoutError' || errorName === 'AbortError';
+      const details = transportDetails(error);
+      console.warn(JSON.stringify({ level: 'warn', event: 'openrouter_transport_error', endpoint, ...details }));
       throw new AIProviderError(
-        timeoutError ? 'AI_PROVIDER_TIMEOUT' : 'AI_PROVIDER_UNAVAILABLE',
-        timeoutError ? 'El proveedor AI excedió el tiempo permitido' : 'No fue posible contactar al proveedor AI',
+        details.timeout ? 'AI_PROVIDER_TIMEOUT' : 'AI_PROVIDER_UNAVAILABLE',
+        details.timeout ? 'El proveedor AI excedió el tiempo permitido' : 'No fue posible contactar al proveedor AI',
         !request.signal?.aborted,
       );
     }
@@ -126,9 +147,14 @@ export class OpenRouterProvider implements AIProvider {
             : response.status === 429
               ? 'AI_PROVIDER_RATE_LIMITED'
               : 'AI_PROVIDER_ERROR';
+      const providerMessage = safeErrorValue(payload.error?.message, this.config.apiKey);
+      console.warn(JSON.stringify({
+        level: 'warn', event: 'openrouter_http_error', endpoint, status: response.status,
+        statusText: response.statusText, providerCode: payload.error?.code, providerMessage,
+      }));
       throw new AIProviderError(
         code,
-        typeof payload.error?.message === 'string' ? payload.error.message.slice(0, 300) : 'OpenRouter rechazó la solicitud',
+        providerMessage || 'OpenRouter rechazó la solicitud',
         retryable,
       );
     }
