@@ -21,7 +21,7 @@ export type HenryDashboard = {
   generatedAt: string;
 };
 
-export type HenryAdminDetail = HenryAdminConversation & {
+export type HenryAdminDetail = Omit<HenryAdminConversation, 'prospect' | 'escalations'> & {
   prospect?: { id: string; name: string; email?: string; phone?: string; city: string; interest: string };
   messages: { id: string; role: string; content: string; status: string; origin: string; createdAt: string }[];
   executions: {
