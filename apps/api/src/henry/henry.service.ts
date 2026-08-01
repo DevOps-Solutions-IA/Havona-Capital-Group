@@ -193,7 +193,7 @@ export class HenryService {
             await this.db.toolCall.update({ where: { id: persisted.id }, data: { status: 'SUCCEEDED', completedAt: new Date(), result: { create: { success: true, output: output as Prisma.InputJsonValue } } } });
           } catch (error) {
             output = { success: false, error: error instanceof BadRequestException ? error.message : 'No fue posible ejecutar la herramienta' };
-            await this.db.toolCall.update({ where: { id: persisted.id }, data: { status: this.tools.isAllowed(call.name) ? 'FAILED' : 'REJECTED', errorCode: this.tools.isAllowed(call.name) ? 'TOOL_EXECUTION_FAILED' : 'UNAUTHORIZED_TOOL', completedAt: new Date(), result: { create: { success: false, output } } } });
+            await this.db.toolCall.update({ where: { id: persisted.id }, data: { status: this.tools.isAllowed(call.name) ? 'FAILED' : 'REJECTED', errorCode: this.tools.isAllowed(call.name) ? 'TOOL_EXECUTION_FAILED' : 'UNAUTHORIZED_TOOL', completedAt: new Date(), result: { create: { success: false, output: output as Prisma.InputJsonValue } } } });
           }
           messages.push({ role: 'tool', toolCallId: call.id, content: JSON.stringify(output) });
         }
