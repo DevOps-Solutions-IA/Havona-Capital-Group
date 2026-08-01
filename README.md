@@ -44,6 +44,10 @@ integrado con el CRM. Su alcance y límites están definidos en
 [`docs/FASE_3_HENRY_WEB.md`](docs/FASE_3_HENRY_WEB.md); el canal web es el único activo en esta
 fase y el Pull Request permanece Draft hasta aprobación expresa.
 
+La configuración segura, endpoints, herramientas, RBAC y validación local de Henry se documentan
+en [`docs/HENRY_OPERACION_Y_CONFIGURACION.md`](docs/HENRY_OPERACION_Y_CONFIGURACION.md). Una
+conversación con modelo requiere `OPENROUTER_API_KEY` y `AI_MODEL` en el entorno privado del API.
+
 ## Requisitos
 
 - Node.js 22 LTS y Corepack.

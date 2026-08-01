@@ -158,3 +158,12 @@ de OpenRouter solo se ejecuta localmente con credenciales autorizadas fuera de G
 La fase se presentará para aprobación cuando exista conversación real con proveedor configurable,
 persistencia, tools CRM, escalamiento, observabilidad, administración, UX premium y CI verde. El PR
 permanece Draft; no se crea `release(fase-03)`, `v0.4.0` ni merge hasta aprobación expresa.
+
+## Avance implementado
+
+A la fecha, la rama contiene dominio Prisma y migración, provider OpenRouter intercambiable,
+orquestador, memoria controlada, tools CRM allowlisted, escalamiento, uso/costo reportado, RBAC,
+API pública/administrativa, experiencia `/henry`, centro `/administracion-henry` y pruebas con
+provider fake. La prueba manual con OpenRouter real requiere que el entorno autorizado suministre
+`OPENROUTER_API_KEY` y `AI_MODEL`; su ausencia mantiene la fase en construcción y no provoca
+respuestas simuladas.
