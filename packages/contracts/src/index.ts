@@ -259,3 +259,60 @@ export const createCompanySchema = z.object({
 });
 export type CrmProspectListQuery = z.infer<typeof crmProspectListQuerySchema>;
 export type OpportunityListQuery = z.infer<typeof opportunityListQuerySchema>;
+
+export const henryIntentionSchema = z.enum([
+  'pension',
+  'educacion',
+  'patrimonio',
+  'proteccion-familiar',
+  'accidentes',
+  'empresarios',
+  'socios',
+  'socio-unico',
+  'consultores',
+  'hablar-con-asesor',
+  'agendar',
+  'otra-consulta',
+]);
+export const createHenryConversationSchema = z.object({
+  channel: z.literal('WEB').default('WEB'),
+  consent: z.object({
+    accepted: z.literal(true, {
+      errorMap: () => ({ message: 'El consentimiento es obligatorio' }),
+    }),
+    privacyVersion: slug(40),
+  }),
+  entryPoint: slug(80).default('henry'),
+});
+export const sendHenryMessageSchema = z.object({
+  messageId: uuid,
+  content: plainText(4000),
+});
+export const henryConversationListSchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25),
+  status: z.enum(['ACTIVE', 'WAITING_HUMAN', 'CLOSED', 'BLOCKED']).optional(),
+  channel: z.enum(['WEB', 'WHATSAPP', 'EMAIL', 'VOICE']).optional(),
+  escalated: z
+    .enum(['true', 'false'])
+    .transform((value) => value === 'true')
+    .optional(),
+  search: z.string().trim().max(120).optional(),
+});
+export const requestEscalationSchema = z.object({
+  reason: z.enum([
+    'USER_REQUEST',
+    'SENSITIVE_CONTEXT',
+    'LOW_CONFIDENCE',
+    'UNSUPPORTED_INTENT',
+    'REPEATED_ERROR',
+    'HIGH_VALUE_CASE',
+    'AUTOMATION_LIMIT',
+    'POLICY',
+  ]),
+  summary: plainText(1200),
+});
+
+export type CreateHenryConversationInput = z.infer<typeof createHenryConversationSchema>;
+export type SendHenryMessageInput = z.infer<typeof sendHenryMessageSchema>;
+export type HenryConversationListInput = z.infer<typeof henryConversationListSchema>;

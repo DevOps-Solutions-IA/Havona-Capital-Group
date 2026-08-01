@@ -23,6 +23,10 @@ const permissions = [
   ['crm.notes', 'Gestionar notas e interacciones internas'],
   ['crm.close', 'Cerrar oportunidades'],
   ['crm.dashboard', 'Consultar métricas comerciales globales'],
+  ['henry.read_all', 'Consultar todas las conversaciones de Henry'],
+  ['henry.read_assigned', 'Consultar conversaciones de Henry asignadas'],
+  ['henry.dashboard', 'Consultar métricas reales de Henry'],
+  ['henry.escalations.manage', 'Gestionar escalamientos de Henry'],
 ] as const;
 const grants: Record<string, string[]> = {
   SUPER_ADMIN: permissions.map(([key]) => key),
@@ -42,6 +46,10 @@ const grants: Record<string, string[]> = {
     'crm.notes',
     'crm.close',
     'crm.dashboard',
+    'henry.read_all',
+    'henry.read_assigned',
+    'henry.dashboard',
+    'henry.escalations.manage',
   ],
   CONSULTOR: [
     'settings.read',
@@ -51,6 +59,7 @@ const grants: Record<string, string[]> = {
     'crm.tasks.own',
     'crm.notes',
     'crm.close',
+    'henry.read_assigned',
   ],
 };
 async function main() {
