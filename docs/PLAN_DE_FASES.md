@@ -105,6 +105,14 @@ Versión: `v0.2.0`
 
 ## Fase 2 — CRM
 
+**Estado: COMPLETADA — `v0.3.0`**
+
+Rama: `feature/fase-02-crm`
+
+El diseño funcional, dominio, matriz RBAC y límites están documentados en
+`docs/FASE_2_CRM.md`. La fase reutiliza `Prospect` de Fase 1 y no adelanta Henry, Agenda ni canales
+omnicanal.
+
 Entregables:
 
 - Prospectos.
