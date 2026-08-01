@@ -15,7 +15,8 @@ type Assignment = {
   assignedBy: Owner;
 };
 type ProspectTag = { tag: { id: string; name: string; color: string } };
-type Consent = { id: string; type: string; acceptedAt: string; policyVersion: string };
+type Consent = { id: string; type: string; acceptedAt: string; privacyVersion: string };
+type Tag = { id: string; name: string; color: string };
 type LeadEvent = { id: string; type: string; createdAt: string };
 type DetailOpportunity = {
   id: string;
@@ -27,6 +28,14 @@ type DetailOpportunity = {
 };
 type DetailActivity = { id: string; summary: string; createdAt: string; actor?: Owner };
 type DetailNote = { id: string; body: string; createdAt: string; editedAt?: string; author: Owner };
+type DetailTask = { id: string; title: string; status: string; dueAt: string; assignee: Owner };
+type DetailInteraction = {
+  id: string;
+  method: string;
+  summary: string;
+  occurredAt: string;
+  actor: Owner;
+};
 type Detail = {
   name: string;
   interest: string;
@@ -42,6 +51,8 @@ type Detail = {
   opportunities: DetailOpportunity[];
   activities: DetailActivity[];
   notes: DetailNote[];
+  tasks: DetailTask[];
+  interactions: DetailInteraction[];
 };
 
 export default function CrmDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -57,20 +68,31 @@ export default function CrmDetailPage({ params }: { params: Promise<{ id: string
   const [dueAt, setDueAt] = useState('');
   const [interaction, setInteraction] = useState('');
   const [method, setMethod] = useState('PHONE');
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [tagId, setTagId] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState('');
+  const [city, setCity] = useState('');
+  const [editingNote, setEditingNote] = useState('');
+  const [editingBody, setEditingBody] = useState('');
 
   const load = useCallback(async () => {
     try {
-      const [detail, catalog, people] = await Promise.all([
+      const [detail, catalog, people, tagCatalog] = await Promise.all([
         api<Detail>(`/crm/prospects/${id}`),
         api<Stage[]>('/crm/stages'),
         api<ApiPage<Owner>>('/users?page=1&pageSize=100').catch(() => ({
           data: [],
           meta: { page: 1, pageSize: 100, total: 0 },
         })),
+        api<Tag[]>('/crm/tags'),
       ]);
       setData(detail);
       setStages(catalog);
       setUsers(people.data);
+      setTags(tagCatalog);
+      setName(detail.name);
+      setCity(detail.city);
     } catch (reason) {
       setError(messageOf(reason));
     }
@@ -129,29 +151,95 @@ export default function CrmDetailPage({ params }: { params: Promise<{ id: string
               void act(`/crm/prospects/${id}/assignment`, 'PUT', { assigneeId: event.target.value })
             }
           >
-            <option value="">Sin asignar</option>
+            {!owner && (
+              <option value="" disabled>
+                Seleccione responsable
+              </option>
+            )}
             {users.map((user) => (
               <option value={user.id} key={user.id}>
                 {user.name}
               </option>
             ))}
           </SelectField>
+          <button
+            type="button"
+            className="crm-text-action"
+            onClick={() => setEditing((value) => !value)}
+          >
+            {editing ? 'Cancelar edición' : 'Editar contexto comercial'}
+          </button>
+          {editing && (
+            <form
+              onSubmit={async (event) => {
+                event.preventDefault();
+                if (await act(`/crm/prospects/${id}`, 'PATCH', { name, city })) setEditing(false);
+              }}
+            >
+              <Field
+                label="Nombre"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                required
+              />
+              <Field
+                label="Ciudad"
+                value={city}
+                onChange={(event) => setCity(event.target.value)}
+                required
+              />
+              <Button busy={busy}>Guardar cambios</Button>
+            </form>
+          )}
           <div className="crm-tagline">
             {data.tags.length ? (
               data.tags.map((item) => (
                 <span key={item.tag.id} style={{ borderColor: item.tag.color }}>
                   {item.tag.name}
+                  <button
+                    type="button"
+                    aria-label={`Retirar etiqueta ${item.tag.name}`}
+                    onClick={() =>
+                      void act(`/crm/prospects/${id}/tags/${item.tag.id}`, 'DELETE', {})
+                    }
+                  >
+                    ×
+                  </button>
                 </span>
               ))
             ) : (
               <small>Sin etiquetas todavía.</small>
             )}
           </div>
+          <form
+            className="crm-tag-form"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              if (await act(`/crm/prospects/${id}/tags`, 'PUT', { tagId })) setTagId('');
+            }}
+          >
+            <SelectField
+              label="Agregar etiqueta"
+              value={tagId}
+              onChange={(event) => setTagId(event.target.value)}
+              required
+            >
+              <option value="">Seleccionar</option>
+              {tags
+                .filter((tag) => !data.tags.some((item) => item.tag.id === tag.id))
+                .map((tag) => (
+                  <option key={tag.id} value={tag.id}>
+                    {tag.name}
+                  </option>
+                ))}
+            </SelectField>
+            <Button busy={busy}>Asociar</Button>
+          </form>
           <section className="crm-evidence">
             <h3>Evidencia de captación</h3>
             {data.consents.map((item) => (
               <p key={item.id}>
-                {item.type} · v{item.policyVersion}
+                {item.type} · v{item.privacyVersion}
                 <small>{formatDate(item.acceptedAt)}</small>
               </p>
             ))}
@@ -258,6 +346,44 @@ export default function CrmDetailPage({ params }: { params: Promise<{ id: string
               ))}
             </ol>
           </section>
+          <section>
+            <header>
+              <span>COMPROMISOS</span>
+              <h2>Tareas e interacciones</h2>
+            </header>
+            {data.tasks.length === 0 ? (
+              <p className="crm-lane-empty">No hay tareas asociadas.</p>
+            ) : (
+              <ol className="crm-assignment-history">
+                {data.tasks.map((item) => (
+                  <li key={item.id}>
+                    <strong>
+                      {item.title} · {item.status}
+                    </strong>
+                    <span>
+                      {item.assignee.name} · {formatDate(item.dueAt)}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            )}
+            {data.interactions.length === 0 ? (
+              <p className="crm-lane-empty">No hay interacciones registradas.</p>
+            ) : (
+              <ol className="crm-assignment-history">
+                {data.interactions.map((item) => (
+                  <li key={item.id}>
+                    <strong>
+                      {item.method} · {item.summary}
+                    </strong>
+                    <span>
+                      {item.actor.name} · {formatDate(item.occurredAt)}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </section>
         </main>
         <aside className="crm-actions">
           <section>
@@ -279,15 +405,48 @@ export default function CrmDetailPage({ params }: { params: Promise<{ id: string
               </label>
               <Button busy={busy}>Guardar nota</Button>
             </form>
-            {data.notes.slice(0, 4).map((item) => (
-              <blockquote key={item.id}>
-                {item.body}
-                <small>
-                  {item.author.name} · {formatDate(item.createdAt)}
-                  {item.editedAt ? ' · editada' : ''}
-                </small>
-              </blockquote>
-            ))}
+            {data.notes.length === 0 && <small>No hay notas internas todavía.</small>}
+            {data.notes.map((item) =>
+              editingNote === item.id ? (
+                <form
+                  key={item.id}
+                  onSubmit={async (event) => {
+                    event.preventDefault();
+                    if (await act(`/crm/notes/${item.id}`, 'PATCH', { body: editingBody }))
+                      setEditingNote('');
+                  }}
+                >
+                  <label>
+                    Editar nota
+                    <textarea
+                      value={editingBody}
+                      onChange={(event) => setEditingBody(event.target.value)}
+                      required
+                      maxLength={4000}
+                    />
+                  </label>
+                  <Button busy={busy}>Guardar</Button>
+                </form>
+              ) : (
+                <blockquote key={item.id}>
+                  {item.body}
+                  <small>
+                    {item.author.name} · {formatDate(item.createdAt)}
+                    {item.editedAt ? ' · editada' : ''}
+                  </small>
+                  <button
+                    type="button"
+                    className="crm-text-action"
+                    onClick={() => {
+                      setEditingNote(item.id);
+                      setEditingBody(item.body);
+                    }}
+                  >
+                    Editar nota
+                  </button>
+                </blockquote>
+              ),
+            )}
           </section>
           <section>
             <h2>Próxima tarea</h2>

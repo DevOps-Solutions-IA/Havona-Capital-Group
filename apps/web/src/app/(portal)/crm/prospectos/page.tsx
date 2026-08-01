@@ -5,7 +5,8 @@ import { Search, ArrowUpRight } from 'lucide-react';
 import { Alert, EmptyState, Field, SelectField, Skeleton } from '@havona/ui';
 import { PageHeader } from '@/components/page';
 import { api, messageOf } from '@/lib/api';
-import type { ApiPage, CrmProspect, Stage } from '@/lib/crm';
+import type { ApiPage, CrmConsultant, CrmProspect, Stage } from '@/lib/crm';
+type Tag = { id: string; name: string };
 import { formatDate, priorityLabel } from '@/lib/crm';
 export default function CrmProspectsPage() {
   const [items, setItems] = useState<CrmProspect[]>([]),
@@ -13,6 +14,13 @@ export default function CrmProspectsPage() {
     [search, setSearch] = useState(''),
     [stage, setStage] = useState(''),
     [priority, setPriority] = useState(''),
+    [ownerId, setOwnerId] = useState(''),
+    [tagId, setTagId] = useState(''),
+    [interest, setInterest] = useState(''),
+    [source, setSource] = useState(''),
+    [dateFrom, setDateFrom] = useState(''),
+    [owners, setOwners] = useState<CrmConsultant[]>([]),
+    [tags, setTags] = useState<Tag[]>([]),
     [error, setError] = useState(''),
     [loading, setLoading] = useState(true),
     [page, setPage] = useState(1),
@@ -25,19 +33,28 @@ export default function CrmProspectsPage() {
       if (search) params.set('search', search);
       if (stage) params.set('stage', stage);
       if (priority) params.set('priority', priority);
-      const [result, catalog] = await Promise.all([
+      if (ownerId) params.set('ownerId', ownerId);
+      if (tagId) params.set('tagId', tagId);
+      if (interest) params.set('interest', interest);
+      if (source) params.set('source', source);
+      if (dateFrom) params.set('dateFrom', new Date(`${dateFrom}T00:00:00-05:00`).toISOString());
+      const [result, catalog, tagCatalog, ownerCatalog] = await Promise.all([
         api<ApiPage<CrmProspect>>(`/crm/prospects?${params}`),
         api<Stage[]>('/crm/stages'),
+        api<Tag[]>('/crm/tags'),
+        api<CrmConsultant[]>('/crm/consultants').catch(() => []),
       ]);
       setItems(result.data);
       setTotal(result.meta.total);
       setStages(catalog);
+      setTags(tagCatalog);
+      setOwners(ownerCatalog);
     } catch (reason) {
       setError(messageOf(reason));
     } finally {
       setLoading(false);
     }
-  }, [page, priority, search, stage]);
+  }, [dateFrom, interest, ownerId, page, priority, search, source, stage, tagId]);
   useEffect(() => {
     const timer = setTimeout(() => void load(), 250);
     return () => clearTimeout(timer);
@@ -91,6 +108,65 @@ export default function CrmProspectsPage() {
             </option>
           ))}
         </SelectField>
+        {owners.length > 0 && (
+          <SelectField
+            label="Responsable"
+            value={ownerId}
+            onChange={(event) => {
+              setOwnerId(event.target.value);
+              setPage(1);
+            }}
+          >
+            <option value="">Todos</option>
+            {owners.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
+              </option>
+            ))}
+          </SelectField>
+        )}
+        <SelectField
+          label="Etiqueta"
+          value={tagId}
+          onChange={(event) => {
+            setTagId(event.target.value);
+            setPage(1);
+          }}
+        >
+          <option value="">Todas</option>
+          {tags.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.name}
+            </option>
+          ))}
+        </SelectField>
+        <Field
+          label="Interés"
+          value={interest}
+          onChange={(event) => {
+            setInterest(event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'));
+            setPage(1);
+          }}
+          placeholder="pension"
+        />
+        <Field
+          label="Origen"
+          value={source}
+          onChange={(event) => {
+            setSource(event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'));
+            setPage(1);
+          }}
+          placeholder="organic"
+        />
+        <Field
+          label="Desde"
+          type="date"
+          value={dateFrom}
+          onChange={(event) => {
+            setDateFrom(event.target.value);
+            setPage(1);
+          }}
+        />
       </section>
       {error && <Alert>{error}</Alert>}
       {loading ? (

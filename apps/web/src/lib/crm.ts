@@ -43,6 +43,29 @@ export type CrmTask = {
   opportunity?: { id: string; title: string };
 };
 export type ApiPage<T> = { data: T[]; meta: { page: number; pageSize: number; total: number } };
+export type CrmClient = {
+  id: string;
+  status: string;
+  convertedAt: string;
+  prospect: CrmProspect;
+  convertedBy: Owner;
+};
+export type CrmCompany = {
+  id: string;
+  name: string;
+  legalName?: string;
+  taxIdentifier?: string;
+  city?: string;
+  email?: string;
+  phone?: string;
+  contacts: { prospect: { id: string; name: string; email?: string; phone?: string } }[];
+};
+export type CrmConsultant = {
+  id: string;
+  name: string;
+  email: string;
+  _count: { assignedProspects: number; crmTasks: number; opportunities: number };
+};
 export const priorityLabel: Record<string, string> = {
   LOW: 'Baja',
   MEDIUM: 'Media',
