@@ -309,6 +309,23 @@ describe('Fase 0 (PostgreSQL + Redis)', () => {
     expect(conversation.messages).toHaveLength(3);
     expect(conversation.executions[0]?.usage).toEqual(expect.objectContaining({ totalTokens: 34 }));
 
+    const henryEmail = `henry-${randomUUID()}@example.com`;
+    fakeProvider.enqueue({
+      provider: 'fake', model: 'fake/henry-test', content: null, finishReason: 'tool_calls', usage: {},
+      toolCalls: [{ id: 'prospect-1', name: 'create_or_update_prospect', arguments: JSON.stringify({ name: 'Prospecto Henry', city: 'Bogotá', email: henryEmail, interest: 'pension' }) }],
+    });
+    fakeProvider.enqueue({
+      provider: 'fake', model: 'fake/henry-test', content: 'Su contexto quedó registrado con autorización. ¿Desea hablar con un consultor?', finishReason: 'stop', toolCalls: [], usage: {},
+    });
+    await request(app.getHttpServer())
+      .post(`/api/v1/henry/conversations/${id}/messages`)
+      .set('X-Henry-Token', accessToken)
+      .send({ messageId: randomUUID(), content: `Soy Prospecto Henry, vivo en Bogotá y mi correo es ${henryEmail}.` })
+      .expect(201);
+    const associated = await db.conversation.findUniqueOrThrow({ where: { id: conversation.id } });
+    expect(associated.prospectId).toBeDefined();
+    expect(await db.activity.count({ where: { prospectId: associated.prospectId!, type: 'HENRY_CONVERSATION_STARTED' } })).toBe(1);
+
     fakeProvider.enqueue({
       provider: 'fake', model: 'fake/henry-test', content: null, finishReason: 'tool_calls', usage: {},
       toolCalls: [{ id: 'unauthorized-1', name: 'execute_sql', arguments: '{}' }],
@@ -334,5 +351,19 @@ describe('Fase 0 (PostgreSQL + Redis)', () => {
     await admin.post('/api/v1/auth/login').send({ email: process.env.INITIAL_SUPER_ADMIN_EMAIL, password: process.env.INITIAL_SUPER_ADMIN_PASSWORD }).expect(201);
     await admin.get('/api/v1/henry/admin/dashboard').expect(200).expect((result) => expect(result.body.conversations).toBeGreaterThan(0));
     await admin.get(`/api/v1/henry/admin/conversations/${conversation.id}`).expect(200).expect((result) => expect(result.body.messages.length).toBeGreaterThanOrEqual(5));
+
+    const consultantPassword = 'Henry-Isolation-Password-2026!';
+    const consultantRole = await db.role.findUniqueOrThrow({ where: { name: 'CONSULTOR' } });
+    const consultant = await db.user.create({ data: {
+      email: `henry-consultant-${randomUUID()}@example.com`, name: 'Consultor Henry',
+      passwordHash: await hashPassword(consultantPassword), roles: { create: { roleId: consultantRole.id } },
+    } });
+    const adminUser = await db.user.findUniqueOrThrow({ where: { email: process.env.INITIAL_SUPER_ADMIN_EMAIL } });
+    await db.assignment.create({ data: { prospectId: associated.prospectId!, assigneeId: consultant.id, assignedById: adminUser.id } });
+    const consultantAgent = request.agent(app.getHttpServer());
+    await consultantAgent.post('/api/v1/auth/login').send({ email: consultant.email, password: consultantPassword }).expect(201);
+    const scoped = await consultantAgent.get('/api/v1/henry/admin/conversations?page=1&pageSize=25').expect(200);
+    expect(scoped.body.data.map((item: { id: string }) => item.id)).toContain(conversation.id);
+    await consultantAgent.get('/api/v1/henry/admin/dashboard').expect(403);
   });
 });

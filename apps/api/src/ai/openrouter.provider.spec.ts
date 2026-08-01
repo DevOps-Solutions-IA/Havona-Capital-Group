@@ -78,4 +78,16 @@ describe('OpenRouterProvider', () => {
       retryable: false,
     });
   });
+
+  it('clasifica timeout sin revelar detalles de transporte', async () => {
+    process.env.OPENROUTER_API_KEY = 'local-test-key';
+    process.env.AI_MODEL = 'provider/model';
+    process.env.AI_MAX_RETRIES = '0';
+    jest.spyOn(global, 'fetch').mockRejectedValue(new DOMException('connection details', 'AbortError'));
+    const provider = new OpenRouterProvider(new AIConfig());
+
+    await expect(provider.complete(request)).rejects.toMatchObject({
+      code: 'AI_PROVIDER_TIMEOUT',
+    });
+  });
 });
