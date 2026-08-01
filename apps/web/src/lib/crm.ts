@@ -1,0 +1,55 @@
+export type Stage = { id: string; key: string; name: string; position: number; total?: number };
+export type Owner = { id: string; name: string; email?: string };
+export type Opportunity = {
+  id: string;
+  title: string;
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+  status: 'OPEN' | 'WON' | 'LOST' | 'CANCELLED';
+  updatedAt: string;
+  stage: Stage;
+  owner?: Owner;
+  prospect: { id: string; name: string; interest: string; city: string };
+};
+export type CrmProspect = {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  city: string;
+  interest: string;
+  lastCapturedAt: string;
+  source: { key: string; name: string };
+  assignments: { assignee: Owner }[];
+  opportunities: Opportunity[];
+  tags: { tag: { id: string; name: string; color: string } }[];
+};
+export type CrmDashboard = {
+  newProspects: number;
+  activeOpportunities: number;
+  pendingTasks: number;
+  overdueTasks: number;
+  pipeline: Stage[];
+  generatedAt: string;
+};
+export type CrmTask = {
+  id: string;
+  title: string;
+  description?: string;
+  dueAt: string;
+  priority: string;
+  status: string;
+  prospect: { id: string; name: string };
+  assignee: Owner;
+  opportunity?: { id: string; title: string };
+};
+export type ApiPage<T> = { data: T[]; meta: { page: number; pageSize: number; total: number } };
+export const priorityLabel: Record<string, string> = {
+  LOW: 'Baja',
+  MEDIUM: 'Media',
+  HIGH: 'Alta',
+  URGENT: 'Urgente',
+};
+export const formatDate = (value: string) =>
+  new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' }).format(
+    new Date(value),
+  );
