@@ -31,7 +31,7 @@ export function HomeHero(){
    <aside className="henry-entry hero-reveal" style={{animationDelay:'.76s'}} aria-labelledby="henry-title">
     <div className="henry-signal" aria-hidden="true"><span/><span/><span/></div><p className="henry-label">Capacidad digital HAVONA</p><div className="henry-heading"><div className="henry-mark"><MessageCircleMore/></div><div><span>Conoce a</span><h2 id="henry-title">Henry</h2></div></div><p className="henry-description">Tu asistente virtual para iniciar una conversación patrimonial y orientar el primer contacto.</p><p className="henry-options-label">¿Qué quieres conversar?</p><div className="henry-intents">{intents.map((intent,index)=><Link key={intent.interest} href={`/?experiencia=henry&interes=${intent.interest}#consultoria`} className="henry-intent"><span>0{index+1}</span>{intent.label}<ArrowRight aria-hidden="true"/></Link>)}</div><p className="henry-note">Experiencia inicial de captación. La asistencia inteligente completa se incorporará en una fase posterior.</p>
    </aside>
-   <motion.div className="hero-index" initial={reduced?false:{opacity:0}} animate={{opacity:1}} transition={{delay:1.1}} aria-hidden="true"><span>01</span><i/><span>HAVONA CAPITAL</span></motion.div>
+   <motion.div className="hero-index" initial={reduced?false:{opacity:0}} animate={{opacity:1}} transition={{delay:1.1}} aria-hidden="true"><span>01</span><i/><span>HAVONA CAPITAL GROUP</span></motion.div>
   </div>
  </section>
 }

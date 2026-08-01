@@ -157,7 +157,7 @@ services:
       <<: *app-environment
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-5}
       WORKER_QUEUE_NAME: ${WORKER_QUEUE_NAME:-havona-system}
-      SMTP_FROM: ${SMTP_FROM:-HAVONA CAPITAL <no-reply@localhost>}
+      SMTP_FROM: ${SMTP_FROM:-HAVONA CAPITAL GROUP <no-reply@localhost>}
     volumes: ['.:/app', 'worker_node_modules:/app/node_modules']
     depends_on:
       redis: { condition: service_healthy }
