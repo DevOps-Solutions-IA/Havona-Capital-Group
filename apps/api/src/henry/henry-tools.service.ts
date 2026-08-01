@@ -107,6 +107,11 @@ export class HenryToolsService {
     const assignment = conversation.prospectId
       ? await this.db.assignment.findFirst({ where: { prospectId: conversation.prospectId, endedAt: null }, orderBy: { createdAt: 'desc' } })
       : null;
+    const existing = await this.db.escalation.findFirst({
+      where: { conversationId: conversation.id, status: { in: ['OPEN', 'ASSIGNED'] } },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (existing) return { escalationId: existing.id, status: existing.status, humanFollowUpRequested: true };
     return this.db.$transaction(async (tx) => {
       let taskId: string | undefined;
       if (conversation.prospectId && assignment) {
@@ -158,15 +163,20 @@ export class HenryToolsService {
   }
 
   private async createProspect(input: z.infer<typeof optionalContact>, context: ToolContext) {
+    const conversation = await this.db.conversation.findUniqueOrThrow({
+      where: { id: context.conversationId },
+      select: { privacyVersion: true },
+    });
     const captured = await this.prospects.capture({
       submissionId: randomUUID(), name: input.name, city: input.city, email: input.email,
       phone: input.phone, source: 'henry-entry', landing: 'henry', interest: this.slug(input.interest),
-      message: input.message, consent: { accepted: true, privacyVersion: 'privacy-v1' }, website: '',
+      message: input.message, consent: { accepted: true, privacyVersion: conversation.privacyVersion }, website: '',
     }, context.audit);
     await this.db.$transaction(async (tx) => {
       await tx.conversation.update({ where: { id: context.conversationId }, data: { prospectId: captured.id } });
       const participant = await tx.conversationParticipant.findFirst({ where: { conversationId: context.conversationId, type: 'VISITOR' } });
       if (participant) await tx.conversationParticipant.update({ where: { id: participant.id }, data: { type: 'PROSPECT', prospectId: captured.id, displayName: input.name } });
+      await tx.conversationState.update({ where: { conversationId: context.conversationId }, data: { state: { prospectAssociated: true, confirmedFields: ['name', 'city', ...(input.email ? ['email'] : []), ...(input.phone ? ['phone'] : []), 'interest'] } } });
       await tx.activity.create({ data: { prospectId: captured.id, type: ActivityType.HENRY_CONVERSATION_STARTED, summary: 'Conversación iniciada con Henry' } });
     });
     return { prospectId: captured.id, associated: true };
@@ -202,6 +212,7 @@ export class HenryToolsService {
       this.db.conversation.update({ where: { id: context.conversationId }, data: { intention } }),
       this.db.prospect.update({ where: { id: prospectId }, data: { interest: intention } }),
       this.db.activity.create({ data: { prospectId, type: ActivityType.PROSPECT_UPDATED, summary: 'Intención confirmada por Henry', metadata: { intention } } }),
+      this.db.conversationState.update({ where: { conversationId: context.conversationId }, data: { state: { intention, prospectAssociated: true, qualificationConfirmed: true } } }),
     ]);
     return { prospectId, intention, qualified: true };
   }

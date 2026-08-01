@@ -152,10 +152,10 @@ export class HenryService {
     }
 
     const history = await this.db.message.findMany({ where: { conversationId }, orderBy: { createdAt: 'desc' }, take: 24 });
-    const messages: AIMessage[] = [
+    const messages = this.withinInputBudget([
       { role: 'system', content: SYSTEM_PROMPT },
       ...history.reverse().filter((item) => ['USER', 'ASSISTANT'].includes(item.role)).map((item) => ({ role: item.role === 'USER' ? 'user' as const : 'assistant' as const, content: item.content })),
-    ];
+    ]);
     let iterations = 0;
     let totalToolCalls = 0;
     let inputTokens = 0;
@@ -180,6 +180,7 @@ export class HenryService {
           }
           const output = await this.createAssistantMessage(conversationId, content, 'AI_PROVIDER');
           await this.completeExecution(execution.id, inputMessageId, output.id, started, iterations, { inputTokens, outputTokens, totalTokens, costUsd, costReported }, 'SUCCEEDED');
+          console.info(JSON.stringify({ level: 'info', event: 'henry_execution_completed', conversationId, executionId: execution.id, provider: result.provider, model: result.model, latencyMs: Date.now() - started, iterations, toolCalls: totalToolCalls }));
           return { data: { status: 'COMPLETED', message: this.publicMessage(output) } };
         }
         if (totalToolCalls + result.toolCalls.length > this.config.maxToolCalls) throw new AIProviderError('AI_TOOL_LIMIT_REACHED', 'Se alcanzó el límite de herramientas');
@@ -204,6 +205,7 @@ export class HenryService {
       await this.tools.escalate(code.includes('LIMIT') ? 'AUTOMATION_LIMIT' : 'REPEATED_ERROR', 'Henry no pudo completar el turno y requiere revisión humana.', { conversationId, audit: context });
       const output = await this.createAssistantMessage(conversationId, 'No pude completar la conversación de forma segura. Registré una solicitud para que una persona del equipo pueda continuar con usted.', 'SAFE_FALLBACK');
       await this.completeExecution(execution.id, inputMessageId, output.id, started, iterations, { inputTokens, outputTokens, totalTokens, costUsd, costReported }, 'ESCALATED', code);
+      console.warn(JSON.stringify({ level: 'warn', event: 'henry_execution_escalated', conversationId, executionId: execution.id, provider: this.provider.name, model: this.provider.model, latencyMs: Date.now() - started, errorCode: code }));
       return { data: { status: 'ESCALATED', message: this.publicMessage(output) } };
     }
   }
@@ -248,6 +250,22 @@ export class HenryService {
 
   private publicMessage(message: { id: string; role: string; content: string; status: string; createdAt: Date }) {
     return { id: message.id, role: message.role, content: message.content, status: message.status, createdAt: message.createdAt };
+  }
+
+  private withinInputBudget(input: AIMessage[]) {
+    const system = input[0]!;
+    const conversation = input.slice(1);
+    const maximumCharacters = this.config.maxInputTokens * 4;
+    let used = system.content?.length ?? 0;
+    const selected: AIMessage[] = [];
+    for (let index = conversation.length - 1; index >= 0; index -= 1) {
+      const item = conversation[index]!;
+      const size = item.content?.length ?? 0;
+      if (used + size > maximumCharacters) break;
+      selected.unshift(item);
+      used += size;
+    }
+    return [system, ...selected];
   }
 
   private adminScope(actor: Actor, where: Prisma.ConversationWhereInput): Prisma.ConversationWhereInput {
