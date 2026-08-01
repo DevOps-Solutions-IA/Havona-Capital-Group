@@ -542,6 +542,7 @@ model AIExecution {
   iterations      Int               @default(0)
   errorCode       String?           @map("error_code") @db.VarChar(80)
   errorMessage    String?           @map("error_message") @db.VarChar(500)
+  policyContext   Json?             @map("policy_context")
   startedAt       DateTime          @default(now()) @map("started_at")
   completedAt     DateTime?         @map("completed_at")
   conversation    Conversation      @relation(fields: [conversationId], references: [id], onDelete: Cascade)
@@ -563,6 +564,8 @@ model ToolCall {
   input       Json
   status      ToolCallStatus @default(REQUESTED)
   errorCode   String?        @map("error_code") @db.VarChar(80)
+  policyId    String?        @map("policy_id") @db.VarChar(80)
+  ruleId      String?        @map("rule_id") @db.VarChar(120)
   startedAt   DateTime?      @map("started_at")
   completedAt DateTime?      @map("completed_at")
   createdAt   DateTime       @default(now()) @map("created_at")
@@ -606,6 +609,8 @@ model Escalation {
   summary        String           @db.VarChar(1200)
   assignedToId   String?          @map("assigned_to_id") @db.Uuid
   taskId         String?          @map("task_id") @db.Uuid
+  policyId       String?          @map("policy_id") @db.VarChar(80)
+  ruleId         String?          @map("rule_id") @db.VarChar(120)
   resolvedAt     DateTime?        @map("resolved_at")
   createdAt      DateTime         @default(now()) @map("created_at")
   updatedAt      DateTime         @updatedAt @map("updated_at")

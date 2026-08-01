@@ -17,6 +17,9 @@ import { HealthController } from './health/health.controller';
 import { HenryController } from './henry/henry.controller';
 import { HenryService } from './henry/henry.service';
 import { HenryToolsService } from './henry/henry-tools.service';
+import { HenryPolicyComposer } from './henry/policies/henry-policy-composer.service';
+import { HenryPolicyEngine } from './henry/policies/henry-policy-engine.service';
+import { HENRY_POLICY_PROVIDERS } from './henry/policies/henry-policies';
 import { ProspectsController } from './prospects/prospects.controller';
 import { ProspectsService } from './prospects/prospects.service';
 import { SettingsController } from './settings/settings.controller';
@@ -52,6 +55,9 @@ import { UsersService } from './users/users.service';
     OpenRouterProvider,
     { provide: AI_PROVIDER, useExisting: OpenRouterProvider },
     HenryToolsService,
+    ...HENRY_POLICY_PROVIDERS,
+    HenryPolicyComposer,
+    HenryPolicyEngine,
     HenryService,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: AuthGuard },

@@ -10,6 +10,7 @@ import { ProspectsService } from '../prospects/prospects.service';
 type ToolContext = {
   conversationId: string;
   audit: AuditContext;
+  decision?: { policyId: string; ruleId: string };
 };
 
 const optionalContact = z.object({
@@ -139,9 +140,11 @@ export class HenryToolsService {
         assignedToId: assignment?.assigneeId,
         status: assignment ? 'ASSIGNED' : 'OPEN',
         taskId,
+        policyId: context.decision?.policyId,
+        ruleId: context.decision?.ruleId,
       } });
       await tx.conversation.update({ where: { id: conversation.id }, data: { status: 'WAITING_HUMAN' } });
-      await this.auditService.record('HENRY_ESCALATED', 'Conversation', conversation.id, context.audit, { reason, taskId }, tx);
+      await this.auditService.record('HENRY_ESCALATED', 'Conversation', conversation.id, context.audit, { reason, taskId, ...context.decision }, tx);
       return { escalationId: escalation.id, status: escalation.status, humanFollowUpRequested: true };
     });
   }
@@ -176,7 +179,9 @@ export class HenryToolsService {
       await tx.conversation.update({ where: { id: context.conversationId }, data: { prospectId: captured.id } });
       const participant = await tx.conversationParticipant.findFirst({ where: { conversationId: context.conversationId, type: 'VISITOR' } });
       if (participant) await tx.conversationParticipant.update({ where: { id: participant.id }, data: { type: 'PROSPECT', prospectId: captured.id, displayName: input.name } });
-      await tx.conversationState.update({ where: { conversationId: context.conversationId }, data: { state: { prospectAssociated: true, confirmedFields: ['name', 'city', ...(input.email ? ['email'] : []), ...(input.phone ? ['phone'] : []), 'interest'] } } });
+      const currentState = await tx.conversationState.findUnique({ where: { conversationId: context.conversationId } });
+      const state = currentState?.state && typeof currentState.state === 'object' && !Array.isArray(currentState.state) ? currentState.state as Record<string, Prisma.JsonValue> : {};
+      await tx.conversationState.update({ where: { conversationId: context.conversationId }, data: { version: { increment: 1 }, state: { ...state, prospectAssociated: true, confirmedFields: ['name', 'city', ...(input.email ? ['email'] : []), ...(input.phone ? ['phone'] : []), 'interest'] } } });
       await tx.activity.create({ data: { prospectId: captured.id, type: ActivityType.HENRY_CONVERSATION_STARTED, summary: 'Conversación iniciada con Henry' } });
     });
     return { prospectId: captured.id, associated: true };
@@ -208,11 +213,13 @@ export class HenryToolsService {
 
   private async qualify(intention: string, context: ToolContext) {
     const prospectId = await this.conversationProspect(context.conversationId);
+    const currentState = await this.db.conversationState.findUnique({ where: { conversationId: context.conversationId } });
+    const state = currentState?.state && typeof currentState.state === 'object' && !Array.isArray(currentState.state) ? currentState.state as Record<string, Prisma.JsonValue> : {};
     await this.db.$transaction([
       this.db.conversation.update({ where: { id: context.conversationId }, data: { intention } }),
       this.db.prospect.update({ where: { id: prospectId }, data: { interest: intention } }),
       this.db.activity.create({ data: { prospectId, type: ActivityType.PROSPECT_UPDATED, summary: 'Intención confirmada por Henry', metadata: { intention } } }),
-      this.db.conversationState.update({ where: { conversationId: context.conversationId }, data: { state: { intention, prospectAssociated: true, qualificationConfirmed: true } } }),
+      this.db.conversationState.update({ where: { conversationId: context.conversationId }, data: { version: { increment: 1 }, state: { ...state, intention, prospectAssociated: true, qualificationConfirmed: true } } }),
     ]);
     return { prospectId, intention, qualified: true };
   }

@@ -9,6 +9,7 @@ export class FakeAIProvider implements AIProvider {
   readonly name = 'fake';
   readonly model = 'fake/henry-test';
   private queue: Array<AICompletionResult | Error>;
+  readonly requests: AICompletionRequest[] = [];
 
   constructor(responses: Array<AICompletionResult | Error> = []) {
     this.queue = [...responses];
@@ -22,7 +23,8 @@ export class FakeAIProvider implements AIProvider {
     this.queue.push(response);
   }
 
-  async complete(_request: AICompletionRequest) {
+  async complete(request: AICompletionRequest) {
+    this.requests.push(request);
     const response = this.queue.shift();
     if (!response) throw new AIProviderError('FAKE_RESPONSE_MISSING', 'No hay respuesta fake configurada');
     if (response instanceof Error) throw response;
