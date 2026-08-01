@@ -2,7 +2,7 @@
 
 ## Estado
 
-**EN DESARROLLO — PULL REQUEST DRAFT**
+**COMPLETADA — `v0.3.0`**
 
 Rama: `feature/fase-02-crm`
 
@@ -141,5 +141,6 @@ estados vacíos. Se rechazan dashboards SaaS genéricos, métricas ficticias y g
 
 ## Cierre
 
-La fase permanece Draft. No se crea `release(fase-02)`, `v0.3.0` ni merge sin revisión técnica y
-visual formal de HAVONA CAPITAL GROUP.
+HAVONA CAPITAL GROUP aprobó formalmente el CRM comercial, su dirección funcional y su validación
+técnica. La fase se cierra mediante `release(fase-02): completa CRM comercial` y la versión
+`v0.3.0`. Henry, agenda y canales futuros permanecen fuera de este alcance cerrado.

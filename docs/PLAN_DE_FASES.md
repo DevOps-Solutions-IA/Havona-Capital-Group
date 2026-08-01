@@ -105,7 +105,7 @@ Versión: `v0.2.0`
 
 ## Fase 2 — CRM
 
-**Estado: EN DESARROLLO — PR DRAFT**
+**Estado: COMPLETADA — `v0.3.0`**
 
 Rama: `feature/fase-02-crm`
 

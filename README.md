@@ -18,7 +18,7 @@ CRM, Jitsi y WhatsApp permanecen fuera de esta fase.
 
 **Fase 1 — COMPLETADA (`v0.2.0`)**
 
-**Fase 2 — EN DESARROLLO (`feature/fase-02-crm`)**
+**Fase 2 — COMPLETADA (`v0.3.0`)**
 
 La fundación técnica fue aprobada con evidencia del entorno local oficial y GitHub Actions. Las
 validaciones de infraestructura final (VPS, DNS, HTTPS público, SMTP productivo, firewall,
@@ -33,9 +33,9 @@ una bandeja administrativa inicial. Su [documentación técnica](docs/FASE_1_SIT
 [acta de cierre](docs/CIERRE_FASE_1.md) registran endpoints, datos, trazabilidad, pruebas, identidad
 corporativa y aprobación del lenguaje visual maestro.
 
-La Fase 2 mantiene el Pull Request en Draft. El CRM disponible para revisión incorpora pipeline
-real, ficha 360, tareas, actividad, clientes, empresas y paneles limitados por ámbito. Consulte
-[`docs/FASE_2_CRM.md`](docs/FASE_2_CRM.md). No existe todavía release `v0.3.0` ni merge.
+La Fase 2 entrega un CRM comercial real con pipeline, ficha 360, tareas, actividad, clientes,
+empresas y paneles limitados por ámbito. Consulte [`docs/FASE_2_CRM.md`](docs/FASE_2_CRM.md) y su
+[acta de cierre](docs/CIERRE_FASE_2.md).
 
 ## Requisitos
 
