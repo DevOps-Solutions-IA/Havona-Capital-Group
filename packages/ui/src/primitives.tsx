@@ -1,0 +1,26 @@
+'use client';
+
+import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react';
+import { LoaderCircle, X } from 'lucide-react';
+import clsx from 'clsx';
+
+export function Button({ className, children, busy, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { busy?: boolean }) {
+  return <button className={clsx('inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-55', className)} disabled={busy || props.disabled} {...props}>{busy && <LoaderCircle aria-hidden className="size-4 animate-spin" />}{children}</button>;
+}
+
+export function Field({ label, error, hint, className, ...props }: InputHTMLAttributes<HTMLInputElement> & { label: string; error?: string; hint?: string }) {
+  const id = props.id ?? props.name;
+  return <label className="grid gap-1.5 text-sm font-medium text-slate-800" htmlFor={id}>{label}<input id={id} aria-invalid={Boolean(error)} aria-describedby={error ? `${id}-error` : undefined} className={clsx('min-h-11 rounded-xl border border-slate-300 bg-white px-3.5 text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-brand-500 focus:ring-4 focus:ring-brand-100', error && 'border-red-500 focus:border-red-500 focus:ring-red-100', className)} {...props}/>{error && <span id={`${id}-error`} role="alert" className="text-xs font-normal text-red-700">{error}</span>}{hint && !error && <span className="text-xs font-normal text-slate-500">{hint}</span>}</label>;
+}
+
+export function SelectField({ label, error, children, className, ...props }: SelectHTMLAttributes<HTMLSelectElement> & { label: string; error?: string; children: ReactNode }) {
+  const id = props.id ?? props.name;
+  return <label className="grid gap-1.5 text-sm font-medium text-slate-800" htmlFor={id}>{label}<select id={id} aria-invalid={Boolean(error)} className={clsx('min-h-11 rounded-xl border border-slate-300 bg-white px-3.5 text-slate-950 outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-100', className)} {...props}>{children}</select>{error && <span role="alert" className="text-xs font-normal text-red-700">{error}</span>}</label>;
+}
+
+export function Card({ children, className }: { children: ReactNode; className?: string }) { return <section className={clsx('rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card', className)}>{children}</section>; }
+export function Badge({ children, tone = 'neutral' }: { children: ReactNode; tone?: 'neutral'|'success'|'warning'|'danger'|'info' }) { const tones={neutral:'bg-slate-100 text-slate-700',success:'bg-emerald-50 text-emerald-700',warning:'bg-amber-50 text-amber-800',danger:'bg-red-50 text-red-700',info:'bg-blue-50 text-blue-700'}; return <span className={clsx('inline-flex rounded-full px-2.5 py-1 text-xs font-semibold',tones[tone])}>{children}</span>; }
+export function Alert({ children, kind='error' }: { children: ReactNode; kind?: 'error'|'success'|'info' }) { const styles={error:'border-red-200 bg-red-50 text-red-800',success:'border-emerald-200 bg-emerald-50 text-emerald-800',info:'border-blue-200 bg-blue-50 text-blue-800'}; return <div role={kind==='error'?'alert':'status'} className={clsx('rounded-xl border px-4 py-3 text-sm',styles[kind])}>{children}</div>; }
+export function EmptyState({ title, description }: { title: string; description: string }) { return <div className="grid min-h-40 place-content-center px-6 text-center"><p className="font-semibold text-slate-900">{title}</p><p className="mt-1 text-sm text-slate-500">{description}</p></div>; }
+export function Skeleton({ className }: { className?: string }) { return <div aria-hidden className={clsx('animate-pulse rounded-lg bg-slate-200',className)} />; }
+export function Modal({ open, title, children, onClose }: { open: boolean; title: string; children: ReactNode; onClose:()=>void }) { if(!open)return null; return <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)onClose()}}><div role="dialog" aria-modal="true" aria-labelledby="modal-title" className="max-h-[90vh] w-full max-w-xl overflow-auto rounded-2xl bg-white p-6 shadow-2xl"><div className="mb-5 flex items-center justify-between"><h2 id="modal-title" className="font-display text-xl font-semibold text-slate-950">{title}</h2><button type="button" onClick={onClose} aria-label="Cerrar" className="rounded-lg p-2 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-brand-500"><X className="size-5"/></button></div>{children}</div></div>; }
