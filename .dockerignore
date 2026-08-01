@@ -1,0 +1,16 @@
+.git
+.github
+.env
+.env.*
+!.env.example
+node_modules
+.pnpm-store
+.turbo
+.next
+dist
+coverage
+backups
+data
+logs
+*.log
+*.tsbuildinfo

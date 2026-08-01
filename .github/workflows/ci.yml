@@ -1,0 +1,114 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main, 'feature/**']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+
+  migrations:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: havona_test
+          POSTGRES_USER: havona
+          POSTGRES_PASSWORD: test-only-password
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U havona -d havona_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: [6379:6379]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://havona:test-only-password@localhost:5432/havona_test?schema=public
+      REDIS_URL: redis://localhost:6379
+      INITIAL_SUPER_ADMIN_NAME: Super Administrador CI
+      INITIAL_SUPER_ADMIN_EMAIL: admin-ci@example.com
+      INITIAL_SUPER_ADMIN_PASSWORD: Test-Only-Password-2026!
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @havona/database db:generate
+      - run: pnpm --filter @havona/database db:migrate
+      - run: pnpm --filter @havona/database db:seed
+      - run: pnpm --filter @havona/database db:seed
+      - run: pnpm --filter @havona/api test:integration
+      - name: Detect uncommitted Prisma artifacts
+        run: git diff --exit-code -- packages/database/prisma
+
+  containers:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    needs: [quality, migrations]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Compose production model
+        env:
+          POSTGRES_DB: havona
+          POSTGRES_USER: havona
+          POSTGRES_PASSWORD: validation-password-only
+          REDIS_PASSWORD: validation-redis-password
+          APP_ORIGIN: https://app.example.com
+          NEXT_PUBLIC_API_URL: https://api.example.com/api/v1
+          ACME_EMAIL: ops@example.com
+          APP_DOMAIN: app.example.com
+          API_DOMAIN: api.example.com
+          SMTP_HOST: smtp.example.com
+          SMTP_USER: validation-user
+          SMTP_PASSWORD: validation-password-only
+          SMTP_FROM: HAVONA CI <ci@example.com>
+          DOCKER_TARGET: production
+        run: docker compose --profile prod config --quiet
+      - name: Build production images
+        env:
+          POSTGRES_DB: havona
+          POSTGRES_USER: havona
+          POSTGRES_PASSWORD: validation-password-only
+          REDIS_PASSWORD: validation-redis-password
+          APP_ORIGIN: https://app.example.com
+          NEXT_PUBLIC_API_URL: https://api.example.com/api/v1
+          ACME_EMAIL: ops@example.com
+          APP_DOMAIN: app.example.com
+          API_DOMAIN: api.example.com
+          SMTP_HOST: smtp.example.com
+          SMTP_USER: validation-user
+          SMTP_PASSWORD: validation-password-only
+          SMTP_FROM: HAVONA CI <ci@example.com>
+          DOCKER_TARGET: production
+        run: docker compose --profile prod build
