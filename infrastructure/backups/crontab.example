@@ -1,0 +1,2 @@
+# Run on the Docker host. Keep BACKUP_PATH on encrypted storage and replicate it off-site.
+15 2 * * * cd /opt/havona-capital && docker compose --profile backup run --rm backup >>/var/log/havona-backup.log 2>&1

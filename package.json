@@ -1,0 +1,29 @@
+{
+  "name": "havona-capital",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.14.0",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=10.0.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:integration": "turbo run test:integration",
+    "format:check": "prettier --check .",
+    "db:generate": "pnpm --filter @havona/database generate",
+    "db:migrate": "pnpm --filter @havona/database migrate:deploy",
+    "db:migrate:dev": "pnpm --filter @havona/database migrate:dev",
+    "db:seed": "pnpm --filter @havona/database seed"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "prettier": "^3.6.2",
+    "turbo": "^2.5.5",
+    "typescript": "^5.8.3"
+  }
+}

@@ -1,0 +1,3 @@
+import {render,screen} from '@testing-library/react';import {describe,expect,it,vi} from 'vitest';import {LoginForm} from './auth-form';
+vi.mock('next/navigation',()=>({useRouter:()=>({replace:vi.fn(),refresh:vi.fn()}),useSearchParams:()=>new URLSearchParams()}));
+describe('LoginForm',()=>{it('expone campos accesibles y recuperación real',()=>{render(<LoginForm/>);expect(screen.getByRole('textbox',{name:/correo/i})).toBeInTheDocument();expect(screen.getByLabelText('Contraseña')).toBeInTheDocument();expect(screen.getByRole('button',{name:'Ingresar'})).toBeEnabled();expect(screen.getByRole('link',{name:/olvidaste/i})).toHaveAttribute('href','/recuperar-contrasena')})});
