@@ -10,6 +10,11 @@ WhatsApp, email conversacional, voz, agenda real y Havona Meet no están activos
 canal existen para integraciones futuras, pero la API rechaza que el público inicie un canal distinto
 de `WEB`.
 
+El comportamiento se rige por [`HENRY_MANUAL_MAESTRO.md`](./HENRY_MANUAL_MAESTRO.md), versión
+`1.0.0`. Nueve políticas independientes se componen según el estado actual y el servidor aplica
+reglas deterministas de escalamiento, salida segura y autorización de herramientas. El prompt del
+sistema es un artefacto compuesto y versionado, no una fuente monolítica informal.
+
 ## Configuración de IA
 
 Variables obligatorias para conversación real:
@@ -94,11 +99,16 @@ precios.
 
 Los logs estructurados excluyen contenido de mensajes, claves y datos personales completos.
 
+Cada ejecución conserva versión del manual, etapa y políticas aplicadas. Herramientas y
+escalamientos conservan `policyId` y `ruleId`; las transiciones registran origen, destino y regla en
+`ConversationState` y `AuditLog`.
+
 ## Pruebas sin consumo externo
 
-`FakeAIProvider` permite probar respuestas, tools, rechazo, uso, escalamiento e integración CRM sin
-gastar créditos. Las pruebas automatizadas nunca dependen de OpenRouter. La validación real se
-ejecuta manualmente en el runtime Linux con una clave y un modelo autorizados.
+`FakeAIProvider` permite probar respuestas, composición de políticas, tools, rechazo, uso,
+escalamiento e integración CRM sin gastar créditos. Las pruebas automatizadas nunca dependen de
+OpenRouter. La validación real queda diferida a una actividad posterior con una clave y un modelo
+autorizados; no forma parte de la construcción del manual maestro.
 
 ```bash
 pnpm --filter @havona/api test

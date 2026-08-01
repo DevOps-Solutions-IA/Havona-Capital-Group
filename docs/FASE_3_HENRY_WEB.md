@@ -43,6 +43,16 @@ El modelo nunca accede directamente a Prisma, PostgreSQL ni Redis. Toda mutació
 herramienta registrada, validada, autorizada y auditada. El orquestador aplica un máximo
 configurable de iteraciones y llamadas a herramientas por turno.
 
+### Cerebro modular
+
+El comportamiento deriva de `HENRY_MANUAL_MAESTRO.md`. `HenryPolicyComposer` compone identidad,
+tono, venta consultiva, cierre, atención, escalamiento, conocimiento, guardrails y tools según el
+estado. `HenryPolicyEngine` aplica reglas deterministas antes y después del modelo. Las políticas
+tienen identificador y versión; no existe un único prompt gigante como fuente de conducta.
+
+Estados: saludo, descubrimiento, diagnóstico, calificación, educación, objeción, cierre, agenda,
+escalamiento, seguimiento y soporte. Cada transición sensible registra política y regla causal.
+
 ## Proveedores de IA
 
 `AIProvider` desacopla la orquestación del proveedor. La primera implementación operativa usa la
@@ -164,6 +174,8 @@ permanece Draft; no se crea `release(fase-03)`, `v0.4.0` ni merge hasta aprobaci
 A la fecha, la rama contiene dominio Prisma y migración, provider OpenRouter intercambiable,
 orquestador, memoria controlada, tools CRM allowlisted, escalamiento, uso/costo reportado, RBAC,
 API pública/administrativa, experiencia `/henry`, centro `/administracion-henry` y pruebas con
-provider fake. La prueba manual con OpenRouter real requiere que el entorno autorizado suministre
+provider fake. También incorpora el manual maestro, catálogo de objeciones, cierre responsable,
+atención y escalamiento, políticas modulares y observabilidad de decisiones. La prueba manual con
+OpenRouter real queda expresamente diferida a la siguiente validación y requerirá
 `OPENROUTER_API_KEY` y `AI_MODEL`; su ausencia mantiene la fase en construcción y no provoca
 respuestas simuladas.
