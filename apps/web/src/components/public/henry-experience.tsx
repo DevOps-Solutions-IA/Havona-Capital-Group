@@ -37,7 +37,13 @@ export function HenryExperience() {
   }, []);
 
   useEffect(() => {
-    transcript.current?.scrollTo({ top: transcript.current.scrollHeight, behavior: reduced ? 'auto' : 'smooth' });
+    const element = transcript.current;
+    if (!element) return;
+    if (typeof element.scrollTo === 'function') {
+      element.scrollTo({ top: element.scrollHeight, behavior: reduced ? 'auto' : 'smooth' });
+    } else {
+      element.scrollTop = element.scrollHeight;
+    }
   }, [messages, sending, reduced]);
 
   async function start(initial?: string) {
