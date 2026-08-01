@@ -4,6 +4,36 @@
 
 Cada fase es abierta, ejecutada, validada, cerrada y versionada antes de comenzar la siguiente.
 
+## Flujo de ejecución de cada fase
+
+Cada fase utiliza una rama propia `feature/fase-XX-*` y un Pull Request Draft hacia `develop`.
+Puede y debe contener múltiples commits atómicos. Cada unidad lógica sigue este ciclo:
+
+```text
+Implementar
+→ Probar
+→ Corregir
+→ Documentar
+→ Commit
+→ Push
+→ GitHub Actions
+→ Continuar
+```
+
+GitHub es la fuente oficial de control de versiones y respaldo. No se espera hasta el final de la
+fase para publicar trabajo estable. El commit `release(fase-XX)` y la etiqueta correspondiente se
+crean únicamente cuando todo el alcance esté aprobado.
+
+## Entornos de validación
+
+Durante desarrollo, el entorno oficial es `/mnt/d/havona` y la aprobación técnica se sustenta en
+pruebas locales más GitHub Actions. La ausencia de VPS, Docker local productivo, DNS o SMTP
+productivo no bloquea las fases normales.
+
+Las validaciones integrales de Ubuntu 24.04, Docker en VPS, DNS, HTTPS, Caddy, SMTP, firewall,
+backups, restauración, reinicios, persistencia, monitoreo y hardening se ejecutarán al llegar a
+preproducción/producción.
+
 ## Fase 0 — Fundación técnica
 
 Entregables:

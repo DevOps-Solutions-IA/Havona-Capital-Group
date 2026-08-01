@@ -21,6 +21,29 @@ Henry AI será el agente central encargado de conversar, calificar, hacer seguim
 
 La plataforma debe construirse como un sistema real, premium, seguro y escalable.
 
+## Entorno oficial de construcción
+
+El entorno local oficial de desarrollo es:
+
+```text
+/mnt/d/havona
+```
+
+Todo el sistema se construye y valida allí durante las fases de desarrollo. La ausencia de un VPS,
+Ubuntu 24.04 productivo, Docker local productivo, DNS público o SMTP productivo no constituye por
+sí sola un bloqueo de desarrollo ni impide aprobar una fase que cumple sus criterios locales y de
+integración continua.
+
+La infraestructura VPS se utilizará únicamente al llegar a preproducción o producción. En ese
+momento se realizarán las validaciones operativas de Ubuntu 24.04, Docker, DNS, HTTPS, Caddy,
+SMTP, firewall, backups, restauración, persistencia, reinicios, monitoreo y hardening.
+
+GitHub es la fuente oficial de control de versiones y respaldo:
+
+```text
+https://github.com/DevOps-Solutions-IA/Havona-Capital-Group
+```
+
 ## Tecnologías obligatorias
 
 - Lenguaje principal: TypeScript.
@@ -185,6 +208,47 @@ chore(deploy): configura Docker Compose
 
 No hacer commits directos a `main`.
 
+### Flujo obligatorio
+
+```text
+Entorno local
+→ Desarrollo
+→ Pruebas
+→ Corrección
+→ Validación
+→ Commit
+→ Push a GitHub
+→ GitHub Actions
+→ Continuar
+```
+
+Cada fase trabaja en su propia rama `feature/fase-XX-*` y mantiene un Pull Request hacia
+`develop`. El PR es el registro vivo de avances, decisiones, pruebas, riesgos y pendientes; debe
+permanecer Draft mientras la fase esté en construcción.
+
+Cada unidad lógica implementada, probada, estable y documentada debe recibir un commit atómico y
+push a la rama activa. No acumular grandes cantidades de trabajo terminado sin versionar. Después
+de cada push relevante se deben revisar lint, typecheck, pruebas, builds y demás checks aplicables
+en GitHub Actions.
+
+Si CI falla:
+
+```text
+Analizar
+→ Corregir
+→ Probar
+→ Commit fix
+→ Push
+→ Validar CI
+```
+
+No avanzar dejando errores críticos conocidos. Nunca publicar secretos, `.env`, archivos
+temporales, código deliberadamente roto, experimentos descartables, datos personales reales ni
+credenciales.
+
+`main` contiene únicamente versiones estables y aprobadas. `develop` integra fases terminadas o
+preparadas para integración. No desarrollar directamente sobre ninguna de estas dos ramas.
+
 ## Entrega obligatoria
 
 Al finalizar una tarea, reportar:
@@ -214,3 +278,11 @@ Una fase se considera cerrada cuando:
 - Existe commit de cierre.
 - Existe etiqueta de versión.
 - La fase puede desplegarse sin romper lo anterior.
+
+Durante desarrollo, estos criterios se demuestran mediante el entorno local y GitHub Actions. Las
+validaciones exclusivas de VPS y servicios productivos se difieren a preproducción/producción y no
+se mezclan con el cierre ordinario de las fases locales, salvo que el plan de la fase las exija de
+forma expresa.
+
+Solo después de aprobar todo el alcance se crea el commit `release(fase-XX)` y su etiqueta, y se
+marca el Pull Request como Ready for Review. No iniciar una fase nueva sin aprobación.
