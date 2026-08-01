@@ -20,6 +20,7 @@ POSTGRES_USER=havona
 POSTGRES_PASSWORD=<secreto>
 REDIS_PASSWORD=<secreto-de-al-menos-16-caracteres>
 APP_ORIGIN=https://app.havonacapital.com
+COOKIE_DOMAIN=.havonacapital.com
 NEXT_PUBLIC_API_URL=https://api.havonacapital.com/api/v1
 APP_DOMAIN=app.havonacapital.com
 API_DOMAIN=api.havonacapital.com

@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { CaptureProspectInput, ProspectListQuery } from '@havona/contracts';
 import { LeadEventType, Prisma, ProspectStatus } from '@havona/database';
 import { AuditContext, AuditService } from '../audit/audit.service';
@@ -39,7 +39,9 @@ export class ProspectsService {
       const matches: Prisma.ProspectWhereInput[] = [];
       if (normalizedEmail) matches.push({ normalizedEmail });
       if (normalizedPhone) matches.push({ normalizedPhone });
-      const existing = matches.length ? await tx.prospect.findFirst({ where: { OR: matches } }) : null;
+      const matched = matches.length ? await tx.prospect.findMany({ where: { OR: matches }, take: 2 }) : [];
+      if (matched.length > 1) throw new ConflictException('No fue posible consolidar la solicitud. Revise los datos de contacto.');
+      const existing = matched[0] ?? null;
       const prospect = existing
         ? await tx.prospect.update({
             where: { id: existing.id },

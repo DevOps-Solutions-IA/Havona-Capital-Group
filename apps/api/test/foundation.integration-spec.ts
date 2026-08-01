@@ -4,6 +4,7 @@ import cookieParser from 'cookie-parser';
 import Redis from 'ioredis';
 import request from 'supertest';
 import { randomUUID } from 'node:crypto';
+import { hashPassword } from '@havona/auth';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/common/prisma.service';
 
@@ -107,5 +108,20 @@ describe('Fase 0 (PostgreSQL + Redis)', () => {
       .expect(response => expect(response.body.data).toEqual(expect.arrayContaining([expect.objectContaining({ id: first.body.data.id })])));
     await agent.get(`/api/v1/prospects/${first.body.data.id}`).expect(200)
       .expect(response => expect(response.body.consents[0]).toEqual(expect.objectContaining({ accepted: true, privacyVersion: 'v1' })));
+  });
+
+  it('aplica la matriz RBAC de prospectos a ADMIN, GERENTE y CONSULTOR', async () => {
+    await request(app.getHttpServer()).get('/api/v1/prospects').expect(401);
+    const password = 'Role-Test-Password-2026!';
+    for (const [roleName, expected] of [['ADMIN', 200], ['GERENTE', 200], ['CONSULTOR', 403]] as const) {
+      const role = await db.role.findUniqueOrThrow({ where: { name: roleName } });
+      const user = await db.user.create({ data: {
+        email: `${roleName.toLowerCase()}-${randomUUID()}@example.com`, name: `${roleName} Integración`,
+        passwordHash: await hashPassword(password), roles: { create: { roleId: role.id } },
+      } });
+      const agent = request.agent(app.getHttpServer());
+      await agent.post('/api/v1/auth/login').send({ email: user.email, password }).expect(201);
+      await agent.get('/api/v1/prospects').expect(expected);
+    }
   });
 });

@@ -15,7 +15,7 @@ describe('ProspectsService', () => {
     const tx = {
       leadEvent: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({}) },
       leadSource: { findFirst: jest.fn().mockResolvedValue({ id: 'source-id' }) },
-      prospect: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue(prospect) },
+      prospect: { findMany: jest.fn().mockResolvedValue([]), create: jest.fn().mockResolvedValue(prospect) },
       consent: { create: jest.fn().mockResolvedValue({}) },
     };
     const db = { $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(tx)) } as any;
@@ -30,5 +30,18 @@ describe('ProspectsService', () => {
     }, tx);
     expect(JSON.stringify(audit.record.mock.calls)).not.toContain(input.email);
     expect(JSON.stringify(audit.record.mock.calls)).not.toContain(input.phone);
+  });
+
+  it('rechaza una colisión cruzada sin fusionar identidades ni crear datos parciales', async () => {
+    const tx = {
+      leadEvent: { findUnique: jest.fn().mockResolvedValue(null) },
+      leadSource: { findFirst: jest.fn().mockResolvedValue({ id: 'source-id' }) },
+      prospect: { findMany: jest.fn().mockResolvedValue([{ id: 'prospect-email' }, { id: 'prospect-phone' }]) },
+      consent: { create: jest.fn() },
+    };
+    const db = { $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(tx)) } as any;
+    const service = new ProspectsService(db, { record: jest.fn() } as any);
+    await expect(service.capture(input, {})).rejects.toThrow('No fue posible consolidar');
+    expect(tx.consent.create).not.toHaveBeenCalled();
   });
 });

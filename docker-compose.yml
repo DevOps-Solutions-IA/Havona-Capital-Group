@@ -61,6 +61,7 @@ services:
       PORT: 3001
       APP_ORIGIN: ${APP_ORIGIN}
       CORS_ORIGINS: ${APP_ORIGIN}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -108,13 +109,13 @@ services:
       target: production
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
-        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL}
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
     profiles: [prod]
     restart: unless-stopped
     environment:
       NODE_ENV: ${NODE_ENV:-development}
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
-      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL}
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
     depends_on:
       api: { condition: service_healthy }
     healthcheck:
@@ -137,6 +138,7 @@ services:
       PORT: 3001
       APP_ORIGIN: ${APP_ORIGIN}
       CORS_ORIGINS: ${APP_ORIGIN}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
     ports: ['127.0.0.1:3001:3001']
     volumes: ['.:/app', 'api_node_modules:/app/node_modules']
     depends_on:
@@ -169,12 +171,12 @@ services:
       target: development
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
-        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL}
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
     profiles: [dev]
     environment:
       NODE_ENV: development
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
-      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL}
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
     ports: ['127.0.0.1:3000:3000']
     volumes: ['.:/app', 'web_node_modules:/app/node_modules']
     depends_on:
