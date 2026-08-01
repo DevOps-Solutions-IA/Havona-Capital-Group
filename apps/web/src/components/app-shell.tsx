@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import {
   Activity,
   BriefcaseBusiness,
+  Bot,
   Building2,
   CheckSquare2,
   ChevronDown,
@@ -43,6 +44,7 @@ const links = [
   { href: '/crm/clientes', label: 'Clientes', icon: ContactRound, permission: 'crm.read_assigned' },
   { href: '/crm/empresas', label: 'Empresas', icon: Building2, permission: 'crm.read_all' },
   { href: '/crm/consultores', label: 'Consultores', icon: UserRound, permission: 'crm.assign' },
+  { href: '/administracion-henry', label: 'Henry', icon: Bot, permission: 'henry.read_assigned' },
   { href: '/usuarios', label: 'Usuarios', icon: Users, permission: 'users.read' },
   { href: '/roles', label: 'Roles y permisos', icon: ShieldCheck, permission: 'roles.read' },
   { href: '/auditoria', label: 'Auditoría', icon: FileClock, permission: 'audit.read' },
