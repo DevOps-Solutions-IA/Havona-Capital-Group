@@ -1,1 +1,1 @@
-import {describe,expect,it} from 'vitest';import {Button} from './primitives';describe('Button',()=>{it('es una función exportada',()=>{expect(Button).toBeTypeOf('function')})});
+import {describe,expect,it} from 'vitest';import {Button,Modal} from './primitives';describe('UI primitives',()=>{it('exporta componentes interactivos',()=>{expect(Button).toBeTypeOf('function');expect(Modal).toBeTypeOf('function')})});
