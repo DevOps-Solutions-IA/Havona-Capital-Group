@@ -1,77 +1,53 @@
-# CONFIGURACIÓN INICIAL DEL REPOSITORIO
+# HAVONA CAPITAL
 
-## 1. Crear repositorio
+Fundación técnica de la plataforma empresarial HAVONA CAPITAL. Este repositorio es un monorepo
+TypeScript con Next.js, NestJS, PostgreSQL, Prisma, Redis y BullMQ, desplegable mediante Docker
+Compose y Caddy.
 
-Crea en GitHub un repositorio privado llamado:
+La Fase 0 implementa autenticación por sesiones, recuperación de contraseña, RBAC, administración
+de usuarios, configuración, auditoría, health checks, worker de correo, backups y CI. Henry AI,
+CRM, Jitsi y WhatsApp permanecen fuera de esta fase.
 
-```text
-havona-capital
-```
+## Requisitos
 
-## 2. Clonar
+- Node.js 22 LTS y Corepack.
+- Docker Engine con Compose v2.
+- Git.
 
-```bash
-git clone https://github.com/TU_USUARIO/havona-capital.git
-cd havona-capital
-```
-
-## 3. Crear estructura documental
-
-```bash
-mkdir -p docs
-```
-
-Copia los archivos incluidos en este paquete en la raíz y en `docs/`.
-
-## 4. Crear ramas
+## Inicio rápido
 
 ```bash
-git checkout -b develop
-git push -u origin develop
-
-git checkout -b docs/fundacion-proyecto
+cp .env.example .env
+# Sustituya todos los valores de ejemplo antes de continuar.
+corepack enable
+pnpm install --frozen-lockfile
+docker compose --profile dev up -d postgres redis
+pnpm db:migrate
+pnpm db:seed
+pnpm dev
 ```
 
-## 5. Agregar documentación
+Web: `http://localhost:3000`. API: `http://localhost:3001/api/v1`. Health checks públicos:
+`http://localhost:3001/health` y `http://localhost:3001/health/ready`.
+
+## Calidad
 
 ```bash
-git add AGENTS.md docs README.md
-git commit -m "docs(project): define arquitectura, fases y reglas maestras"
-git push -u origin docs/fundacion-proyecto
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm test:integration
+pnpm build
 ```
 
-## 6. Integrar en develop
+## Documentación operativa
 
-Crea un Pull Request:
+- [Instalación y desarrollo](docs/INSTALACION_Y_DESARROLLO.md)
+- [Despliegue de producción](docs/DESPLIEGUE_PRODUCCION.md)
+- [Backups y restauración](docs/BACKUPS_Y_RESTAURACION.md)
+- [Troubleshooting](docs/TROUBLESHOOTING.md)
+- [Arquitectura técnica](docs/ARQUITECTURA_TECNICA.md)
+- [Reglas de desarrollo](docs/REGLAS_DE_DESARROLLO.md)
 
-```text
-docs/fundacion-proyecto → develop
-```
-
-Revisa y fusiona.
-
-## 7. Proteger ramas
-
-En GitHub:
-
-- Protege `main`.
-- Protege `develop`.
-- Exige Pull Request.
-- Exige checks.
-- Impide force push.
-- Impide eliminación.
-- Exige resolución de conversaciones.
-
-## 8. Iniciar Fase 0
-
-```bash
-git checkout develop
-git pull
-git checkout -b feature/fase-00-fundacion
-```
-
-Entrega al agente el contenido de:
-
-```text
-docs/PROMPT_FASE_0.md
-```
+Nunca confirme `.env`, credenciales, tokens ni dumps de producción. No avance a una fase posterior
+sin cerrar y aprobar la fase vigente.
