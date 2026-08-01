@@ -4,13 +4,18 @@ const db = new PrismaClient();
 const permissions = [
   ['users.read','Consultar usuarios'],['users.create','Crear usuarios'],['users.update','Editar usuarios'],['users.status','Activar o desactivar usuarios'],['users.roles','Asignar roles'],['users.reset_password','Restablecer contraseñas'],
   ['roles.read','Consultar roles y permisos'],['settings.read','Consultar configuración'],['settings.update','Modificar configuración'],['audit.read','Consultar auditoría'],
-  ['prospects.read','Consultar prospectos captados']
+  ['prospects.read','Consultar prospectos captados'],
+  ['crm.read_all','Consultar todos los registros comerciales'],['crm.read_assigned','Consultar registros comerciales asignados'],
+  ['crm.assign','Asignar y reasignar responsables'],['crm.update','Editar información comercial'],
+  ['crm.opportunities','Crear y mover oportunidades'],['crm.tasks.manage','Gestionar tareas de otros usuarios'],
+  ['crm.tasks.own','Gestionar tareas propias'],['crm.notes','Gestionar notas e interacciones internas'],
+  ['crm.close','Cerrar oportunidades'],['crm.dashboard','Consultar métricas comerciales globales']
 ] as const;
 const grants: Record<string,string[]> = {
   SUPER_ADMIN: permissions.map(([key]) => key),
   ADMIN: permissions.map(([key]) => key).filter(key => !['settings.update'].includes(key)),
-  GERENTE: ['users.read','roles.read','settings.read','prospects.read'],
-  CONSULTOR: ['settings.read'],
+  GERENTE: ['users.read','roles.read','settings.read','prospects.read','crm.read_all','crm.read_assigned','crm.assign','crm.update','crm.opportunities','crm.tasks.manage','crm.tasks.own','crm.notes','crm.close','crm.dashboard'],
+  CONSULTOR: ['settings.read','crm.read_assigned','crm.update','crm.opportunities','crm.tasks.own','crm.notes','crm.close'],
 };
 async function main() {
   for (const [key, description] of permissions) await db.permission.upsert({ where:{key}, update:{description}, create:{key,description} });
@@ -24,6 +29,8 @@ async function main() {
   for (const [key, name] of [['direct','Directo'],['organic','Orgánico'],['campaign','Campaña'],['referral','Referido'],['henry-entry','Entrada Henry']] as const) {
     await db.leadSource.upsert({where:{key},update:{name,isActive:true},create:{key,name}});
   }
+  const stages = [['new','Nuevo'],['contacted','Contactado'],['conversing','Conversando'],['qualified','Calificado'],['appointment-scheduled','Cita agendada'],['appointment-completed','Cita realizada'],['proposal','Propuesta'],['follow-up','Seguimiento'],['closed','Cerrado'],['client','Cliente']] as const;
+  for (const [index,[key,name]] of stages.entries()) await db.pipelineStage.upsert({where:{key},update:{name,position:index+1,isActive:true},create:{key,name,position:index+1}});
   const email = process.env.INITIAL_SUPER_ADMIN_EMAIL?.trim().toLowerCase();
   const password = process.env.INITIAL_SUPER_ADMIN_PASSWORD;
   const name = process.env.INITIAL_SUPER_ADMIN_NAME?.trim() || 'Super Administrador';
