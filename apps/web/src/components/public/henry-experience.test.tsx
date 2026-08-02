@@ -55,4 +55,12 @@ describe('HenryExperience', () => {
     expect(localStorage.getItem('havona_henry_session_v2_public')).toContain('607a72d8');
     expect(localStorage.getItem('havona_henry_draft_v2_public')).toBe('Quiero revisar mi pensión');
   });
+
+  it('integra voz en la misma conversación recuperada y conserva el fallback textual', async () => {
+    localStorage.setItem('havona_henry_session_v2_public', JSON.stringify({ id: '607a72d8-3028-448f-b6cb-523573f117a0', accessToken: 'runtime-token' }));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: { id: '607a72d8-3028-448f-b6cb-523573f117a0', status: 'ACTIVE', prospectAssociated: false, messages: [] } }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
+    render(<HenryExperience />);
+    expect(await screen.findByRole('button', { name: /hablar con henry/i })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/cuénteme qué le gustaría resolver/i)).toBeEnabled();
+  });
 });

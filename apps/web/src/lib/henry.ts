@@ -1,4 +1,4 @@
-import { api } from './api';
+import { api, ApiError, API_URL } from './api';
 
 export type HenryMessage = {
   id: string;
@@ -26,6 +26,12 @@ export type HenryConversation = {
 };
 
 const tokenHeader = (token: string) => ({ 'X-Henry-Token': token });
+const errorMessage = (payload: unknown) => {
+  if (!payload || typeof payload !== 'object') return undefined;
+  const error = (payload as { error?: unknown }).error;
+  return error && typeof error === 'object' && typeof (error as { message?: unknown }).message === 'string'
+    ? (error as { message: string }).message : undefined;
+};
 
 export function createHenryConversation(entryPoint = 'henry', pageContext?: HenryPageContext, internal = false) {
   return api<{ data: HenrySession & { status: string; providerConfigured: boolean; messages: HenryMessage[] } }>(`/henry/${internal ? 'internal/' : ''}conversations`, {
@@ -64,4 +70,30 @@ export function escalateHenry(session: HenrySession) {
     method: 'POST', headers: tokenHeader(session.accessToken),
     body: JSON.stringify({ reason: 'USER_REQUEST', summary: 'La persona solicitó continuar con un asesor humano desde Henry Web.' }),
   });
+}
+
+export async function sendHenryVoice(session: HenrySession, audio: Blob, durationMs: number, pageContext?: HenryPageContext, internal = false) {
+  const form = new FormData();
+  form.append('audio', audio, `henry-${Date.now()}.webm`);
+  form.append('durationMs', String(durationMs));
+  if (pageContext) form.append('pageContext', JSON.stringify(pageContext));
+  const response = await fetch(`${API_URL}/henry/${internal ? 'internal/' : ''}conversations/${session.id}/voice/turns`, {
+    method: 'POST', credentials: 'include', headers: tokenHeader(session.accessToken), body: form,
+  });
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok) throw new ApiError(response.status, errorMessage(payload) ?? 'No fue posible procesar el audio.', payload);
+  return payload as { data: { voiceSessionId: string; transcript: { transcript: string; language?: string }; status: string; message: HenryMessage | null } };
+}
+
+export async function getHenrySpeech(session: HenrySession, messageId: string, voiceSessionId: string, internal = false, signal?: AbortSignal) {
+  const response = await fetch(`${API_URL}/henry/${internal ? 'internal/' : ''}conversations/${session.id}/voice/speech`, {
+    method: 'POST', credentials: 'include', signal,
+    headers: { ...tokenHeader(session.accessToken), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messageId, voiceSessionId, detail: 'VOICE_STANDARD' }),
+  });
+  if (!response.ok) {
+    const payload: unknown = await response.json().catch(() => null);
+    throw new ApiError(response.status, errorMessage(payload) ?? 'No fue posible generar la voz de Henry.', payload);
+  }
+  return response.blob();
 }

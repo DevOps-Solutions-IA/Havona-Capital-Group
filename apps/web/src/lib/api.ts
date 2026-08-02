@@ -1,4 +1,4 @@
-const API_URL=(process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api/v1').replace(/\/$/,'');
+export const API_URL=(process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api/v1').replace(/\/$/,'');
 export class ApiError extends Error { constructor(public status:number,message:string,public details?:unknown){super(message)} }
 function cookie(name:string){if(typeof document==='undefined')return undefined;return document.cookie.split('; ').find(value=>value.startsWith(`${name}=`))?.split('=').slice(1).join('=')}
 export async function api<T>(path:string, init:RequestInit={}):Promise<T>{

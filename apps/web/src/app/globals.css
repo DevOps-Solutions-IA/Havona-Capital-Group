@@ -873,12 +873,17 @@ body {
 .henry-thinking i:nth-last-child(2) { animation-delay: .15s; }.henry-thinking i:last-child { animation-delay: .3s; }
 @keyframes henry-pulse { 50% { opacity: .2; transform: translateY(-3px); } }
 .henry-console > footer { padding: 1rem 1.4rem 1.25rem; border-top: 1px solid #e3eaf1; background: rgba(249,251,253,.9); }
-.henry-console form { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: .75rem; }
+.henry-console form { display: grid; grid-template-columns: 1fr auto auto; align-items: end; gap: .65rem; }
 .henry-console textarea { width: 100%; resize: none; border: 0; border-bottom: 1px solid #afbfce; background: transparent; padding: .65rem .2rem; color: #1d2939; outline: 0; }
 .henry-console textarea:focus { border-color: #1478d4; box-shadow: 0 1px 0 #1478d4; }
 .henry-console form button { display: grid; width: 2.75rem; aspect-ratio: 1; place-items: center; background: #071a33; color: white; transition: background .2s, transform .2s; }
 .henry-console form button:hover:not(:disabled) { transform: translateY(-2px); background: #1478d4; }
 .henry-console form button:disabled { opacity: .35; }
+.henry-console form .henry-microphone { border: 1px solid #b9c9d8; background: #fff; color: #0a3d73; }
+.henry-console form .henry-microphone.is-listening { border-color: #b94c4c; background: #fff4f3; color: #a13e3e; }
+.henry-console form .henry-microphone.is-speaking { border-color: #1478d4; background: #eaf4ff; color: #0a3d73; }
+.henry-voice-status { display: flex; align-items: center; margin-top: .65rem; gap: .4rem; color: #526b82; font-size: .68rem; }
+.henry-voice-status svg { width: .9rem; }
 .henry-console form svg { width: 1rem; }
 .henry-console footer > small { display: block; margin-top: .65rem; color: #8795a3; font-size: .62rem; }
 .henry-human { margin-bottom: .65rem; color: #0a3d73; font-size: .7rem; font-weight: 650; text-decoration: underline; text-underline-offset: 3px; }

@@ -4,8 +4,8 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { ArrowUpRight, Check, LoaderCircle, LockKeyhole, Send, Sparkles, UserRound } from 'lucide-react';
-import { createHenryConversation, escalateHenry, getHenryConversation, HenryMessage, HenrySession, pageContextFromPath, sendHenryMessage } from '@/lib/henry';
+import { ArrowUpRight, Check, LoaderCircle, LockKeyhole, Mic, Send, Sparkles, Square, UserRound, Volume2, VolumeX } from 'lucide-react';
+import { createHenryConversation, escalateHenry, getHenryConversation, getHenrySpeech, HenryMessage, HenrySession, pageContextFromPath, sendHenryMessage, sendHenryVoice } from '@/lib/henry';
 import { messageOf } from '@/lib/api';
 import { HenryMessageContent } from './henry-message-content';
 
@@ -26,6 +26,11 @@ export function HenryConversation({ variant, internal, storageScope, onActivity 
   const [error, setError] = useState('');
   const [escalated, setEscalated] = useState(false);
   const transcript = useRef<HTMLDivElement>(null);
+  const recorder = useRef<MediaRecorder | null>(null);
+  const chunks = useRef<Blob[]>([]);
+  const recordingStarted = useRef(0);
+  const playing = useRef<HTMLAudioElement | null>(null);
+  const [voiceState, setVoiceState] = useState<'idle' | 'listening' | 'processing' | 'speaking'>('idle');
 
   useEffect(() => {
     const storedDraft = localStorage.getItem(draftKey);
@@ -86,6 +91,41 @@ export function HenryConversation({ variant, internal, storageScope, onActivity 
     finally { setSending(false); onActivity?.('online'); }
   }
 
+  async function toggleVoice() {
+    if (voiceState === 'speaking') { playing.current?.pause(); playing.current = null; setVoiceState('idle'); return; }
+    if (voiceState === 'listening') { recorder.current?.stop(); return; }
+    if (!session || sending || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setError(session ? 'El navegador no permite usar el micrófono. Puede continuar por texto.' : 'Inicie la conversación antes de usar el micrófono.');
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const preferred = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus'].find((type) => MediaRecorder.isTypeSupported(type));
+      const next = new MediaRecorder(stream, preferred ? { mimeType: preferred } : undefined);
+      chunks.current = []; recordingStarted.current = Date.now(); recorder.current = next;
+      next.ondataavailable = (event) => { if (event.data.size) chunks.current.push(event.data); };
+      next.onstop = async () => {
+        stream.getTracks().forEach((track) => track.stop());
+        const audio = new Blob(chunks.current, { type: next.mimeType || 'audio/webm' });
+        setVoiceState('processing'); setSending(true); onActivity?.('thinking'); setError('');
+        try {
+          const { data } = await sendHenryVoice(session, audio, Date.now() - recordingStarted.current, context, internal);
+          const voiceUser: HenryMessage = { id: crypto.randomUUID(), role: 'USER', content: data.transcript.transcript, status: 'COMPLETED', createdAt: new Date().toISOString() };
+          setMessages((items) => [...items, voiceUser, ...(data.message ? [data.message] : [])]);
+          if (data.message) {
+            const spoken = await getHenrySpeech(session, data.message.id, data.voiceSessionId, internal);
+            const url = URL.createObjectURL(spoken); const player = new Audio(url); playing.current = player; setVoiceState('speaking');
+            player.onended = () => { URL.revokeObjectURL(url); playing.current = null; setVoiceState('idle'); };
+            player.onerror = () => { URL.revokeObjectURL(url); playing.current = null; setVoiceState('idle'); setError('La respuesta textual está disponible, pero el audio no pudo reproducirse.'); };
+            await player.play();
+          } else setVoiceState('idle');
+        } catch (reason) { setVoiceState('idle'); setError(`${messageOf(reason)} Puede continuar por texto.`); }
+        finally { setSending(false); onActivity?.('online'); }
+      };
+      next.start(250); setVoiceState('listening');
+    } catch { setError('No fue posible acceder al micrófono. Revise el permiso del navegador o continúe por texto.'); setVoiceState('idle'); }
+  }
+
   if (loading) return <div className="henry-loading"><LoaderCircle className="animate-spin"/><span>Recuperando conversación segura…</span></div>;
   const console = <section className={`henry-console ${variant === 'global' ? 'is-global' : ''}`} aria-label={internal ? 'Copiloto Henry' : 'Conversación con Henry'}>
     <header><div className="henry-presence"><span>H</span><div><strong>Henry</strong><small>{internal ? 'Copiloto comercial · contexto autorizado' : 'Asistente virtual · Canal web'}</small></div></div><i className={session ? 'is-online' : ''}>{session ? 'Sesión activa' : 'Listo para conversar'}</i></header>
@@ -101,7 +141,8 @@ export function HenryConversation({ variant, internal, storageScope, onActivity 
     {error && <p className="henry-error" role="alert">{error}</p>}
     {session && <footer>
       {escalated ? <p className="henry-escalated"><Check/> Solicitud humana registrada.</p> : !internal && <button type="button" className="henry-human" onClick={() => void requestHuman()} disabled={sending}>Prefiero hablar con una persona</button>}
-      <form onSubmit={send}><label htmlFor={`henry-message-${variant}`} className="sr-only">Mensaje para Henry</label><textarea id={`henry-message-${variant}`} value={draft} onChange={(event) => { setDraft(event.target.value); localStorage.setItem(draftKey,event.target.value); }} maxLength={4000} rows={2} placeholder={internal ? 'Pregunte sobre el contexto actual…' : 'Cuénteme qué le gustaría resolver…'} disabled={sending}/><button aria-label="Enviar mensaje" disabled={!draft.trim() || sending}><Send/></button></form>
+      <form onSubmit={send}><label htmlFor={`henry-message-${variant}`} className="sr-only">Mensaje para Henry</label><textarea id={`henry-message-${variant}`} value={draft} onChange={(event) => { setDraft(event.target.value); localStorage.setItem(draftKey,event.target.value); }} maxLength={4000} rows={2} placeholder={internal ? 'Pregunte sobre el contexto actual…' : 'Cuénteme qué le gustaría resolver…'} disabled={sending}/><button type="button" className={`henry-microphone is-${voiceState}`} aria-label={voiceState === 'listening' ? 'Detener grabación' : voiceState === 'speaking' ? 'Detener voz de Henry' : 'Hablar con Henry'} aria-pressed={voiceState === 'listening'} onClick={() => void toggleVoice()} disabled={sending && voiceState !== 'listening'}>{voiceState === 'listening' ? <Square/> : voiceState === 'speaking' ? <VolumeX/> : voiceState === 'processing' ? <LoaderCircle className="animate-spin"/> : <Mic/>}</button><button aria-label="Enviar mensaje" disabled={!draft.trim() || sending}><Send/></button></form>
+      {voiceState !== 'idle' && <p className="henry-voice-status" role="status"><Volume2/> {voiceState === 'listening' ? 'Escuchando. Pulse de nuevo para enviar.' : voiceState === 'processing' ? 'Transcribiendo y consultando a Henry…' : 'Henry está respondiendo por voz.'}</p>}
       <small>{internal ? 'El acceso a CRM se resuelve en servidor según su rol.' : 'No comparta contraseñas ni información financiera sensible.'}</small>
     </footer>}
   </section>;
