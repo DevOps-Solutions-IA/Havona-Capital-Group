@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import {
   HenryClosingPolicy, HenryCustomerServicePolicy, HenryEscalationPolicy, HenryGuardrailPolicy,
   HenryIdentityPolicy, HenryKnowledgePolicy, HenrySalesPolicy, HenryTonePolicy, HenryToolPolicy,
+  HenryDecisionSupportPolicy, HenryExpertCopilotPolicy, HenryQualityPolicy, HenryTeachingPolicy,
 } from './henry-policies';
 import { HENRY_MANUAL_VERSION, HenryPolicy, HenryPolicyContext } from './henry-policy.types';
 
@@ -12,8 +13,10 @@ export class HenryPolicyComposer {
   constructor(identity: HenryIdentityPolicy, tone: HenryTonePolicy, sales: HenrySalesPolicy,
     closing: HenryClosingPolicy, customerService: HenryCustomerServicePolicy,
     escalation: HenryEscalationPolicy, knowledge: HenryKnowledgePolicy,
+    expert: HenryExpertCopilotPolicy, decisionSupport: HenryDecisionSupportPolicy,
+    teaching: HenryTeachingPolicy, quality: HenryQualityPolicy,
     guardrails: HenryGuardrailPolicy, tools: HenryToolPolicy) {
-    this.policies = [identity, tone, sales, closing, customerService, escalation, knowledge, guardrails, tools];
+    this.policies = [identity, tone, sales, closing, customerService, escalation, knowledge, expert, decisionSupport, teaching, quality, guardrails, tools];
   }
 
   compose(context: HenryPolicyContext) {
@@ -29,7 +32,7 @@ export class HenryPolicyComposer {
       prompt: [
         `<henry-policy-manual version="${HENRY_MANUAL_VERSION}">`,
         ...sections.map((section) => `<policy id="${section.id}" version="${section.version}">\n${section.instructions.map((item) => `- ${item}`).join('\n')}\n</policy>`),
-        `<role-context role="${context.roleContext ?? 'PUBLIC'}">\n${roleInstructions.map((item) => `- ${item}`).join('\n')}\n- Si la base autorizada no contiene una respuesta, indica: "Esta información no está disponible en mi base autorizada."\n- Usa 2 a 4 párrafos breves en conversación simple; listas solo para procesos, comparaciones o checklists.\n</role-context>`,
+        `<role-context role="${context.roleContext ?? 'PUBLIC'}">\n${roleInstructions.map((item) => `- ${item}`).join('\n')}\n- Si la base autorizada no contiene una respuesta, indica exactamente: "Esta información no se encuentra dentro de la base de conocimiento autorizada de HAVONA CAPITAL GROUP."\n- Usa 2 a 4 párrafos breves en conversación simple; estructura procesos, comparaciones o checklists cuando mejore la lectura.\n</role-context>`,
         '</henry-policy-manual>',
       ].join('\n\n'),
     };

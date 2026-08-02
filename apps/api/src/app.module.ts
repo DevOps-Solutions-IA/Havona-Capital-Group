@@ -18,6 +18,7 @@ import { HenryController } from './henry/henry.controller';
 import { HenryService } from './henry/henry.service';
 import { HenryToolsService } from './henry/henry-tools.service';
 import { HenryContextService } from './henry/henry-context.service';
+import { HenryExpertCopilotService } from './henry/henry-expert-copilot.service';
 import { HenryPolicyComposer } from './henry/policies/henry-policy-composer.service';
 import { HenryPolicyEngine } from './henry/policies/henry-policy-engine.service';
 import { HENRY_POLICY_PROVIDERS } from './henry/policies/henry-policies';
@@ -57,6 +58,7 @@ import { UsersService } from './users/users.service';
     { provide: AI_PROVIDER, useExisting: OpenRouterProvider },
     HenryToolsService,
     HenryContextService,
+    HenryExpertCopilotService,
     ...HENRY_POLICY_PROVIDERS,
     HenryPolicyComposer,
     HenryPolicyEngine,

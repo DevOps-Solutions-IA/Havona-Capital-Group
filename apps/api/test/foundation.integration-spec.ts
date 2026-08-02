@@ -305,11 +305,13 @@ describe('Fase 0 (PostgreSQL + Redis)', () => {
       .expect(201);
     expect(response.body.data).toEqual(expect.objectContaining({ status: 'COMPLETED' }));
     expect(response.body.data.message.content).toContain('asistente virtual');
-    const conversation = await db.conversation.findUniqueOrThrow({ where: { publicId: id }, include: { messages: true, executions: { include: { usage: true } } } });
+    const conversation = await db.conversation.findUniqueOrThrow({ where: { publicId: id }, include: { messages: true, state: true, executions: { include: { usage: true } } } });
     expect(conversation.messages).toHaveLength(3);
     expect(conversation.executions[0]?.usage).toEqual(expect.objectContaining({ totalTokens: 34 }));
-    expect(conversation.executions[0]?.policyContext).toEqual(expect.objectContaining({ manualVersion: '1.0.0', stage: 'DISCOVERY' }));
+    expect(conversation.executions[0]?.policyContext).toEqual(expect.objectContaining({ manualVersion: '1.1.0', stage: 'DISCOVERY', expert: expect.objectContaining({ roleContext: 'PUBLIC', reasoningType: 'CONVERSATIONAL' }) }));
+    expect(conversation.state?.state).toEqual(expect.objectContaining({ contextId: 'other:root', lastIntention: 'pension', lastObjective: 'Quiero revisar mi pensión.' }));
     expect(fakeProvider.requests.at(-1)?.messages[0]?.content).toContain('<policy id="identity" version="1.0.0">');
+    expect(fakeProvider.requests.at(-1)?.messages[0]?.content).toContain('<policy id="expert-copilot" version="1.0.0">');
     expect(fakeProvider.requests.at(-1)?.messages[0]?.content).toContain('consultor patrimonial senior');
 
     const henryEmail = `henry-${randomUUID()}@example.com`;

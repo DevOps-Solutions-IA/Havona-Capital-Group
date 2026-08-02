@@ -12,6 +12,7 @@ import { HenryPolicyComposer } from './policies/henry-policy-composer.service';
 import { HenryPolicyEngine } from './policies/henry-policy-engine.service';
 import { HENRY_MANUAL_VERSION, HenryConversationStage, HenryPolicyDecision } from './policies/henry-policy.types';
 import { HenryActor, HenryContextService } from './henry-context.service';
+import { HenryCorporateMemory, HenryExpertCopilotService } from './henry-expert-copilot.service';
 
 type Actor = { id: string; permissions: string[] };
 
@@ -26,6 +27,7 @@ export class HenryService {
     private readonly policyComposer: HenryPolicyComposer,
     private readonly policyEngine: HenryPolicyEngine,
     private readonly henryContext: HenryContextService,
+    private readonly expertCopilot: HenryExpertCopilotService,
   ) {}
 
   async create(input: CreateHenryConversationInput, context: AuditContext, actor?: HenryActor) {
@@ -36,7 +38,7 @@ export class HenryService {
         accessTokenHash: hashToken(token), channel: 'WEB', consentAcceptedAt: new Date(),
         privacyVersion: input.consent.privacyVersion,
         prospectId: resolved.entity?.type === 'prospect' ? resolved.entity.id : undefined,
-        state: { create: { state: { entryPoint: input.entryPoint, confirmedFields: [], stage: 'GREETING', manualVersion: HENRY_MANUAL_VERSION, roleContext: resolved.role, pageContext: resolved.page } } },
+        state: { create: { state: { entryPoint: input.entryPoint, confirmedFields: [], stage: 'GREETING', manualVersion: HENRY_MANUAL_VERSION, roleContext: resolved.role, pageContext: resolved.page, contextId: `${resolved.page.pageType}:${resolved.page.section ?? 'root'}`, workingMemory: { objective: '', intention: null, knownReferences: [] }, longTermMemoryReference: [], draft: null, lastIntention: null, lastObjective: '' } } },
       } });
       const [visitor, assistant] = await Promise.all([
         tx.conversationParticipant.create({ data: { conversationId: conversation.id, type: 'VISITOR' } }),
@@ -159,16 +161,20 @@ export class HenryService {
       await this.transitionState(conversationId, stage, inputDecision.stage, inputDecision, context);
       stage = inputDecision.stage;
     }
-    const composed = this.policyComposer.compose({ stage, prospectAssociated, intention: conversation.intention, roleContext: runtimeContext.role, pageContext: runtimeContext.page });
-    const systemPrompt = `${composed.prompt}\n\n${this.henryContext.prompt(runtimeContext)}`;
+    const expert = this.expertCopilot.analyze(inputMessage.content, runtimeContext);
+    const memory = this.expertCopilot.memory(conversation.state?.state, runtimeContext, expert);
+    await this.updateCorporateMemory(conversationId, memory);
+    const expertAudit = this.expertCopilot.audit(expert, memory);
+    const composed = this.policyComposer.compose({ stage, prospectAssociated, intention: conversation.intention, roleContext: runtimeContext.role, pageContext: runtimeContext.page, expert });
+    const systemPrompt = `${composed.prompt}\n\n${this.henryContext.prompt(runtimeContext)}\n\n${this.expertCopilot.prompt(expert, memory)}`;
     const execution = await this.db.aIExecution.create({ data: {
       conversationId, inputMessageId, provider: this.provider.name, model: this.provider.model || 'not-configured',
-      policyContext: { manualVersion: composed.manualVersion, stage, appliedPolicies: composed.appliedPolicies, roleContext: runtimeContext.role, pageContext: runtimeContext.page, entityContext: runtimeContext.entity ? { type: runtimeContext.entity.type, id: runtimeContext.entity.id } : undefined },
+      policyContext: { manualVersion: composed.manualVersion, stage, appliedPolicies: composed.appliedPolicies, roleContext: runtimeContext.role, pageContext: runtimeContext.page, entityContext: runtimeContext.entity ? { type: runtimeContext.entity.type, id: runtimeContext.entity.id } : undefined, expert: expertAudit },
     } });
     const started = Date.now();
     if (inputDecision.action === 'ESCALATE') {
       await this.tools.escalate(inputDecision.reason ?? 'POLICY', 'Escalamiento preventivo determinado por políticas de Henry.', { conversationId, audit: context, decision: inputDecision });
-      const output = await this.createAssistantMessage(conversationId, inputDecision.response!, 'POLICY_ESCALATION', inputDecision);
+      const output = await this.createAssistantMessage(conversationId, inputDecision.response!, 'POLICY_ESCALATION', inputDecision, expertAudit);
       await this.completeExecution(execution.id, inputMessageId, output.id, started, 0, { inputTokens: 0, outputTokens: 0, totalTokens: 0, costUsd: 0, costReported: false }, 'ESCALATED', inputDecision.ruleId);
       return { data: { status: 'ESCALATED', message: this.publicMessage(output) } };
     }
@@ -210,7 +216,7 @@ export class HenryService {
             await this.tools.escalate('POLICY', 'La respuesta propuesta requería revisión humana por políticas de Henry.', { conversationId, audit: context, decision: outputDecision });
             await this.transitionState(conversationId, stage, 'ESCALATION', outputDecision, context);
           }
-          const output = await this.createAssistantMessage(conversationId, content, 'AI_PROVIDER', outputDecision);
+          const output = await this.createAssistantMessage(conversationId, content, 'AI_PROVIDER', outputDecision, expertAudit);
           await this.completeExecution(execution.id, inputMessageId, output.id, started, iterations, { inputTokens, outputTokens, totalTokens, costUsd, costReported }, outputDecision.action === 'REJECT' ? 'ESCALATED' : 'SUCCEEDED', outputDecision.action === 'REJECT' ? outputDecision.ruleId : undefined);
           console.info(JSON.stringify({ level: 'info', event: 'henry_execution_completed', conversationId, executionId: execution.id, provider: result.provider, model: result.model, latencyMs: Date.now() - started, iterations, toolCalls: totalToolCalls }));
           return { data: { status: 'COMPLETED', message: this.publicMessage(output) } };
@@ -267,9 +273,9 @@ export class HenryService {
     ]);
   }
 
-  private async createAssistantMessage(conversationId: string, content: string, origin: string, decision?: HenryPolicyDecision) {
+  private async createAssistantMessage(conversationId: string, content: string, origin: string, decision?: HenryPolicyDecision, expertAudit?: ReturnType<HenryExpertCopilotService['audit']>) {
     const assistant = await this.db.conversationParticipant.findFirstOrThrow({ where: { conversationId, type: 'ASSISTANT' } });
-    const message = await this.db.message.create({ data: { conversationId, participantId: assistant.id, role: 'ASSISTANT', channel: 'WEB', status: 'COMPLETED', content: content.slice(0, 8000), origin, metadata: decision ? { policyId: decision.policyId, ruleId: decision.ruleId, action: decision.action } : undefined } });
+    const message = await this.db.message.create({ data: { conversationId, participantId: assistant.id, role: 'ASSISTANT', channel: 'WEB', status: 'COMPLETED', content: content.slice(0, 8000), origin, metadata: { ...(decision ? { policyId: decision.policyId, ruleId: decision.ruleId, action: decision.action } : {}), ...(expertAudit ?? {}) } } });
     await this.db.conversation.update({ where: { id: conversationId }, data: { lastMessageAt: message.createdAt } });
     return message;
   }
@@ -283,6 +289,15 @@ export class HenryService {
     const current = await this.db.conversationState.findUniqueOrThrow({ where: { conversationId } });
     const state = current.state && typeof current.state === 'object' && !Array.isArray(current.state) ? current.state as Record<string, Prisma.JsonValue> : {};
     await this.db.conversationState.update({ where: { conversationId }, data: { version: { increment: 1 }, state: { ...state, roleContext, pageContext, pageContextUpdatedAt: new Date().toISOString() } } });
+  }
+
+  private async updateCorporateMemory(conversationId: string, memory: HenryCorporateMemory) {
+    const current = await this.db.conversationState.findUniqueOrThrow({ where: { conversationId } });
+    const state = current.state && typeof current.state === 'object' && !Array.isArray(current.state) ? current.state as Record<string, Prisma.JsonValue> : {};
+    await this.db.conversationState.update({ where: { conversationId }, data: {
+      version: { increment: 1 },
+      state: { ...state, ...memory, manualVersion: HENRY_MANUAL_VERSION, memoryUpdatedAt: new Date().toISOString() },
+    } });
   }
 
   private async authorize(publicId: string, token: string | undefined) {
