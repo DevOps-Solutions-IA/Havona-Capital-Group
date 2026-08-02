@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { constantTimeTokenMatch, createOpaqueToken, hashToken } from '@havona/auth';
 import { CreateHenryConversationInput, HenryConversationListInput, HenryPageContextInput, SendHenryMessageInput } from '@havona/contracts';
-import { AIExecutionStatus, Prisma } from '@havona/database';
+import { AIExecutionStatus, Conversation, Prisma } from '@havona/database';
 import { AIConfig } from '../ai/ai-config';
 import { AIMessage, AIProvider, AIProviderError, AI_PROVIDER } from '../ai/ai-provider';
 import { Inject } from '@nestjs/common';
@@ -31,11 +31,21 @@ export class HenryService {
   ) {}
 
   async create(input: CreateHenryConversationInput, context: AuditContext, actor?: HenryActor) {
+    return this.createOnChannel(input, context, actor, 'WEB');
+  }
+
+  async createVoiceGatewayConversation(input: CreateHenryConversationInput, context: AuditContext) {
+    const result = await this.createOnChannel(input, context, undefined, 'VOICE');
+    const conversation = await this.authorize(result.data.id, result.data.accessToken);
+    return { result, conversation };
+  }
+
+  private async createOnChannel(input: CreateHenryConversationInput, context: AuditContext, actor: HenryActor | undefined, channel: 'WEB' | 'VOICE') {
     const resolved = await this.henryContext.resolve(input.pageContext, actor);
     const token = createOpaqueToken(32);
     const created = await this.db.$transaction(async (tx) => {
       const conversation = await tx.conversation.create({ data: {
-        accessTokenHash: hashToken(token), channel: 'WEB', consentAcceptedAt: new Date(),
+        accessTokenHash: hashToken(token), channel, consentAcceptedAt: new Date(),
         privacyVersion: input.consent.privacyVersion,
         prospectId: resolved.entity?.type === 'prospect' ? resolved.entity.id : undefined,
         state: { create: { state: { entryPoint: input.entryPoint, confirmedFields: [], stage: 'GREETING', manualVersion: HENRY_MANUAL_VERSION, roleContext: resolved.role, pageContext: resolved.page, contextId: `${resolved.page.pageType}:${resolved.page.section ?? 'root'}`, workingMemory: { objective: '', intention: null, knownReferences: [] }, longTermMemoryReference: [], draft: null, lastIntention: null, lastObjective: '' } } },
@@ -47,11 +57,11 @@ export class HenryService {
       if (actor) await tx.conversationParticipant.create({ data: { conversationId: conversation.id, type: 'USER', userId: actor.id, displayName: resolved.role } });
       const greeting = await tx.message.create({ data: {
         conversationId: conversation.id, participantId: assistant.id, role: 'ASSISTANT',
-        status: 'COMPLETED', channel: 'WEB', origin: 'SYSTEM_GREETING',
+        status: 'COMPLETED', channel, origin: 'SYSTEM_GREETING',
         content: 'Soy Henry, asistente virtual de HAVONA CAPITAL GROUP. Puedo ayudarle a identificar su necesidad y facilitar una conversación con nuestro equipo. ¿Qué le gustaría resolver hoy?',
       } });
       await tx.conversation.update({ where: { id: conversation.id }, data: { lastMessageAt: greeting.createdAt } });
-      await this.audit.record('HENRY_CONVERSATION_CREATED', 'Conversation', conversation.id, { ...context, actorUserId: actor?.id }, { channel: 'WEB', entryPoint: input.entryPoint, role: resolved.role, pageContext: resolved.page }, tx);
+      await this.audit.record('HENRY_CONVERSATION_CREATED', 'Conversation', conversation.id, { ...context, actorUserId: actor?.id }, { channel, entryPoint: input.entryPoint, role: resolved.role, pageContext: resolved.page }, tx);
       return { conversation, visitor, greeting };
     });
     return {
@@ -73,8 +83,43 @@ export class HenryService {
   }
 
   async send(publicId: string, token: string | undefined, input: SendHenryMessageInput, context: AuditContext, actor?: HenryActor) {
+    return this.sendOnChannel(publicId, token, input, context, actor, 'WEB');
+  }
+
+  async sendVoice(publicId: string, token: string | undefined, input: SendHenryMessageInput, context: AuditContext, actor?: HenryActor) {
+    return this.sendOnChannel(publicId, token, input, context, actor, 'VOICE');
+  }
+
+  async resolveAuthorizedConversation(publicId: string, token: string | undefined, actor?: HenryActor) {
     const conversation = await this.authorize(publicId, token);
     if (actor) await this.authorizeInternalParticipant(conversation.id, actor.id);
+    return conversation;
+  }
+
+  resolveRuntimeContext(pageContext?: HenryPageContextInput, actor?: HenryActor) {
+    return this.henryContext.resolve(pageContext, actor);
+  }
+
+  async getAuthorizedAssistantMessage(publicId: string, token: string | undefined, messageId: string, actor?: HenryActor) {
+    const conversation = await this.resolveAuthorizedConversation(publicId, token, actor);
+    const message = await this.db.message.findFirst({ where: { id: messageId, conversationId: conversation.id, role: 'ASSISTANT', status: 'COMPLETED' } });
+    if (!message) throw new NotFoundException('Respuesta de Henry no encontrada');
+    return { conversation, message };
+  }
+
+  private async sendOnChannel(publicId: string, token: string | undefined, input: SendHenryMessageInput, context: AuditContext, actor: HenryActor | undefined, channel: 'WEB' | 'VOICE') {
+    const conversation = await this.authorize(publicId, token);
+    if (actor) await this.authorizeInternalParticipant(conversation.id, actor.id);
+    return this.processAuthorizedMessage(conversation, input, context, actor, channel);
+  }
+
+  async sendTrustedGatewayVoice(conversationId: string, input: SendHenryMessageInput, context: AuditContext) {
+    const conversation = await this.db.conversation.findUniqueOrThrow({ where: { id: conversationId } });
+    if (conversation.channel !== 'VOICE') throw new BadRequestException('El gateway solo puede usar conversaciones de voz');
+    return this.processAuthorizedMessage(conversation, input, context, undefined, 'VOICE');
+  }
+
+  private async processAuthorizedMessage(conversation: Conversation, input: SendHenryMessageInput, context: AuditContext, actor: HenryActor | undefined, channel: 'WEB' | 'VOICE') {
     const resolved = await this.henryContext.resolve(input.pageContext, actor);
     await this.updateRuntimeContext(conversation.id, resolved.role, resolved.page);
     if (conversation.status === 'CLOSED' || conversation.status === 'BLOCKED') throw new BadRequestException('La conversación no acepta nuevos mensajes');
@@ -86,11 +131,11 @@ export class HenryService {
     const visitor = await this.db.conversationParticipant.findFirstOrThrow({ where: { conversationId: conversation.id, type: actor ? 'USER' : { in: ['VISITOR', 'PROSPECT'] }, ...(actor ? { userId: actor.id } : {}) }, orderBy: { createdAt: 'asc' } });
     const userMessage = await this.db.message.create({ data: {
       id: input.messageId, conversationId: conversation.id, participantId: visitor.id,
-      role: 'USER', status: 'PROCESSING', content: input.content, channel: 'WEB', origin: actor ? 'WEB_INTERNAL' : 'WEB_VISITOR',
+      role: 'USER', status: 'PROCESSING', content: input.content, channel, origin: channel === 'VOICE' ? (actor ? 'VOICE_INTERNAL' : 'VOICE_VISITOR') : (actor ? 'WEB_INTERNAL' : 'WEB_VISITOR'),
       metadata: { roleContext: resolved.role, pageContext: resolved.page, entityContext: resolved.entity ? { type: resolved.entity.type, id: resolved.entity.id } : undefined },
     } });
     await this.db.conversation.update({ where: { id: conversation.id }, data: { lastMessageAt: userMessage.createdAt } });
-    return this.orchestrate(conversation.id, userMessage.id, { ...context, actorUserId: actor?.id }, resolved);
+    return this.orchestrate(conversation.id, userMessage.id, { ...context, actorUserId: actor?.id }, resolved, channel);
   }
 
   async requestEscalation(publicId: string, token: string | undefined, reason: any, summary: string, context: AuditContext) {
@@ -151,7 +196,7 @@ export class HenryService {
     return { conversations, escalated, prospectLinked, toolCalls, errors, usage: usage._sum, generatedAt: new Date().toISOString() };
   }
 
-  private async orchestrate(conversationId: string, inputMessageId: string, context: AuditContext, runtimeContext: Awaited<ReturnType<HenryContextService['resolve']>>) {
+  private async orchestrate(conversationId: string, inputMessageId: string, context: AuditContext, runtimeContext: Awaited<ReturnType<HenryContextService['resolve']>>, channel: 'WEB' | 'VOICE' = 'WEB') {
     const conversation = await this.db.conversation.findUniqueOrThrow({ where: { id: conversationId }, include: { state: true } });
     let stage = this.readStage(conversation.state?.state);
     let prospectAssociated = Boolean(conversation.prospectId);
@@ -174,12 +219,12 @@ export class HenryService {
     const started = Date.now();
     if (inputDecision.action === 'ESCALATE') {
       await this.tools.escalate(inputDecision.reason ?? 'POLICY', 'Escalamiento preventivo determinado por políticas de Henry.', { conversationId, audit: context, decision: inputDecision });
-      const output = await this.createAssistantMessage(conversationId, inputDecision.response!, 'POLICY_ESCALATION', inputDecision, expertAudit);
+      const output = await this.createAssistantMessage(conversationId, inputDecision.response!, 'POLICY_ESCALATION', inputDecision, expertAudit, channel);
       await this.completeExecution(execution.id, inputMessageId, output.id, started, 0, { inputTokens: 0, outputTokens: 0, totalTokens: 0, costUsd: 0, costReported: false }, 'ESCALATED', inputDecision.ruleId);
       return { data: { status: 'ESCALATED', message: this.publicMessage(output) } };
     }
     if (!this.provider.isConfigured()) {
-      const output = await this.createAssistantMessage(conversationId, 'Henry no está disponible en este entorno porque el proveedor o modelo de inteligencia artificial no está configurado. Puede solicitar atención humana.', 'CONFIGURATION_STATUS');
+      const output = await this.createAssistantMessage(conversationId, 'Henry no está disponible en este entorno porque el proveedor o modelo de inteligencia artificial no está configurado. Puede solicitar atención humana.', 'CONFIGURATION_STATUS', undefined, undefined, channel);
       await this.db.$transaction([
         this.db.message.update({ where: { id: inputMessageId }, data: { status: 'COMPLETED' } }),
         this.db.aIExecution.update({ where: { id: execution.id }, data: { status: 'CONFIGURATION_REQUIRED', outputMessageId: output.id, latencyMs: Date.now() - started, completedAt: new Date() } }),
@@ -216,7 +261,7 @@ export class HenryService {
             await this.tools.escalate('POLICY', 'La respuesta propuesta requería revisión humana por políticas de Henry.', { conversationId, audit: context, decision: outputDecision });
             await this.transitionState(conversationId, stage, 'ESCALATION', outputDecision, context);
           }
-          const output = await this.createAssistantMessage(conversationId, content, 'AI_PROVIDER', outputDecision, expertAudit);
+          const output = await this.createAssistantMessage(conversationId, content, 'AI_PROVIDER', outputDecision, expertAudit, channel);
           await this.completeExecution(execution.id, inputMessageId, output.id, started, iterations, { inputTokens, outputTokens, totalTokens, costUsd, costReported }, outputDecision.action === 'REJECT' ? 'ESCALATED' : 'SUCCEEDED', outputDecision.action === 'REJECT' ? outputDecision.ruleId : undefined);
           console.info(JSON.stringify({ level: 'info', event: 'henry_execution_completed', conversationId, executionId: execution.id, provider: result.provider, model: result.model, latencyMs: Date.now() - started, iterations, toolCalls: totalToolCalls }));
           return { data: { status: 'COMPLETED', message: this.publicMessage(output) } };
@@ -273,9 +318,9 @@ export class HenryService {
     ]);
   }
 
-  private async createAssistantMessage(conversationId: string, content: string, origin: string, decision?: HenryPolicyDecision, expertAudit?: ReturnType<HenryExpertCopilotService['audit']>) {
+  private async createAssistantMessage(conversationId: string, content: string, origin: string, decision?: HenryPolicyDecision, expertAudit?: ReturnType<HenryExpertCopilotService['audit']>, channel: 'WEB' | 'VOICE' = 'WEB') {
     const assistant = await this.db.conversationParticipant.findFirstOrThrow({ where: { conversationId, type: 'ASSISTANT' } });
-    const message = await this.db.message.create({ data: { conversationId, participantId: assistant.id, role: 'ASSISTANT', channel: 'WEB', status: 'COMPLETED', content: content.slice(0, 8000), origin, metadata: { ...(decision ? { policyId: decision.policyId, ruleId: decision.ruleId, action: decision.action } : {}), ...(expertAudit ?? {}) } } });
+    const message = await this.db.message.create({ data: { conversationId, participantId: assistant.id, role: 'ASSISTANT', channel, status: 'COMPLETED', content: content.slice(0, 8000), origin, metadata: { ...(decision ? { policyId: decision.policyId, ruleId: decision.ruleId, action: decision.action } : {}), ...(expertAudit ?? {}) } } });
     await this.db.conversation.update({ where: { id: conversationId }, data: { lastMessageAt: message.createdAt } });
     return message;
   }

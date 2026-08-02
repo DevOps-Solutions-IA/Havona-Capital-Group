@@ -8,32 +8,33 @@ datasource db {
 }
 
 model User {
-  id                  String                    @id @default(uuid()) @db.Uuid
-  email               String                    @unique @db.VarChar(254)
-  name                String                    @db.VarChar(120)
-  passwordHash        String                    @map("password_hash")
-  isActive            Boolean                   @default(true) @map("is_active")
-  failedLoginAttempts Int                       @default(0) @map("failed_login_attempts")
-  lockedUntil         DateTime?                 @map("locked_until")
-  lastLoginAt         DateTime?                 @map("last_login_at")
-  createdAt           DateTime                  @default(now()) @map("created_at")
-  updatedAt           DateTime                  @updatedAt @map("updated_at")
-  roles               UserRole[]
-  sessions            Session[]
-  passwordResetTokens PasswordResetToken[]
-  auditLogs           AuditLog[]                @relation("AuditActor")
-  assignedProspects   Assignment[]              @relation("AssignmentAssignee")
-  prospectAssignments Assignment[]              @relation("AssignmentActor")
-  opportunities       Opportunity[]             @relation("OpportunityOwner")
-  stageChanges        OpportunityStageHistory[] @relation("StageChangedBy")
-  crmTasks            Task[]                    @relation("TaskAssignee")
-  createdTasks        Task[]                    @relation("TaskCreator")
-  notes               Note[]                    @relation("NoteAuthor")
-  activities          Activity[]                @relation("ActivityActor")
-  interactions        Interaction[]             @relation("InteractionActor")
-  convertedClients    ClientProfile[]           @relation("ClientConvertedBy")
+  id                       String                    @id @default(uuid()) @db.Uuid
+  email                    String                    @unique @db.VarChar(254)
+  name                     String                    @db.VarChar(120)
+  passwordHash             String                    @map("password_hash")
+  isActive                 Boolean                   @default(true) @map("is_active")
+  failedLoginAttempts      Int                       @default(0) @map("failed_login_attempts")
+  lockedUntil              DateTime?                 @map("locked_until")
+  lastLoginAt              DateTime?                 @map("last_login_at")
+  createdAt                DateTime                  @default(now()) @map("created_at")
+  updatedAt                DateTime                  @updatedAt @map("updated_at")
+  roles                    UserRole[]
+  sessions                 Session[]
+  passwordResetTokens      PasswordResetToken[]
+  auditLogs                AuditLog[]                @relation("AuditActor")
+  assignedProspects        Assignment[]              @relation("AssignmentAssignee")
+  prospectAssignments      Assignment[]              @relation("AssignmentActor")
+  opportunities            Opportunity[]             @relation("OpportunityOwner")
+  stageChanges             OpportunityStageHistory[] @relation("StageChangedBy")
+  crmTasks                 Task[]                    @relation("TaskAssignee")
+  createdTasks             Task[]                    @relation("TaskCreator")
+  notes                    Note[]                    @relation("NoteAuthor")
+  activities               Activity[]                @relation("ActivityActor")
+  interactions             Interaction[]             @relation("InteractionActor")
+  convertedClients         ClientProfile[]           @relation("ClientConvertedBy")
   conversationParticipants ConversationParticipant[]
-  assignedEscalations Escalation[]               @relation("EscalationAssignee")
+  assignedEscalations      Escalation[]              @relation("EscalationAssignee")
+  voiceSessions            VoiceSession[]
 
   @@map("users")
 }
@@ -67,36 +68,36 @@ model LeadSource {
 }
 
 model Prospect {
-  id              String           @id @default(uuid()) @db.Uuid
-  name            String           @db.VarChar(120)
-  phone           String?          @db.VarChar(30)
-  normalizedPhone String?          @unique @map("normalized_phone") @db.VarChar(20)
-  email           String?          @db.VarChar(254)
-  normalizedEmail String?          @unique @map("normalized_email") @db.VarChar(254)
-  city            String           @db.VarChar(100)
-  sourceId        String           @map("source_id") @db.Uuid
-  campaign        String?          @db.VarChar(100)
-  landing         String           @db.VarChar(80)
-  interest        String           @db.VarChar(60)
-  message         String?          @db.VarChar(1200)
-  status          ProspectStatus   @default(NEW)
-  firstCapturedAt DateTime         @default(now()) @map("first_captured_at")
-  lastCapturedAt  DateTime         @default(now()) @map("last_captured_at")
-  createdAt       DateTime         @default(now()) @map("created_at")
-  updatedAt       DateTime         @updatedAt @map("updated_at")
-  source          LeadSource       @relation(fields: [sourceId], references: [id], onDelete: Restrict)
-  consents        Consent[]
-  events          LeadEvent[]
-  assignments     Assignment[]
-  opportunities   Opportunity[]
-  tasks           Task[]
-  notes           Note[]
-  activities      Activity[]
-  tags            ProspectTag[]
-  interactions    Interaction[]
-  client          ClientProfile?
-  companyContacts CompanyContact[]
-  conversations  Conversation[]
+  id                       String                    @id @default(uuid()) @db.Uuid
+  name                     String                    @db.VarChar(120)
+  phone                    String?                   @db.VarChar(30)
+  normalizedPhone          String?                   @unique @map("normalized_phone") @db.VarChar(20)
+  email                    String?                   @db.VarChar(254)
+  normalizedEmail          String?                   @unique @map("normalized_email") @db.VarChar(254)
+  city                     String                    @db.VarChar(100)
+  sourceId                 String                    @map("source_id") @db.Uuid
+  campaign                 String?                   @db.VarChar(100)
+  landing                  String                    @db.VarChar(80)
+  interest                 String                    @db.VarChar(60)
+  message                  String?                   @db.VarChar(1200)
+  status                   ProspectStatus            @default(NEW)
+  firstCapturedAt          DateTime                  @default(now()) @map("first_captured_at")
+  lastCapturedAt           DateTime                  @default(now()) @map("last_captured_at")
+  createdAt                DateTime                  @default(now()) @map("created_at")
+  updatedAt                DateTime                  @updatedAt @map("updated_at")
+  source                   LeadSource                @relation(fields: [sourceId], references: [id], onDelete: Restrict)
+  consents                 Consent[]
+  events                   LeadEvent[]
+  assignments              Assignment[]
+  opportunities            Opportunity[]
+  tasks                    Task[]
+  notes                    Note[]
+  activities               Activity[]
+  tags                     ProspectTag[]
+  interactions             Interaction[]
+  client                   ClientProfile?
+  companyContacts          CompanyContact[]
+  conversations            Conversation[]
   conversationParticipants ConversationParticipant[]
 
   @@index([status, createdAt])
@@ -398,6 +399,24 @@ enum ConversationStatus {
   BLOCKED
 }
 
+enum VoiceSessionStatus {
+  STARTING
+  ACTIVE
+  INTERRUPTED
+  COMPLETED
+  FAILED
+}
+
+enum VoiceOperation {
+  STT
+  TTS
+}
+
+enum VoiceCostStatus {
+  REPORTED
+  COST_PENDING_PROVIDER_RECONCILIATION
+}
+
 enum ConversationParticipantType {
   VISITOR
   PROSPECT
@@ -455,29 +474,71 @@ enum EscalationStatus {
 }
 
 model Conversation {
-  id                    String                    @id @default(uuid()) @db.Uuid
-  publicId              String                    @unique @default(uuid()) @map("public_id") @db.Uuid
-  accessTokenHash       String                    @map("access_token_hash") @db.Char(64)
-  channel               ConversationChannel       @default(WEB)
-  status                ConversationStatus        @default(ACTIVE)
-  intention             String?                   @db.VarChar(80)
-  prospectId            String?                   @map("prospect_id") @db.Uuid
-  consentAcceptedAt     DateTime                  @map("consent_accepted_at")
-  privacyVersion        String                    @map("privacy_version") @db.VarChar(40)
-  lastMessageAt         DateTime?                 @map("last_message_at")
-  createdAt             DateTime                  @default(now()) @map("created_at")
-  updatedAt             DateTime                  @updatedAt @map("updated_at")
-  prospect              Prospect?                 @relation(fields: [prospectId], references: [id], onDelete: SetNull)
-  participants          ConversationParticipant[]
-  messages              Message[]
-  executions            AIExecution[]
-  state                 ConversationState?
-  escalations           Escalation[]
+  id                String                    @id @default(uuid()) @db.Uuid
+  publicId          String                    @unique @default(uuid()) @map("public_id") @db.Uuid
+  accessTokenHash   String                    @map("access_token_hash") @db.Char(64)
+  channel           ConversationChannel       @default(WEB)
+  status            ConversationStatus        @default(ACTIVE)
+  intention         String?                   @db.VarChar(80)
+  prospectId        String?                   @map("prospect_id") @db.Uuid
+  consentAcceptedAt DateTime                  @map("consent_accepted_at")
+  privacyVersion    String                    @map("privacy_version") @db.VarChar(40)
+  lastMessageAt     DateTime?                 @map("last_message_at")
+  createdAt         DateTime                  @default(now()) @map("created_at")
+  updatedAt         DateTime                  @updatedAt @map("updated_at")
+  prospect          Prospect?                 @relation(fields: [prospectId], references: [id], onDelete: SetNull)
+  participants      ConversationParticipant[]
+  messages          Message[]
+  executions        AIExecution[]
+  state             ConversationState?
+  escalations       Escalation[]
+  voiceSessions     VoiceSession[]
 
   @@index([status, lastMessageAt])
   @@index([prospectId, createdAt])
   @@index([channel, createdAt])
   @@map("henry_conversations")
+}
+
+model VoiceSession {
+  id                     String             @id @default(uuid()) @db.Uuid
+  conversationId         String             @map("conversation_id") @db.Uuid
+  provider               String             @db.VarChar(40)
+  externalConversationId String?            @map("external_conversation_id") @db.VarChar(160)
+  authenticatedUserId    String?            @map("authenticated_user_id") @db.Uuid
+  roleContext            String             @map("role_context") @db.VarChar(30)
+  status                 VoiceSessionStatus @default(STARTING)
+  metadata               Json?
+  startedAt              DateTime           @default(now()) @map("started_at")
+  endedAt                DateTime?          @map("ended_at")
+  updatedAt              DateTime           @updatedAt @map("updated_at")
+  conversation           Conversation       @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  authenticatedUser      User?              @relation(fields: [authenticatedUserId], references: [id], onDelete: SetNull)
+  usage                  VoiceUsage[]
+
+  @@unique([provider, externalConversationId])
+  @@index([conversationId, startedAt])
+  @@index([authenticatedUserId, startedAt])
+  @@map("henry_voice_sessions")
+}
+
+model VoiceUsage {
+  id              String          @id @default(uuid()) @db.Uuid
+  voiceSessionId  String          @map("voice_session_id") @db.Uuid
+  operation       VoiceOperation
+  latencyMs       Int             @map("latency_ms")
+  audioDurationMs Int?            @map("audio_duration_ms")
+  characterCount  Int?            @map("character_count")
+  providerUnits   Decimal?        @map("provider_units") @db.Decimal(18, 6)
+  costUsd         Decimal?        @map("cost_usd") @db.Decimal(18, 8)
+  costStatus      VoiceCostStatus @default(COST_PENDING_PROVIDER_RECONCILIATION) @map("cost_status")
+  failureCategory String?         @map("failure_category") @db.VarChar(80)
+  createdAt       DateTime        @default(now()) @map("created_at")
+  voiceSession    VoiceSession    @relation(fields: [voiceSessionId], references: [id], onDelete: Cascade)
+
+  @@index([voiceSessionId, createdAt])
+  @@index([operation, createdAt])
+  @@map("henry_voice_usage")
 }
 
 model ConversationParticipant {
@@ -500,20 +561,20 @@ model ConversationParticipant {
 }
 
 model Message {
-  id             String                   @id @default(uuid()) @db.Uuid
-  conversationId String                   @map("conversation_id") @db.Uuid
-  participantId  String?                  @map("participant_id") @db.Uuid
-  role           MessageRole
-  channel        ConversationChannel      @default(WEB)
-  status         MessageStatus            @default(RECEIVED)
-  content        String                   @db.VarChar(8000)
-  origin         String                   @db.VarChar(40)
-  metadata       Json?
-  createdAt      DateTime                 @default(now()) @map("created_at")
-  conversation   Conversation             @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  participant    ConversationParticipant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
-  executionInput AIExecution[]            @relation("ExecutionInputMessage")
-  executionOutput AIExecution[]           @relation("ExecutionOutputMessage")
+  id              String                   @id @default(uuid()) @db.Uuid
+  conversationId  String                   @map("conversation_id") @db.Uuid
+  participantId   String?                  @map("participant_id") @db.Uuid
+  role            MessageRole
+  channel         ConversationChannel      @default(WEB)
+  status          MessageStatus            @default(RECEIVED)
+  content         String                   @db.VarChar(8000)
+  origin          String                   @db.VarChar(40)
+  metadata        Json?
+  createdAt       DateTime                 @default(now()) @map("created_at")
+  conversation    Conversation             @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  participant     ConversationParticipant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  executionInput  AIExecution[]            @relation("ExecutionInputMessage")
+  executionOutput AIExecution[]            @relation("ExecutionOutputMessage")
 
   @@index([conversationId, createdAt])
   @@map("henry_messages")
@@ -588,15 +649,15 @@ model ToolResult {
 }
 
 model AIUsage {
-  id              String      @id @default(uuid()) @db.Uuid
-  executionId     String      @unique @map("execution_id") @db.Uuid
-  inputTokens     Int?        @map("input_tokens")
-  outputTokens    Int?        @map("output_tokens")
-  totalTokens     Int?        @map("total_tokens")
-  estimatedCostUsd Decimal?   @map("estimated_cost_usd") @db.Decimal(18, 8)
-  costSource      String?     @map("cost_source") @db.VarChar(40)
-  createdAt       DateTime    @default(now()) @map("created_at")
-  execution       AIExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  id               String      @id @default(uuid()) @db.Uuid
+  executionId      String      @unique @map("execution_id") @db.Uuid
+  inputTokens      Int?        @map("input_tokens")
+  outputTokens     Int?        @map("output_tokens")
+  totalTokens      Int?        @map("total_tokens")
+  estimatedCostUsd Decimal?    @map("estimated_cost_usd") @db.Decimal(18, 8)
+  costSource       String?     @map("cost_source") @db.VarChar(40)
+  createdAt        DateTime    @default(now()) @map("created_at")
+  execution        AIExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
 
   @@map("henry_ai_usage")
 }

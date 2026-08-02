@@ -27,6 +27,15 @@ import { ProspectsService } from './prospects/prospects.service';
 import { SettingsController } from './settings/settings.controller';
 import { RolesController, UsersController } from './users/users.controller';
 import { UsersService } from './users/users.service';
+import { ElevenLabsProvider } from './voice/elevenlabs.provider';
+import { HenryVoiceFormatter } from './voice/henry-voice-formatter';
+import { HenryVoiceGateway } from './voice/henry-voice-gateway.service';
+import { VoiceConfig } from './voice/voice-config';
+import { VoiceController } from './voice/voice.controller';
+import { VoiceSessionService } from './voice/voice-session.service';
+import { VOICE_STT_PROVIDER, VOICE_TTS_PROVIDER } from './voice/voice-provider';
+import { ElevenLabsCustomLlmController } from './voice/elevenlabs-custom-llm.controller';
+import { ElevenLabsCustomLlmService } from './voice/elevenlabs-custom-llm.service';
 
 @Module({
   imports: [
@@ -45,6 +54,8 @@ import { UsersService } from './users/users.service';
     ProspectsController,
     CrmController,
     HenryController,
+    VoiceController,
+    ElevenLabsCustomLlmController,
   ],
   providers: [
     PrismaService,
@@ -63,6 +74,14 @@ import { UsersService } from './users/users.service';
     HenryPolicyComposer,
     HenryPolicyEngine,
     HenryService,
+    VoiceConfig,
+    ElevenLabsProvider,
+    { provide: VOICE_STT_PROVIDER, useExisting: ElevenLabsProvider },
+    { provide: VOICE_TTS_PROVIDER, useExisting: ElevenLabsProvider },
+    HenryVoiceFormatter,
+    VoiceSessionService,
+    HenryVoiceGateway,
+    ElevenLabsCustomLlmService,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: AuthGuard },
   ],
