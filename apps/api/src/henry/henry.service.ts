@@ -221,7 +221,11 @@ export class HenryService {
           totalToolCalls += 1;
           const parsedArguments = this.parseArguments(call.arguments);
           const baseToolDecision = this.policyEngine.evaluateTool(call.name, prospectAssociated);
-          const toolDecision = runtimeContext.toolPermissions.includes(call.name) ? baseToolDecision : { action: 'REJECT' as const, policyId: 'tools', ruleId: 'TOOL-ROLE-DENIED-001' };
+          const toolDecision = baseToolDecision.action === 'REJECT'
+            ? baseToolDecision
+            : runtimeContext.toolPermissions.includes(call.name)
+              ? baseToolDecision
+              : { action: 'REJECT' as const, policyId: 'tools', ruleId: 'TOOL-ROLE-DENIED-001' };
           const persisted = await this.db.toolCall.create({ data: { executionId: execution.id, providerId: call.id, name: call.name, input: parsedArguments, status: toolDecision.action === 'REJECT' ? 'REJECTED' : 'RUNNING', policyId: toolDecision.policyId, ruleId: toolDecision.ruleId, startedAt: new Date() } });
           let output: Record<string, unknown>;
           try {
