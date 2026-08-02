@@ -78,6 +78,23 @@ tienen identificador y versión; no existe un único prompt gigante como fuente 
 Estados: saludo, descubrimiento, diagnóstico, calificación, educación, objeción, cierre, agenda,
 escalamiento, seguimiento y soporte. Cada transición sensible registra política y regla causal.
 
+### Ampliación 3.1 — Expert Copilot
+
+La ampliación mantiene un único Henry, una conversación, un provider, un composer y un motor de
+tools. `HenryExpertCopilotService` deriva el modo desde objetivo, rol server-side, página, entidad y
+evidencia autorizada. Cubre asistencia pública, copiloto experto, entrenamiento comercial,
+inteligencia CRM, soporte de decisiones, enseñanza y conocimiento corporativo.
+
+La inteligencia CRM calcula hechos verificables —campos faltantes, tareas vencidas, última
+interacción, etapa y prioridad registrada— dentro del scope RBAC. No presenta agenda futura,
+probabilidades, ventas cruzadas ni indicadores sin evidencia. Una recomendación incluye motivo,
+beneficios, riesgos, alternativas, confianza y fuentes, y no ejecuta mutaciones sin permiso.
+
+`ConversationState` conserva memoria corporativa mínima mediante referencias autorizadas.
+`AIExecution.policyContext` y metadata de mensajes registran política, regla, rol, página,
+confianza, tipo de razonamiento, fuentes y decisión de tool sin almacenar prompts, secretos ni
+cadenas de pensamiento.
+
 ## Proveedores de IA
 
 `AIProvider` desacopla la orquestación del proveedor. La primera implementación operativa usa la
@@ -194,6 +211,9 @@ respuestas se renderizan sin HTML mediante un formato editorial seguro que admit
 - Aislamiento de contexto entre consultores y rechazo de identificadores manipulados.
 - Permisos de herramientas por rol y confirmación de acciones sensibles.
 - Renderer estructurado seguro, launcher global y experiencia móvil.
+- Expert Copilot, Sales Coach, Teach Mode, conocimiento corporativo y soporte de decisiones.
+- Inteligencia CRM con evidencia real, memoria corporativa y recomendaciones confirmables.
+- Auditoría de confianza, tipo de razonamiento, fuentes y decisión de herramientas.
 
 La suite automatizada utiliza un `FakeAIProvider` determinista sin consumo externo. La prueba real
 de OpenRouter solo se ejecuta localmente con credenciales autorizadas fuera de Git.

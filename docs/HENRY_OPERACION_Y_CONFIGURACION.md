@@ -11,9 +11,25 @@ canal existen para integraciones futuras, pero la API rechaza que el público in
 de `WEB`.
 
 El comportamiento se rige por [`HENRY_MANUAL_MAESTRO.md`](./HENRY_MANUAL_MAESTRO.md), versión
-`1.0.0`. Nueve políticas independientes se componen según el estado actual y el servidor aplica
+`1.1.0`. Trece políticas independientes se componen según el estado actual y el servidor aplica
 reglas deterministas de escalamiento, salida segura y autorización de herramientas. El prompt del
 sistema es un artefacto compuesto y versionado, no una fuente monolítica informal.
+
+## Expert Copilot 3.1
+
+El mismo motor detecta `PUBLIC_ADVISOR`, `EXPERT_COPILOT`, `SALES_COACH`, `CRM_INTELLIGENCE`,
+`DECISION_SUPPORT`, `KNOWLEDGE_ASSISTANT`, `TEACH_MODE` o `CORPORATE_ASSISTANT`. El rol procede
+siempre de sesión. `HenryContextService` consulta CRM con scope; `HenryExpertCopilotService`
+construye evidencia, confianza, objetivo y memoria; `HenryPolicyComposer` incorpora el perfil al
+único artefacto de instrucciones.
+
+La memoria estructurada vive en `ConversationState`; no requiere otra tabla. La auditoría guarda
+fuentes y clasificación de decisión, nunca prompts o razonamiento privado. Toda mutación continúa
+atravesando la allowlist y solicita confirmación cuando corresponde.
+
+La inteligencia proactiva no es autónoma: se presenta dentro de una interacción solicitada y solo
+con evidencia real. Agenda, Portal Cliente y Academia se reconocen como roadmap, no como
+funcionalidades disponibles.
 
 ## Configuración de IA
 
