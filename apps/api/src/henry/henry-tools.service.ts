@@ -31,6 +31,7 @@ const schemas = {
     title: z.string().trim().min(2).max(160),
     description: z.string().trim().max(1200).optional(),
     priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).default('MEDIUM'),
+    confirmedByUser: z.literal(true),
   }),
   qualify_prospect: z.object({
     intention: z.enum([
@@ -65,7 +66,7 @@ export class HenryToolsService {
     }, ['name', 'city', 'interest']) },
     { name: 'register_interaction', description: 'Registra un resumen factual de la interacción en el CRM asociado.', parameters: objectSchema({ summary: { type: 'string' } }, ['summary']) },
     { name: 'create_crm_activity', description: 'Agrega una actividad factual al historial del prospecto asociado.', parameters: objectSchema({ summary: { type: 'string' } }, ['summary']) },
-    { name: 'create_task', description: 'Crea una tarea para el responsable comercial actualmente asignado.', parameters: objectSchema({ title: { type: 'string' }, description: { type: 'string' }, priority: { type: 'string', enum: ['LOW', 'MEDIUM', 'HIGH', 'URGENT'] } }, ['title']) },
+    { name: 'create_task', description: 'Crea una tarea solo después de que el usuario interno confirme explícitamente la acción.', parameters: objectSchema({ title: { type: 'string' }, description: { type: 'string' }, priority: { type: 'string', enum: ['LOW', 'MEDIUM', 'HIGH', 'URGENT'] }, confirmedByUser: { type: 'boolean', const: true } }, ['title', 'confirmedByUser']) },
     { name: 'qualify_prospect', description: 'Registra la intención confirmada por la persona, sin emitir recomendación financiera.', parameters: objectSchema({ intention: { type: 'string', enum: ['pension', 'educacion', 'patrimonio', 'proteccion-familiar', 'accidentes', 'empresarios', 'socios', 'socio-unico', 'consultores', 'hablar-con-asesor', 'agendar', 'otra-consulta'] } }, ['intention']) },
     { name: 'request_human_escalation', description: 'Solicita intervención humana y crea trazabilidad comercial.', parameters: objectSchema({ reason: { type: 'string', enum: ['USER_REQUEST', 'SENSITIVE_CONTEXT', 'LOW_CONFIDENCE', 'UNSUPPORTED_INTENT', 'REPEATED_ERROR', 'HIGH_VALUE_CASE', 'AUTOMATION_LIMIT', 'POLICY'] }, summary: { type: 'string' } }, ['reason', 'summary']) },
     { name: 'get_available_consultants', description: 'Comprueba si existe un responsable comercial disponible o asignado, sin exponer datos privados.', parameters: objectSchema({}) },

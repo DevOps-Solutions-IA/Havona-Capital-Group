@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HenryExperience } from './henry-experience';
+vi.mock('next/navigation', () => ({ usePathname: () => '/henry' }));
 
 describe('HenryExperience', () => {
   beforeEach(() => {
@@ -51,7 +52,7 @@ describe('HenryExperience', () => {
     fireEvent.click(screen.getByRole('button', { name: /revisar mi pensión/i }));
 
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/guardado en este dispositivo/i));
-    expect(localStorage.getItem('havona_henry_session_v1')).toContain('607a72d8');
-    expect(localStorage.getItem('havona_henry_draft_v1')).toBe('Quiero revisar mi pensión');
+    expect(localStorage.getItem('havona_henry_session_v2_public')).toContain('607a72d8');
+    expect(localStorage.getItem('havona_henry_draft_v2_public')).toBe('Quiero revisar mi pensión');
   });
 });

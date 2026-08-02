@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { constantTimeTokenMatch, createOpaqueToken, hashToken } from '@havona/auth';
-import { CreateHenryConversationInput, HenryConversationListInput, SendHenryMessageInput } from '@havona/contracts';
+import { CreateHenryConversationInput, HenryConversationListInput, HenryPageContextInput, SendHenryMessageInput } from '@havona/contracts';
 import { AIExecutionStatus, Prisma } from '@havona/database';
 import { AIConfig } from '../ai/ai-config';
 import { AIMessage, AIProvider, AIProviderError, AI_PROVIDER } from '../ai/ai-provider';
@@ -11,6 +11,7 @@ import { HenryToolsService } from './henry-tools.service';
 import { HenryPolicyComposer } from './policies/henry-policy-composer.service';
 import { HenryPolicyEngine } from './policies/henry-policy-engine.service';
 import { HENRY_MANUAL_VERSION, HenryConversationStage, HenryPolicyDecision } from './policies/henry-policy.types';
+import { HenryActor, HenryContextService } from './henry-context.service';
 
 type Actor = { id: string; permissions: string[] };
 
@@ -24,27 +25,31 @@ export class HenryService {
     private readonly audit: AuditService,
     private readonly policyComposer: HenryPolicyComposer,
     private readonly policyEngine: HenryPolicyEngine,
+    private readonly henryContext: HenryContextService,
   ) {}
 
-  async create(input: CreateHenryConversationInput, context: AuditContext) {
+  async create(input: CreateHenryConversationInput, context: AuditContext, actor?: HenryActor) {
+    const resolved = await this.henryContext.resolve(input.pageContext, actor);
     const token = createOpaqueToken(32);
     const created = await this.db.$transaction(async (tx) => {
       const conversation = await tx.conversation.create({ data: {
         accessTokenHash: hashToken(token), channel: 'WEB', consentAcceptedAt: new Date(),
         privacyVersion: input.consent.privacyVersion,
-        state: { create: { state: { entryPoint: input.entryPoint, confirmedFields: [], stage: 'GREETING', manualVersion: HENRY_MANUAL_VERSION } } },
+        prospectId: resolved.entity?.type === 'prospect' ? resolved.entity.id : undefined,
+        state: { create: { state: { entryPoint: input.entryPoint, confirmedFields: [], stage: 'GREETING', manualVersion: HENRY_MANUAL_VERSION, roleContext: resolved.role, pageContext: resolved.page } } },
       } });
       const [visitor, assistant] = await Promise.all([
         tx.conversationParticipant.create({ data: { conversationId: conversation.id, type: 'VISITOR' } }),
         tx.conversationParticipant.create({ data: { conversationId: conversation.id, type: 'ASSISTANT', displayName: 'Henry' } }),
       ]);
+      if (actor) await tx.conversationParticipant.create({ data: { conversationId: conversation.id, type: 'USER', userId: actor.id, displayName: resolved.role } });
       const greeting = await tx.message.create({ data: {
         conversationId: conversation.id, participantId: assistant.id, role: 'ASSISTANT',
         status: 'COMPLETED', channel: 'WEB', origin: 'SYSTEM_GREETING',
         content: 'Soy Henry, asistente virtual de HAVONA CAPITAL GROUP. Puedo ayudarle a identificar su necesidad y facilitar una conversación con nuestro equipo. ¿Qué le gustaría resolver hoy?',
       } });
       await tx.conversation.update({ where: { id: conversation.id }, data: { lastMessageAt: greeting.createdAt } });
-      await this.audit.record('HENRY_CONVERSATION_CREATED', 'Conversation', conversation.id, context, { channel: 'WEB', entryPoint: input.entryPoint }, tx);
+      await this.audit.record('HENRY_CONVERSATION_CREATED', 'Conversation', conversation.id, { ...context, actorUserId: actor?.id }, { channel: 'WEB', entryPoint: input.entryPoint, role: resolved.role, pageContext: resolved.page }, tx);
       return { conversation, visitor, greeting };
     });
     return {
@@ -58,27 +63,32 @@ export class HenryService {
     };
   }
 
-  async get(publicId: string, token: string | undefined) {
+  async get(publicId: string, token: string | undefined, actor?: HenryActor) {
     const conversation = await this.authorize(publicId, token);
+    if (actor) await this.authorizeInternalParticipant(conversation.id, actor.id);
     const messages = await this.db.message.findMany({ where: { conversationId: conversation.id }, orderBy: { createdAt: 'asc' }, take: 100 });
     return { data: { id: conversation.publicId, status: conversation.status, intention: conversation.intention, prospectAssociated: Boolean(conversation.prospectId), messages: messages.map((message) => this.publicMessage(message)) } };
   }
 
-  async send(publicId: string, token: string | undefined, input: SendHenryMessageInput, context: AuditContext) {
+  async send(publicId: string, token: string | undefined, input: SendHenryMessageInput, context: AuditContext, actor?: HenryActor) {
     const conversation = await this.authorize(publicId, token);
+    if (actor) await this.authorizeInternalParticipant(conversation.id, actor.id);
+    const resolved = await this.henryContext.resolve(input.pageContext, actor);
+    await this.updateRuntimeContext(conversation.id, resolved.role, resolved.page);
     if (conversation.status === 'CLOSED' || conversation.status === 'BLOCKED') throw new BadRequestException('La conversación no acepta nuevos mensajes');
     const existing = await this.db.message.findUnique({ where: { id: input.messageId } });
     if (existing) {
       if (existing.conversationId !== conversation.id) throw new BadRequestException('Identificador de mensaje inválido');
       return this.responseForInput(existing.id, conversation.id);
     }
-    const visitor = await this.db.conversationParticipant.findFirstOrThrow({ where: { conversationId: conversation.id, type: { in: ['VISITOR', 'PROSPECT'] } }, orderBy: { createdAt: 'asc' } });
+    const visitor = await this.db.conversationParticipant.findFirstOrThrow({ where: { conversationId: conversation.id, type: actor ? 'USER' : { in: ['VISITOR', 'PROSPECT'] }, ...(actor ? { userId: actor.id } : {}) }, orderBy: { createdAt: 'asc' } });
     const userMessage = await this.db.message.create({ data: {
       id: input.messageId, conversationId: conversation.id, participantId: visitor.id,
-      role: 'USER', status: 'PROCESSING', content: input.content, channel: 'WEB', origin: 'WEB_VISITOR',
+      role: 'USER', status: 'PROCESSING', content: input.content, channel: 'WEB', origin: actor ? 'WEB_INTERNAL' : 'WEB_VISITOR',
+      metadata: { roleContext: resolved.role, pageContext: resolved.page, entityContext: resolved.entity ? { type: resolved.entity.type, id: resolved.entity.id } : undefined },
     } });
     await this.db.conversation.update({ where: { id: conversation.id }, data: { lastMessageAt: userMessage.createdAt } });
-    return this.orchestrate(conversation.id, userMessage.id, context);
+    return this.orchestrate(conversation.id, userMessage.id, { ...context, actorUserId: actor?.id }, resolved);
   }
 
   async requestEscalation(publicId: string, token: string | undefined, reason: any, summary: string, context: AuditContext) {
@@ -139,7 +149,7 @@ export class HenryService {
     return { conversations, escalated, prospectLinked, toolCalls, errors, usage: usage._sum, generatedAt: new Date().toISOString() };
   }
 
-  private async orchestrate(conversationId: string, inputMessageId: string, context: AuditContext) {
+  private async orchestrate(conversationId: string, inputMessageId: string, context: AuditContext, runtimeContext: Awaited<ReturnType<HenryContextService['resolve']>>) {
     const conversation = await this.db.conversation.findUniqueOrThrow({ where: { id: conversationId }, include: { state: true } });
     let stage = this.readStage(conversation.state?.state);
     let prospectAssociated = Boolean(conversation.prospectId);
@@ -149,10 +159,11 @@ export class HenryService {
       await this.transitionState(conversationId, stage, inputDecision.stage, inputDecision, context);
       stage = inputDecision.stage;
     }
-    const composed = this.policyComposer.compose({ stage, prospectAssociated, intention: conversation.intention });
+    const composed = this.policyComposer.compose({ stage, prospectAssociated, intention: conversation.intention, roleContext: runtimeContext.role, pageContext: runtimeContext.page });
+    const systemPrompt = `${composed.prompt}\n\n${this.henryContext.prompt(runtimeContext)}`;
     const execution = await this.db.aIExecution.create({ data: {
       conversationId, inputMessageId, provider: this.provider.name, model: this.provider.model || 'not-configured',
-      policyContext: { manualVersion: composed.manualVersion, stage, appliedPolicies: composed.appliedPolicies },
+      policyContext: { manualVersion: composed.manualVersion, stage, appliedPolicies: composed.appliedPolicies, roleContext: runtimeContext.role, pageContext: runtimeContext.page, entityContext: runtimeContext.entity ? { type: runtimeContext.entity.type, id: runtimeContext.entity.id } : undefined },
     } });
     const started = Date.now();
     if (inputDecision.action === 'ESCALATE') {
@@ -172,7 +183,7 @@ export class HenryService {
 
     const history = await this.db.message.findMany({ where: { conversationId }, orderBy: { createdAt: 'desc' }, take: 24 });
     const messages = this.withinInputBudget([
-      { role: 'system', content: composed.prompt },
+      { role: 'system', content: systemPrompt },
       ...history.reverse().filter((item) => ['USER', 'ASSISTANT'].includes(item.role)).map((item) => ({ role: item.role === 'USER' ? 'user' as const : 'assistant' as const, content: item.content })),
     ]);
     let iterations = 0;
@@ -185,7 +196,7 @@ export class HenryService {
     try {
       while (iterations <= this.config.maxToolCalls) {
         iterations += 1;
-        const result = await this.provider.complete({ messages, tools: this.tools.definitions, maxOutputTokens: this.config.maxOutputTokens, temperature: this.config.temperature });
+        const result = await this.provider.complete({ messages, tools: this.tools.definitions.filter((tool) => runtimeContext.toolPermissions.includes(tool.name)), maxOutputTokens: this.config.maxOutputTokens, temperature: this.config.temperature });
         inputTokens += result.usage.inputTokens ?? 0;
         outputTokens += result.usage.outputTokens ?? 0;
         totalTokens += result.usage.totalTokens ?? 0;
@@ -209,7 +220,8 @@ export class HenryService {
         for (const call of result.toolCalls) {
           totalToolCalls += 1;
           const parsedArguments = this.parseArguments(call.arguments);
-          const toolDecision = this.policyEngine.evaluateTool(call.name, prospectAssociated);
+          const baseToolDecision = this.policyEngine.evaluateTool(call.name, prospectAssociated);
+          const toolDecision = runtimeContext.toolPermissions.includes(call.name) ? baseToolDecision : { action: 'REJECT' as const, policyId: 'tools', ruleId: 'TOOL-ROLE-DENIED-001' };
           const persisted = await this.db.toolCall.create({ data: { executionId: execution.id, providerId: call.id, name: call.name, input: parsedArguments, status: toolDecision.action === 'REJECT' ? 'REJECTED' : 'RUNNING', policyId: toolDecision.policyId, ruleId: toolDecision.ruleId, startedAt: new Date() } });
           let output: Record<string, unknown>;
           try {
@@ -256,6 +268,17 @@ export class HenryService {
     const message = await this.db.message.create({ data: { conversationId, participantId: assistant.id, role: 'ASSISTANT', channel: 'WEB', status: 'COMPLETED', content: content.slice(0, 8000), origin, metadata: decision ? { policyId: decision.policyId, ruleId: decision.ruleId, action: decision.action } : undefined } });
     await this.db.conversation.update({ where: { id: conversationId }, data: { lastMessageAt: message.createdAt } });
     return message;
+  }
+
+  private async authorizeInternalParticipant(conversationId: string, userId: string) {
+    const participant = await this.db.conversationParticipant.findFirst({ where: { conversationId, userId, type: 'USER' } });
+    if (!participant) throw new NotFoundException('Conversación interna no encontrada');
+  }
+
+  private async updateRuntimeContext(conversationId: string, roleContext: string, pageContext: HenryPageContextInput) {
+    const current = await this.db.conversationState.findUniqueOrThrow({ where: { conversationId } });
+    const state = current.state && typeof current.state === 'object' && !Array.isArray(current.state) ? current.state as Record<string, Prisma.JsonValue> : {};
+    await this.db.conversationState.update({ where: { conversationId }, data: { version: { increment: 1 }, state: { ...state, roleContext, pageContext, pageContextUpdatedAt: new Date().toISOString() } } });
   }
 
   private async authorize(publicId: string, token: string | undefined) {

@@ -274,6 +274,38 @@ export const henryIntentionSchema = z.enum([
   'agendar',
   'otra-consulta',
 ]);
+
+export const henryPageContextSchema = z
+  .object({
+    pageType: z.enum([
+      'public-home',
+      'public-solution',
+      'henry-full',
+      'dashboard',
+      'prospect-list',
+      'prospect-detail',
+      'company-detail',
+      'pipeline',
+      'tasks',
+      'henry-admin',
+      'other',
+    ]),
+    section: slug(80).optional(),
+    intentHint: slug(80).optional(),
+    entityType: z.enum(['prospect', 'company', 'opportunity']).optional(),
+    entityId: uuid.optional(),
+    selectedStage: slug(80).optional(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (Boolean(value.entityType) !== Boolean(value.entityId)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: 'entityType y entityId deben enviarse juntos' });
+    }
+    if (value.entityType && !['prospect-detail', 'company-detail'].includes(value.pageType)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: 'La entidad no corresponde al tipo de página' });
+    }
+  });
+
 export const createHenryConversationSchema = z.object({
   channel: z.literal('WEB').default('WEB'),
   consent: z.object({
@@ -283,10 +315,12 @@ export const createHenryConversationSchema = z.object({
     privacyVersion: slug(40),
   }),
   entryPoint: slug(80).default('henry'),
+  pageContext: henryPageContextSchema.optional(),
 });
 export const sendHenryMessageSchema = z.object({
   messageId: uuid,
   content: plainText(4000),
+  pageContext: henryPageContextSchema.optional(),
 });
 export const henryConversationListSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -316,3 +350,4 @@ export const requestEscalationSchema = z.object({
 export type CreateHenryConversationInput = z.infer<typeof createHenryConversationSchema>;
 export type SendHenryMessageInput = z.infer<typeof sendHenryMessageSchema>;
 export type HenryConversationListInput = z.infer<typeof henryConversationListSchema>;
+export type HenryPageContextInput = z.infer<typeof henryPageContextSchema>;

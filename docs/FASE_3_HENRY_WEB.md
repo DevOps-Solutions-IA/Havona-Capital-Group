@@ -39,6 +39,31 @@ Web /henry
 → actividad CRM autorizada
 ```
 
+### Capa transversal web
+
+Henry no es únicamente la ruta `/henry`. Existe un solo cerebro y dos presentaciones de la misma
+capa conversacional: el modo completo `/henry` y `HenryGlobalAssistant`, disponible en el sitio
+público y dentro del portal autenticado. La sesión y el borrador sobreviven a la navegación; el
+cambio de página actualiza el contexto autorizado sin crear otro asistente ni otra conversación.
+
+La composición efectiva es:
+
+```text
+Henry Core + Manual Maestro + Policy Engine + Role Context + Page Context
++ CRM Context autorizado + Channel Context + Tool Permissions
+```
+
+`PageContext` contiene exclusivamente tipo de página, pistas editoriales e identificadores mínimos.
+El navegador nunca envía expedientes completos ni decide permisos. `HenryContextService` deriva
+`HenryRoleContext` desde la sesión (`PUBLIC`, `CLIENT`, `CONSULTANT`, `MANAGER`, `ADMIN` o
+`SUPER_ADMIN`), vuelve a consultar la entidad con el scope CRM aplicable y entrega al modelo solo
+datos permitidos. Un contexto manipulado se rechaza antes de invocar al proveedor.
+
+En contexto CRM Henry distingue `CONOCIDO`, `FALTANTE`, `INFERIDO` y `NO AUTORIZADO`. Un consultor
+solo puede acceder a prospectos asignados. Las herramientas se filtran por rol antes de enviarse al
+proveedor y vuelven a autorizarse antes de ejecutarse. Las acciones persistentes sensibles, como
+crear una tarea, requieren confirmación explícita.
+
 El modelo nunca accede directamente a Prisma, PostgreSQL ni Redis. Toda mutación atraviesa una
 herramienta registrada, validada, autorizada y auditada. El orquestador aplica un máximo
 configurable de iteraciones y llamadas a herramientas por turno.
@@ -148,6 +173,12 @@ desde datos reales.
 propia, luminosa y editorial, no como un widget SaaS genérico. Debe soportar teclado, foco visible,
 lectores de pantalla, contraste, estados de carga/error/reintento y `prefers-reduced-motion`.
 
+`HenryGlobalAssistant` utiliza launcher no invasivo, panel flotante en escritorio y experiencia de
+pantalla completa en móvil. Expone estados online, pensando, ejecutando y escalando. `/henry` y el
+launcher reutilizan `HenryConversation`; no duplican red, persistencia ni reglas de sesión. Las
+respuestas se renderizan sin HTML mediante un formato editorial seguro que admite párrafos,
+énfasis, listas y enlaces internos o corporativos autorizados.
+
 ## Pruebas requeridas
 
 - Creación de conversación y consentimiento.
@@ -159,6 +190,10 @@ lectores de pantalla, contraste, estados de carga/error/reintento y `prefers-red
 - Registro exacto de uso, latencia y costo informado.
 - Guardrails y acciones prohibidas.
 - RBAC administrativo.
+- Persistencia de conversación durante navegación y actualización de `PageContext`.
+- Aislamiento de contexto entre consultores y rechazo de identificadores manipulados.
+- Permisos de herramientas por rol y confirmación de acciones sensibles.
+- Renderer estructurado seguro, launcher global y experiencia móvil.
 
 La suite automatizada utiliza un `FakeAIProvider` determinista sin consumo externo. La prueba real
 de OpenRouter solo se ejecuta localmente con credenciales autorizadas fuera de Git.

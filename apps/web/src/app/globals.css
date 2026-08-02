@@ -912,6 +912,44 @@ body {
   .henry-starters button, .henry-console form button { transition: none; }
 }
 
+/* Henry transversal — una sola experiencia conversacional */
+.henry-rich-text { color: inherit; font-size: .9rem; line-height: 1.7; overflow-wrap: anywhere; }
+.henry-rich-text > * + * { margin-top: .75rem; }
+.henry-rich-text h3 { color: #16324d; font-family: var(--font-outfit); font-size: 1rem; font-weight: 600; }
+.henry-rich-text strong { color: inherit; font-weight: 700; }
+.henry-rich-text ul, .henry-rich-text ol { padding-left: 1.25rem; }
+.henry-rich-text ul { list-style: disc; }.henry-rich-text ol { list-style: decimal; }
+.henry-rich-text li + li { margin-top: .35rem; }
+.henry-rich-text a { color: #0a3d73; font-weight: 650; text-decoration: underline; text-underline-offset: 3px; }
+.henry-message > div > .henry-rich-text { padding: .85rem 1rem; background: #f3f6fa; color: #293f54; }
+.henry-message.is-user > div > .henry-rich-text { background: #0a3d73; color: white; }
+
+.henry-global { position: fixed; right: max(1rem, env(safe-area-inset-right)); bottom: max(1rem, env(safe-area-inset-bottom)); z-index: 70; }
+.henry-launcher { display: flex; min-width: 190px; align-items: center; gap: .75rem; padding: .65rem .8rem; border: 1px solid rgba(10,61,115,.13); background: rgba(255,255,255,.93); box-shadow: 0 18px 50px rgba(7,26,51,.15); backdrop-filter: blur(18px); color: #071a33; text-align: left; }
+.henry-launcher > span:first-child { display: grid; width: 2.55rem; aspect-ratio: 1; place-items: center; background: #071a33; color: white; font-family: var(--font-outfit); font-size: 1rem; }
+.henry-launcher strong, .henry-launcher small { display: block; }.henry-launcher strong { font-family: var(--font-outfit); font-size: .85rem; }.henry-launcher small { color: #718294; font-size: .62rem; }
+.henry-launcher i { width: 7px; height: 7px; margin-left: auto; border-radius: 50%; background: #2d9d78; box-shadow: 0 0 0 4px rgba(45,157,120,.1); }
+.henry-launcher i.status-thinking, .henry-launcher i.status-action { background: #1478d4; }.henry-launcher i.status-escalating { background: #c08b3f; }
+.henry-global.is-open .henry-launcher { visibility: hidden; }
+.henry-global > aside { position: fixed; right: max(1rem, env(safe-area-inset-right)); bottom: max(1rem, env(safe-area-inset-bottom)); width: min(430px, calc(100vw - 2rem)); height: min(720px, calc(100dvh - 2rem)); border: 1px solid rgba(10,61,115,.14); background: white; box-shadow: 0 30px 90px rgba(7,26,51,.2); }
+.henry-global > aside.is-expanded { width: min(760px, calc(100vw - 2rem)); }
+.henry-global-controls { display: flex; height: 44px; align-items: center; justify-content: space-between; padding: 0 .7rem; border-bottom: 1px solid #dce6ef; background: #f7fafc; color: #37516b; font-size: .65rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.henry-global-controls > span, .henry-global-controls > div { display: flex; align-items: center; gap: .45rem; }.henry-global-controls svg { width: .9rem; }.henry-global-controls button { padding: .4rem; color: #526d86; }
+.henry-console.is-global { min-height: 0; height: calc(100% - 44px); max-height: none; border: 0; box-shadow: none; }
+.henry-console.is-global .henry-consent { padding: 1.4rem; }
+
+@media (max-width: 639px) {
+  .henry-global { right: max(.75rem, env(safe-area-inset-right)); bottom: max(4.75rem, env(safe-area-inset-bottom)); }
+  .henry-launcher { min-width: 0; padding: .55rem; }.henry-launcher > span:nth-child(2) { display: none; }
+  .henry-global > aside, .henry-global > aside.is-expanded { inset: 0; width: 100vw; height: 100dvh; border: 0; }
+  .henry-console.is-global { height: calc(100dvh - 44px); }
+  .henry-console.is-global .henry-transcript { padding-inline: .75rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .henry-launcher, .henry-global > aside { transition: none; }
+}
+
 /* Henry — operación interna */
 .henry-admin-workspace, .henry-detail { color: #1d2939; }
 .henry-admin-pulse { display: grid; margin: 1.5rem 0 2.5rem; border-block: 1px solid #cbd8e4; background: linear-gradient(90deg,#f8fbfd,#fff); }

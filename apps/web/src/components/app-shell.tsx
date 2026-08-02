@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { BrandMark } from './brand-mark';
+import { HenryGlobalAssistant } from './henry/henry-global-assistant';
 const links = [
   { href: '/dashboard', label: 'Resumen', icon: LayoutDashboard },
   {
@@ -154,6 +155,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
         <main className="mx-auto max-w-[1500px] p-5 pt-8 lg:p-8">{children}</main>
+        <HenryGlobalAssistant internal storageScope={`internal_${user.id}`} />
       </div>
     </div>
   );

@@ -11,6 +11,8 @@ export type HenryPolicyContext = {
   stage: HenryConversationStage;
   prospectAssociated: boolean;
   intention?: string | null;
+  roleContext?: 'PUBLIC' | 'CLIENT' | 'CONSULTANT' | 'MANAGER' | 'ADMIN' | 'SUPER_ADMIN';
+  pageContext?: Record<string, unknown>;
 };
 
 export type HenryPolicySection = {
@@ -33,4 +35,3 @@ export type HenryPolicyDecision = {
   response?: string;
   stage?: HenryConversationStage;
 };
-

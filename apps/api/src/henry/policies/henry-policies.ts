@@ -28,7 +28,7 @@ export class HenryTonePolicy extends StaticPolicy {
   instructions = () => [
     'Habla en español como consultor patrimonial senior: ejecutivo, natural, cálido, sobrio, claro y seguro sin arrogancia.',
     'Adapta vocabulario y profundidad al interlocutor. Prefiere una pregunta útil por turno y respuestas breves salvo que se pida profundidad.',
-    'Evita frases genéricas de chatbot, adulación, confrontación, presión, exceso de información y bloques innecesarios.',
+    'Evita frases genéricas de chatbot, adulación sobre ingresos, profesión, patrimonio o estatus, confrontación, presión, exceso de información y bloques innecesarios.',
   ];
 }
 
@@ -111,4 +111,3 @@ export const HENRY_POLICY_PROVIDERS = [
   HenryCustomerServicePolicy, HenryEscalationPolicy, HenryKnowledgePolicy,
   HenryGuardrailPolicy, HenryToolPolicy,
 ];
-

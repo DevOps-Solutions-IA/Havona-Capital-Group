@@ -18,6 +18,23 @@ export class HenryController {
     return this.henry.create(body, context(request));
   }
 
+  @Post('internal/conversations')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  createInternal(@Body(new ZodPipe(createHenryConversationSchema)) body: any, @Req() request: any) {
+    return this.henry.create(body, context(request), request.auth.user);
+  }
+
+  @Get('internal/conversations/:id')
+  getInternal(@Param('id', ParseUUIDPipe) id: string, @Headers('x-henry-token') token: string | undefined, @Req() request: any) {
+    return this.henry.get(id, token, request.auth.user);
+  }
+
+  @Post('internal/conversations/:id/messages')
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  sendInternal(@Param('id', ParseUUIDPipe) id: string, @Headers('x-henry-token') token: string | undefined, @Body(new ZodPipe(sendHenryMessageSchema)) body: any, @Req() request: any) {
+    return this.henry.send(id, token, body, context(request), request.auth.user);
+  }
+
   @Get('conversations/:id')
   @Public()
   @Throttle({ default: { limit: 30, ttl: 60_000 } })

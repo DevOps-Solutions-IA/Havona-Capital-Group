@@ -55,6 +55,10 @@ almacenamiento local y lo presenta mediante `X-Henry-Token`. En base de datos so
 hash SHA-256. Un `messageId` UUID suministrado por el cliente hace idempotente el reintento de un
 mensaje tras un fallo de red.
 
+El launcher global comparte esta misma sesión con `/henry`. Cada turno puede incluir un
+`pageContext` mínimo validado (`pageType`, `section`, `intentHint` y, solo autenticado, referencia de
+entidad). Una pista de intención adapta la apertura pero nunca se trata como necesidad confirmada.
+
 La experiencia informa y registra consentimiento antes de crear la conversación. Si una
 herramienta crea o consolida un prospecto, reutiliza la versión de privacidad de la conversación y
 el dominio de captación existente.
@@ -65,12 +69,21 @@ el dominio de captación existente.
 GET /api/v1/henry/admin/dashboard
 GET /api/v1/henry/admin/conversations
 GET /api/v1/henry/admin/conversations/:id
+POST /api/v1/henry/internal/conversations
+GET  /api/v1/henry/internal/conversations/:id
+POST /api/v1/henry/internal/conversations/:id/messages
 ```
 
 La interfaz se encuentra en `/administracion-henry`. `SUPER_ADMIN`, `ADMIN` y `GERENTE` disponen
 del ámbito global autorizado. `CONSULTOR` solo puede consultar conversaciones cuyo prospecto tenga
 una asignación activa a ese usuario. El dashboard requiere permiso específico y muestra únicamente
 conteos y uso persistidos.
+
+El copiloto global del portal usa siempre los endpoints `internal`. El rol procede de la sesión y
+no del body. Si `PageContext` referencia un prospecto, empresa u oportunidad, el API resuelve el
+scope mediante asignaciones y permisos antes de construir contexto. Los datos de entidad nunca se
+aceptan directamente desde el navegador. La sesión del copiloto se separa por usuario local para
+evitar continuidad accidental entre identidades que utilicen el mismo navegador.
 
 ## Herramientas y seguridad
 
@@ -89,6 +102,10 @@ El modelo propone llamadas, pero la aplicación las ejecuta. La allowlist vigent
 Cada entrada se valida con Zod. Una herramienta desconocida se registra como `REJECTED` con
 `UNAUTHORIZED_TOOL`; nunca se resuelve dinámicamente ni ejecuta SQL. Los límites de input, output,
 timeout, reintentos, iteraciones y tools se aplican desde servidor.
+
+La allowlist efectiva se reduce por `HenryRoleContext` antes de llegar al modelo. El API vuelve a
+comprobarla al ejecutar. `create_task` requiere `confirmedByUser=true`, que solo debe enviarse tras
+una confirmación expresa en la conversación.
 
 ## Observabilidad y costos
 

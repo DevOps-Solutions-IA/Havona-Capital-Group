@@ -18,15 +18,20 @@ export class HenryPolicyComposer {
 
   compose(context: HenryPolicyContext) {
     const sections = this.policies.map((policy) => policy.section(context)).sort((a, b) => a.priority - b.priority);
+    const roleInstructions = context.roleContext === 'CONSULTANT'
+      ? ['Actúa como copiloto comercial del consultor, no como vendedor frente a un prospecto.', 'Distingue CONOCIDO, FALTANTE, INFERIDO y NO AUTORIZADO.', 'Antes de crear tareas u otras acciones persistentes, pide confirmación explícita.']
+      : context.roleContext && context.roleContext !== 'PUBLIC'
+        ? ['Actúa como copiloto operativo según el ámbito autorizado del usuario.', 'No afirmes acceso a datos que el contexto del servidor no haya suministrado.']
+        : ['Actúa como asistente público consultivo; confirma la necesidad antes de asumir la intención sugerida por la página.'];
     return {
       manualVersion: HENRY_MANUAL_VERSION,
       appliedPolicies: sections.map(({ id, version }) => ({ id, version })),
       prompt: [
         `<henry-policy-manual version="${HENRY_MANUAL_VERSION}">`,
         ...sections.map((section) => `<policy id="${section.id}" version="${section.version}">\n${section.instructions.map((item) => `- ${item}`).join('\n')}\n</policy>`),
+        `<role-context role="${context.roleContext ?? 'PUBLIC'}">\n${roleInstructions.map((item) => `- ${item}`).join('\n')}\n- Si la base autorizada no contiene una respuesta, indica: "Esta información no está disponible en mi base autorizada."\n- Usa 2 a 4 párrafos breves en conversación simple; listas solo para procesos, comparaciones o checklists.\n</role-context>`,
         '</henry-policy-manual>',
       ].join('\n\n'),
     };
   }
 }
-
