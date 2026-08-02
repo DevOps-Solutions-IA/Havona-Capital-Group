@@ -16,4 +16,11 @@ describe('HenryMessageContent', () => {
     render(<HenryMessageContent content="[secreto](https://evil.example)" />);
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
   });
+
+  it('presenta tablas estructuradas sin habilitar HTML', () => {
+    render(<HenryMessageContent content={'Aspecto | Estado\n--- | ---\nContexto | **Confirmado**\nRiesgo | Pendiente'} />);
+    expect(screen.getByRole('table')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Aspecto' })).toBeInTheDocument();
+    expect(screen.getByText('Confirmado')).toBeInTheDocument();
+  });
 });

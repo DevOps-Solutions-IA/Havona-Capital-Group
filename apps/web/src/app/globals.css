@@ -921,6 +921,10 @@ body {
 .henry-rich-text ul { list-style: disc; }.henry-rich-text ol { list-style: decimal; }
 .henry-rich-text li + li { margin-top: .35rem; }
 .henry-rich-text a { color: #0a3d73; font-weight: 650; text-decoration: underline; text-underline-offset: 3px; }
+.henry-table-wrap { max-width: 100%; overflow-x: auto; }
+.henry-table-wrap table { width: 100%; min-width: 24rem; border-collapse: collapse; font-size: .84rem; }
+.henry-table-wrap th, .henry-table-wrap td { border-bottom: 1px solid rgba(10, 61, 115, .13); padding: .55rem .65rem; text-align: left; vertical-align: top; }
+.henry-table-wrap th { color: #16324d; font-family: var(--font-outfit); font-weight: 650; }
 .henry-message > div > .henry-rich-text { padding: .85rem 1rem; background: #f3f6fa; color: #293f54; }
 .henry-message.is-user > div > .henry-rich-text { background: #0a3d73; color: white; }
 
