@@ -1,9 +1,13 @@
 # Henry Web — operación y configuración
 
+La operación de voz está descrita en `docs/HENRY_VOICE_ELEVENLABS.md`. ElevenLabs funciona como
+STT/TTS y transporte, no como un segundo cerebro. Toda entrada de voz atraviesa el mismo Henry
+Core, Policy Engine, contexto autorizado, memoria, RBAC y Tool Engine del canal textual.
+
 ## Alcance vigente
 
-Henry es el asistente virtual de HAVONA CAPITAL GROUP. En Fase 3 opera únicamente por el canal
-`WEB`, persiste conversaciones y mensajes, utiliza herramientas controladas para interactuar con
+Henry es el asistente virtual de HAVONA CAPITAL GROUP. En Fase 3 opera por canales `WEB` y `VOICE`,
+persiste conversaciones y mensajes, utiliza herramientas controladas para interactuar con
 el CRM y solicita escalamiento humano cuando una política o el usuario lo requiere.
 
 WhatsApp, email conversacional, voz, agenda real y Havona Meet no están activos. Los contratos de

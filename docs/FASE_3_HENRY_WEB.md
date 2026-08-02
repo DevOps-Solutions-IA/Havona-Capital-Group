@@ -7,6 +7,14 @@
 Rama: `feature/fase-03-henry-web`  
 Versión objetivo: `v0.4.0`
 
+## Ampliación operativa de voz
+
+La Fase 3 incorpora voz web desacoplada con ElevenLabs sin crear otro Henry ni otra conversación.
+`VOICE` es un canal de `Conversation`, con sesiones de transporte y consumo auditables. Incluye
+STT, TTS, micrófono accesible en la experiencia existente, continuidad multimodal, fallback
+textual y gateway Custom LLM protegido. Razonamiento y acciones permanecen en Henry Core. La
+validación externa depende de credenciales locales autorizadas y no se simula en CI.
+
 Henry es el asistente virtual de HAVONA CAPITAL GROUP. Esta fase construye un canal web real,
 persistente, auditable e integrado con el CRM. Henry siempre se identifica como asistente virtual,
 no reemplaza al consultor y no promete resultados, coberturas ni decisiones contractuales.
