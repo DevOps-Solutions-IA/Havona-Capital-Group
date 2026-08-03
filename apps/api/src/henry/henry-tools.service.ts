@@ -8,6 +8,7 @@ import { PrismaService } from '../common/prisma.service';
 import { ProspectsService } from '../prospects/prospects.service';
 import { CalendarService } from '../calendar/calendar.service';
 import { MeetingService } from '../meetings/meeting.service';
+import { CommunicationsService } from '../communications/communications.service';
 import type { HenryActor } from './henry-context.service';
 
 type ToolContext = {
@@ -125,6 +126,38 @@ const schemas = {
   cancel_meeting: z.object({
     meetingId: z.string().uuid(),
     reason: z.string().min(2).max(500),
+    confirmedByUser: z.literal(true),
+  }),
+  get_communication_thread: z.object({ threadId: z.string().uuid() }),
+  get_recent_messages: z.object({ threadId: z.string().uuid() }),
+  send_communication_message: z.object({
+    threadId: z.string().uuid(),
+    text: z.string().trim().min(1).max(8000),
+    idempotencyKey: z.string().uuid(),
+    confirmedByUser: z.literal(true),
+  }),
+  assign_communication_thread: z.object({
+    threadId: z.string().uuid(),
+    assigneeId: z.string().uuid(),
+    confirmedByUser: z.literal(true),
+  }),
+  request_human_takeover: z.object({
+    threadId: z.string().uuid(),
+    confirmedByUser: z.literal(true),
+  }),
+  return_thread_to_henry: z.object({
+    threadId: z.string().uuid(),
+    confirmedByUser: z.literal(true),
+  }),
+  link_thread_to_crm: z.object({
+    threadId: z.string().uuid(),
+    prospectId: z.string().uuid().optional(),
+    companyId: z.string().uuid().optional(),
+    opportunityId: z.string().uuid().optional(),
+    confirmedByUser: z.literal(true),
+  }),
+  close_communication_thread: z.object({
+    threadId: z.string().uuid(),
     confirmedByUser: z.literal(true),
   }),
 } as const;
@@ -369,6 +402,80 @@ export class HenryToolsService {
         ['meetingId', 'reason', 'confirmedByUser'],
       ),
     },
+    {
+      name: 'get_communication_thread',
+      description: 'Consulta un hilo omnicanal dentro del ámbito RBAC.',
+      parameters: objectSchema({ threadId: { type: 'string' } }, ['threadId']),
+    },
+    {
+      name: 'get_recent_messages',
+      description: 'Consulta mensajes recientes autorizados sin acceder al proveedor.',
+      parameters: objectSchema({ threadId: { type: 'string' } }, ['threadId']),
+    },
+    {
+      name: 'send_communication_message',
+      description:
+        'Envía mediante Communications Core después de confirmación explícita y respetando canal, consentimiento y ventanas.',
+      parameters: objectSchema(
+        {
+          threadId: { type: 'string' },
+          text: { type: 'string' },
+          idempotencyKey: { type: 'string' },
+          confirmedByUser: { type: 'boolean', const: true },
+        },
+        ['threadId', 'text', 'idempotencyKey', 'confirmedByUser'],
+      ),
+    },
+    {
+      name: 'assign_communication_thread',
+      description: 'Asigna un hilo a un responsable autorizado tras confirmación.',
+      parameters: objectSchema(
+        {
+          threadId: { type: 'string' },
+          assigneeId: { type: 'string' },
+          confirmedByUser: { type: 'boolean', const: true },
+        },
+        ['threadId', 'assigneeId', 'confirmedByUser'],
+      ),
+    },
+    {
+      name: 'request_human_takeover',
+      description: 'Transfiere el hilo a atención humana sin perder historial.',
+      parameters: objectSchema(
+        { threadId: { type: 'string' }, confirmedByUser: { type: 'boolean', const: true } },
+        ['threadId', 'confirmedByUser'],
+      ),
+    },
+    {
+      name: 'return_thread_to_henry',
+      description: 'Devuelve el hilo a modo Henry tras confirmación humana.',
+      parameters: objectSchema(
+        { threadId: { type: 'string' }, confirmedByUser: { type: 'boolean', const: true } },
+        ['threadId', 'confirmedByUser'],
+      ),
+    },
+    {
+      name: 'link_thread_to_crm',
+      description: 'Vincula un hilo a CRM autorizado tras confirmación.',
+      parameters: objectSchema(
+        {
+          threadId: { type: 'string' },
+          prospectId: { type: 'string' },
+          companyId: { type: 'string' },
+          opportunityId: { type: 'string' },
+          confirmedByUser: { type: 'boolean', const: true },
+        },
+        ['threadId', 'confirmedByUser'],
+      ),
+    },
+    {
+      name: 'close_communication_thread',
+      description: 'Cierra un hilo autorizado tras confirmación explícita.',
+      parameters: objectSchema(
+        { threadId: { type: 'string' }, confirmedByUser: { type: 'boolean', const: true } },
+        ['threadId', 'confirmedByUser'],
+      ),
+    },
   ];
 
   constructor(
@@ -377,6 +484,7 @@ export class HenryToolsService {
     private readonly auditService: AuditService,
     private readonly calendar: CalendarService,
     private readonly meetings: MeetingService,
+    private readonly communications: CommunicationsService,
   ) {}
 
   isAllowed(name: string): name is ToolName {
@@ -465,6 +573,57 @@ export class HenryToolsService {
           input.reason,
           context.audit,
         )) as Record<string, unknown>;
+      case 'get_communication_thread':
+      case 'get_recent_messages':
+        return (await this.communications.get(
+          this.requireActor(context),
+          input.threadId,
+        )) as unknown as Record<string, unknown>;
+      case 'send_communication_message':
+        return (await this.communications.send(
+          this.requireActor(context),
+          input.threadId,
+          { text: input.text, idempotencyKey: input.idempotencyKey, generatedByHenry: true },
+          context.audit,
+        )) as unknown as Record<string, unknown>;
+      case 'assign_communication_thread':
+        return (await this.communications.assign(
+          this.requireActor(context),
+          input.threadId,
+          input.assigneeId,
+          context.audit,
+        )) as unknown as Record<string, unknown>;
+      case 'request_human_takeover':
+        return (await this.communications.setMode(
+          this.requireActor(context),
+          input.threadId,
+          'HUMAN',
+          context.audit,
+        )) as unknown as Record<string, unknown>;
+      case 'return_thread_to_henry':
+        return (await this.communications.setMode(
+          this.requireActor(context),
+          input.threadId,
+          'HENRY',
+          context.audit,
+        )) as unknown as Record<string, unknown>;
+      case 'link_thread_to_crm':
+        return (await this.communications.linkCrm(
+          this.requireActor(context),
+          input.threadId,
+          {
+            prospectId: input.prospectId,
+            companyId: input.companyId,
+            opportunityId: input.opportunityId,
+          },
+          context.audit,
+        )) as unknown as Record<string, unknown>;
+      case 'close_communication_thread':
+        return (await this.communications.close(
+          this.requireActor(context),
+          input.threadId,
+          context.audit,
+        )) as unknown as Record<string, unknown>;
     }
   }
 
