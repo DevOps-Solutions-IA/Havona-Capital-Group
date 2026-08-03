@@ -27,4 +27,11 @@ describe('Arquitectura transversal de Automations Core', () => {
     expect(service).toContain("data: { status: 'PROCESSING', attempts: { increment: 1 } }");
     expect(service).toContain("status: 'FAILED'");
   });
+  it('centraliza todos los identificadores de transporte BullMQ', () => {
+    const queue = readFileSync(join(__dirname, 'automation-queue.service.ts'), 'utf8');
+    expect(queue).toContain('toBullMqJobId(`outbox-${eventId}`)');
+    expect(queue).toContain('toBullMqJobId(`execution-${executionId}-${step}`)');
+    expect(queue).toContain('toBullMqJobId(`schedule-${scheduleId}`)');
+    expect(queue).not.toMatch(/jobId:\s*`/);
+  });
 });

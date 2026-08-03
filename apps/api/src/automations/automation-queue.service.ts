@@ -1,6 +1,7 @@
 import { Injectable, OnApplicationShutdown, OnModuleInit } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
+import { toBullMqJobId } from './automation-job-id';
 
 @Injectable()
 export class AutomationQueueService implements OnModuleInit, OnApplicationShutdown {
@@ -28,7 +29,7 @@ export class AutomationQueueService implements OnModuleInit, OnApplicationShutdo
       'automation.execute',
       { executionId },
       {
-        jobId: `execution-${executionId}-${step}`,
+        jobId: toBullMqJobId(`execution-${executionId}-${step}`),
         delay: Math.max(0, delayMs),
         attempts: 3,
         backoff: { type: 'exponential', delay: 1500 },
@@ -42,7 +43,7 @@ export class AutomationQueueService implements OnModuleInit, OnApplicationShutdo
       'automation.outbox',
       { eventId },
       {
-        jobId: `outbox-${eventId}`,
+        jobId: toBullMqJobId(`outbox-${eventId}`),
         attempts: 5,
         backoff: { type: 'exponential', delay: 1000 },
         removeOnComplete: 2000,
@@ -57,7 +58,7 @@ export class AutomationQueueService implements OnModuleInit, OnApplicationShutdo
     cron?: string,
     timezone = 'America/Bogota',
   ) {
-    const jobId = `schedule-${scheduleId}`;
+    const jobId = toBullMqJobId(`schedule-${scheduleId}`);
     return this.activeQueue.add(
       'automation.schedule',
       { scheduleId, workflowId },
@@ -75,15 +76,16 @@ export class AutomationQueueService implements OnModuleInit, OnApplicationShutdo
   }
   async cancelSchedule(scheduleId: string) {
     const queue = this.activeQueue;
-    const job = await queue.getJob(`schedule-${scheduleId}`);
+    const jobId = toBullMqJobId(`schedule-${scheduleId}`);
+    const job = await queue.getJob(jobId);
     if (job) await job.remove();
     const repeatables = await queue.getRepeatableJobs();
-    for (const repeatable of repeatables.filter((item) => item.id === `schedule-${scheduleId}`))
+    for (const repeatable of repeatables.filter((item) => item.id === jobId))
       await queue.removeRepeatableByKey(repeatable.key);
   }
   async cancelExecution(executionId: string, maxSteps = 50) {
     for (let step = 0; step <= maxSteps; step++) {
-      const job = await this.activeQueue.getJob(`execution-${executionId}-${step}`);
+      const job = await this.activeQueue.getJob(toBullMqJobId(`execution-${executionId}-${step}`));
       if (job && ['delayed', 'waiting', 'paused'].includes(await job.getState()))
         await job.remove();
     }
