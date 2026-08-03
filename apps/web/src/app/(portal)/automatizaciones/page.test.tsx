@@ -5,7 +5,7 @@ describe('Bandeja de automatizaciones', () => {
   const source = readFileSync(join(__dirname, 'page.tsx'), 'utf8');
   it('usa API real y no presenta métricas ficticias', () => {
     expect(source).toContain('automationsApi.create');
-    expect(source).toContain("automationsApi.status(selected.id,'ACTIVE')");
+    expect(source).toMatch(/automationsApi\.status\(selected\.id,\s*'ACTIVE'\)/);
     expect(source).toContain('Todavía no hay ejecuciones reales');
     expect(source).not.toContain('mock');
   });
