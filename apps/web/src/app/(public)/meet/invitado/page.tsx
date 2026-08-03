@@ -1,6 +1,5 @@
 'use client';
 import Script from 'next/script';
-import { useSearchParams } from 'next/navigation';
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { Alert, Button, Card } from '@havona/ui';
 import { api, messageOf } from '@/lib/api';
@@ -14,13 +13,14 @@ declare global {
   }
 }
 export default function GuestMeeting() {
-  const token = useSearchParams().get('token') ?? '',
-    host = useRef<HTMLDivElement>(null),
+  const host = useRef<HTMLDivElement>(null),
     instance = useRef<{ dispose(): void } | null>(null);
-  const [join, setJoin] = useState<MeetingJoin | null>(null),
+  const [token, setToken] = useState(''),
+    [join, setJoin] = useState<MeetingJoin | null>(null),
     [ready, setReady] = useState(false),
     [error, setError] = useState('');
   useEffect(() => () => instance.current?.dispose(), []);
+  useEffect(() => setToken(new URLSearchParams(window.location.search).get('token') ?? ''), []);
   useEffect(() => {
     if (!join || !ready || !host.current || !window.JitsiMeetExternalAPI) return;
     instance.current = new window.JitsiMeetExternalAPI(join.domain, {
