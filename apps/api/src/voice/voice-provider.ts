@@ -12,7 +12,7 @@ export class VoiceProviderError extends Error {
 }
 
 export type VoiceAudio = { bytes: Buffer; mimeType: string; filename: string; durationMs?: number; signal?: AbortSignal };
-export type VoiceTranscript = { transcript: string; language?: string; durationMs?: number; confidence?: number; provider: string };
+export type VoiceTranscript = { transcript: string; language?: string; durationMs?: number; languageConfidence?: number; provider: string };
 export type VoiceSynthesisRequest = { text: string; signal?: AbortSignal };
 export type VoiceSynthesis = { audio: ReadableStream<Uint8Array>; contentType: string; provider: string };
 
