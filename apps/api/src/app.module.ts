@@ -55,6 +55,11 @@ import { CommunicationsService } from './communications/communications.service';
 import { MetaWhatsAppProvider } from './communications/meta-whatsapp.provider';
 import { ResendEmailProvider } from './communications/resend-email.provider';
 import { EMAIL_PROVIDER, MESSAGING_PROVIDER } from './communications/communications.types';
+import { AutomationController } from './automations/automation.controller';
+import { AutomationQueueService } from './automations/automation-queue.service';
+import { AutomationService } from './automations/automation.service';
+import { AutomationProcessorService } from './automations/automation-processor.service';
+import { AutomationEventBus } from './automations/automation-event-bus.service';
 
 @Module({
   imports: [
@@ -78,6 +83,7 @@ import { EMAIL_PROVIDER, MESSAGING_PROVIDER } from './communications/communicati
     CalendarController,
     MeetingController,
     CommunicationsController,
+    AutomationController,
   ],
   providers: [
     PrismaService,
@@ -121,6 +127,10 @@ import { EMAIL_PROVIDER, MESSAGING_PROVIDER } from './communications/communicati
     { provide: MESSAGING_PROVIDER, useExisting: MetaWhatsAppProvider },
     { provide: EMAIL_PROVIDER, useExisting: ResendEmailProvider },
     CommunicationsService,
+    AutomationQueueService,
+    AutomationEventBus,
+    AutomationService,
+    AutomationProcessorService,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: AuthGuard },
   ],

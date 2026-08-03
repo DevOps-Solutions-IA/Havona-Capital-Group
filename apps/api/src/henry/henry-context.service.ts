@@ -47,6 +47,10 @@ const CONSULTANT_TOOLS = [
   'get_recent_messages',
   'send_communication_message',
   'request_human_takeover',
+  'get_automation_workflow',
+  'list_active_automation_workflows',
+  'get_automation_execution',
+  'pause_automation_for_entity',
 ];
 const MANAGER_TOOLS = [
   ...CONSULTANT_TOOLS,

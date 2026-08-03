@@ -1445,3 +1445,263 @@ model CommunicationWebhookEvent {
   @@index([status, receivedAt])
   @@map("communication_webhook_events")
 }
+
+enum AutomationWorkflowStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum AutomationExecutionStatus {
+  QUEUED
+  RUNNING
+  WAITING
+  PAUSED
+  AWAITING_APPROVAL
+  COMPLETED
+  FAILED
+  CANCELLED
+  SUPPRESSED
+}
+
+enum AutomationStepStatus {
+  PENDING
+  RUNNING
+  WAITING
+  AWAITING_APPROVAL
+  COMPLETED
+  FAILED
+  SKIPPED
+  CANCELLED
+}
+
+enum AutomationApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+  EXPIRED
+}
+
+enum AutomationApprovalMode {
+  AUTO
+  REQUIRES_CONFIRMATION
+  HUMAN_ONLY
+}
+
+enum AutomationOutboxStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  FAILED
+}
+
+model AutomationWorkflow {
+  id              String                   @id @default(uuid()) @db.Uuid
+  name            String                   @db.VarChar(160)
+  description     String?                  @db.VarChar(1000)
+  status          AutomationWorkflowStatus @default(DRAFT)
+  scope           String                   @default("OWN") @db.VarChar(40)
+  version         Int                      @default(1)
+  createdById     String                   @map("created_by_id") @db.Uuid
+  ownerUserId     String?                  @map("owner_user_id") @db.Uuid
+  maxSteps        Int                      @default(25) @map("max_steps")
+  maxDurationSecs Int                      @default(86400) @map("max_duration_secs")
+  createdAt       DateTime                 @default(now()) @map("created_at")
+  updatedAt       DateTime                 @updatedAt @map("updated_at")
+  triggers        AutomationTrigger[]
+  actions         AutomationAction[]
+  executions      AutomationExecution[]
+  schedules       AutomationSchedule[]
+  enrollments     AutomationEnrollment[]
+  suppressions    AutomationSuppression[]
+
+  @@index([status, updatedAt])
+  @@index([ownerUserId, status])
+  @@unique([name, version])
+  @@map("automation_workflows")
+}
+
+model AutomationTrigger {
+  id         String             @id @default(uuid()) @db.Uuid
+  workflowId String             @map("workflow_id") @db.Uuid
+  type       String             @db.VarChar(100)
+  definition Json
+  isActive   Boolean            @default(true) @map("is_active")
+  createdAt  DateTime           @default(now()) @map("created_at")
+  workflow   AutomationWorkflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@index([type, isActive])
+  @@map("automation_triggers")
+}
+
+model AutomationAction {
+  id           String                    @id @default(uuid()) @db.Uuid
+  workflowId   String                    @map("workflow_id") @db.Uuid
+  stepOrder    Int                       @map("step_order")
+  type         String                    @db.VarChar(100)
+  definition   Json
+  condition    Json?
+  approvalMode AutomationApprovalMode    @default(AUTO) @map("approval_mode")
+  retryLimit   Int                       @default(3) @map("retry_limit")
+  timeoutMs    Int                       @default(30000) @map("timeout_ms")
+  createdAt    DateTime                  @default(now()) @map("created_at")
+  workflow     AutomationWorkflow        @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  steps        AutomationStepExecution[]
+
+  @@unique([workflowId, stepOrder])
+  @@map("automation_actions")
+}
+
+model AutomationExecution {
+  id              String                    @id @default(uuid()) @db.Uuid
+  workflowId      String                    @map("workflow_id") @db.Uuid
+  workflowVersion Int                       @map("workflow_version")
+  entityType      String                    @map("entity_type") @db.VarChar(60)
+  entityId        String                    @map("entity_id") @db.Uuid
+  status          AutomationExecutionStatus @default(QUEUED)
+  currentStep     Int                       @default(0) @map("current_step")
+  idempotencyKey  String                    @unique @map("idempotency_key") @db.VarChar(255)
+  correlationId   String                    @map("correlation_id") @db.VarChar(160)
+  context         Json?
+  retries         Int                       @default(0)
+  failureCode     String?                   @map("failure_code") @db.VarChar(100)
+  startedAt       DateTime?                 @map("started_at")
+  completedAt     DateTime?                 @map("completed_at")
+  createdAt       DateTime                  @default(now()) @map("created_at")
+  updatedAt       DateTime                  @updatedAt @map("updated_at")
+  workflow        AutomationWorkflow        @relation(fields: [workflowId], references: [id], onDelete: Restrict)
+  steps           AutomationStepExecution[]
+  approvals       AutomationApproval[]
+
+  @@index([workflowId, status, createdAt])
+  @@index([entityType, entityId, status])
+  @@map("automation_executions")
+}
+
+model AutomationStepExecution {
+  id          String               @id @default(uuid()) @db.Uuid
+  executionId String               @map("execution_id") @db.Uuid
+  actionId    String               @map("action_id") @db.Uuid
+  stepOrder   Int                  @map("step_order")
+  status      AutomationStepStatus @default(PENDING)
+  attempt     Int                  @default(0)
+  input       Json?
+  output      Json?
+  failureCode String?              @map("failure_code") @db.VarChar(100)
+  policyId    String?              @map("policy_id") @db.VarChar(120)
+  ruleId      String?              @map("rule_id") @db.VarChar(120)
+  startedAt   DateTime?            @map("started_at")
+  completedAt DateTime?            @map("completed_at")
+  createdAt   DateTime             @default(now()) @map("created_at")
+  execution   AutomationExecution  @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  action      AutomationAction     @relation(fields: [actionId], references: [id], onDelete: Restrict)
+
+  @@unique([executionId, actionId, attempt])
+  @@index([executionId, stepOrder])
+  @@map("automation_step_executions")
+}
+
+model AutomationSchedule {
+  id         String             @id @default(uuid()) @db.Uuid
+  workflowId String             @map("workflow_id") @db.Uuid
+  cron       String?            @db.VarChar(120)
+  runAt      DateTime?          @map("run_at")
+  timezone   String             @default("America/Bogota") @db.VarChar(80)
+  bullJobId  String?            @unique @map("bull_job_id") @db.VarChar(255)
+  isActive   Boolean            @default(true) @map("is_active")
+  nextRunAt  DateTime?          @map("next_run_at")
+  createdAt  DateTime           @default(now()) @map("created_at")
+  updatedAt  DateTime           @updatedAt @map("updated_at")
+  workflow   AutomationWorkflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@unique([workflowId])
+  @@index([isActive, nextRunAt])
+  @@map("automation_schedules")
+}
+
+model AutomationEnrollment {
+  id           String             @id @default(uuid()) @db.Uuid
+  workflowId   String             @map("workflow_id") @db.Uuid
+  entityType   String             @map("entity_type") @db.VarChar(60)
+  entityId     String             @map("entity_id") @db.Uuid
+  status       String             @default("ACTIVE") @db.VarChar(30)
+  enrolledById String?            @map("enrolled_by_id") @db.Uuid
+  enrolledAt   DateTime           @default(now()) @map("enrolled_at")
+  endedAt      DateTime?          @map("ended_at")
+  workflow     AutomationWorkflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@unique([workflowId, entityType, entityId])
+  @@index([entityType, entityId, status])
+  @@map("automation_enrollments")
+}
+
+model AutomationEvent {
+  id          String    @id @default(uuid()) @db.Uuid
+  eventId     String    @unique @map("event_id") @db.VarChar(160)
+  type        String    @db.VarChar(120)
+  entityType  String    @map("entity_type") @db.VarChar(60)
+  entityId    String    @map("entity_id") @db.Uuid
+  actorUserId String?   @map("actor_user_id") @db.Uuid
+  payload     Json
+  occurredAt  DateTime  @map("occurred_at")
+  receivedAt  DateTime  @default(now()) @map("received_at")
+  processedAt DateTime? @map("processed_at")
+
+  @@index([type, processedAt, occurredAt])
+  @@map("automation_events")
+}
+
+model AutomationSuppression {
+  id          String              @id @default(uuid()) @db.Uuid
+  workflowId  String?             @map("workflow_id") @db.Uuid
+  entityType  String              @map("entity_type") @db.VarChar(60)
+  entityId    String              @map("entity_id") @db.Uuid
+  channel     String?             @db.VarChar(30)
+  reason      String              @db.VarChar(160)
+  expiresAt   DateTime?           @map("expires_at")
+  createdById String?             @map("created_by_id") @db.Uuid
+  createdAt   DateTime            @default(now()) @map("created_at")
+  workflow    AutomationWorkflow? @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@index([entityType, entityId, channel, expiresAt])
+  @@map("automation_suppressions")
+}
+
+model AutomationApproval {
+  id             String                   @id @default(uuid()) @db.Uuid
+  executionId    String                   @map("execution_id") @db.Uuid
+  stepOrder      Int                      @map("step_order")
+  status         AutomationApprovalStatus @default(PENDING)
+  requestedBy    String                   @map("requested_by") @db.VarChar(80)
+  approverUserId String                   @map("approver_user_id") @db.Uuid
+  actionPreview  Json                     @map("action_preview")
+  expiresAt      DateTime                 @map("expires_at")
+  resolvedAt     DateTime?                @map("resolved_at")
+  resolutionNote String?                  @map("resolution_note") @db.VarChar(500)
+  createdAt      DateTime                 @default(now()) @map("created_at")
+  execution      AutomationExecution      @relation(fields: [executionId], references: [id], onDelete: Cascade)
+
+  @@unique([executionId, stepOrder])
+  @@index([approverUserId, status, expiresAt])
+  @@map("automation_approvals")
+}
+
+model DomainOutboxEvent {
+  id            String                 @id @default(uuid()) @db.Uuid
+  eventId       String                 @unique @map("event_id") @db.VarChar(160)
+  aggregateType String                 @map("aggregate_type") @db.VarChar(80)
+  aggregateId   String                 @map("aggregate_id") @db.Uuid
+  eventType     String                 @map("event_type") @db.VarChar(120)
+  payload       Json
+  status        AutomationOutboxStatus @default(PENDING)
+  attempts      Int                    @default(0)
+  availableAt   DateTime               @default(now()) @map("available_at")
+  processedAt   DateTime?              @map("processed_at")
+  failureCode   String?                @map("failure_code") @db.VarChar(100)
+  createdAt     DateTime               @default(now()) @map("created_at")
+
+  @@index([status, availableAt])
+  @@map("domain_outbox_events")
+}

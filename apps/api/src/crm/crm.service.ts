@@ -2,11 +2,13 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { ActivityType, OpportunityStatus, Prisma, TaskStatus } from '@havona/database';
 import { AuditContext, AuditService } from '../audit/audit.service';
 import { PrismaService } from '../common/prisma.service';
+import { AutomationEventBus } from '../automations/automation-event-bus.service';
 
 type Actor = { id: string; permissions: string[] };
 type DbClient = Prisma.TransactionClient | PrismaService;
@@ -16,6 +18,7 @@ export class CrmService {
   constructor(
     private readonly db: PrismaService,
     private readonly audit: AuditService,
+    @Optional() private readonly eventBus?: AutomationEventBus,
   ) {}
   private global(actor: Actor) {
     return actor.permissions.includes('crm.read_all');
@@ -184,7 +187,7 @@ export class CrmService {
 
   async updateProspect(id: string, input: any, actor: Actor, request: any) {
     await this.prospect(id, actor);
-    return this.db.$transaction(async (tx) => {
+    const updated = await this.db.$transaction(async (tx) => {
       const row = await tx.prospect.update({ where: { id }, data: input });
       await tx.activity.create({
         data: {
@@ -204,6 +207,7 @@ export class CrmService {
       );
       return row;
     });
+    return updated;
   }
 
   async assignments(prospectId: string, actor: Actor) {
@@ -223,7 +227,7 @@ export class CrmService {
       throw new ForbiddenException('No puede asignar prospectos');
     await this.prospect(prospectId, actor);
     await this.eligibleUser(assigneeId);
-    return this.db.$transaction(async (tx) => {
+    const assigned = await this.db.$transaction(async (tx) => {
       const current = await tx.assignment.findFirst({ where: { prospectId, endedAt: null } });
       if (current?.assigneeId === assigneeId) return current;
       if (current)
@@ -254,6 +258,15 @@ export class CrmService {
       );
       return assignment;
     });
+    await this.eventBus?.publish({
+      eventId: `prospect:assigned:${prospectId}:${assigned.id}`,
+      type: 'PROSPECT_ASSIGNED',
+      entityType: 'Prospect',
+      entityId: prospectId,
+      actorUserId: actor.id,
+      payload: { prospectId, assignedUserId: assigneeId },
+    });
+    return assigned;
   }
 
   async opportunities(query: any, actor: Actor) {
@@ -288,7 +301,7 @@ export class CrmService {
   }
   async createOpportunity(input: any, actor: Actor, request: any) {
     await this.prospect(input.prospectId, actor);
-    return this.db.$transaction(async (tx) => {
+    const created = await this.db.$transaction(async (tx) => {
       const stage = await tx.pipelineStage.findFirstOrThrow({
         where: { isActive: true },
         orderBy: { position: 'asc' },
@@ -327,6 +340,19 @@ export class CrmService {
       );
       return row;
     });
+    await this.eventBus?.publish({
+      eventId: `opportunity:created:${created.id}`,
+      type: 'OPPORTUNITY_CREATED',
+      entityType: 'Opportunity',
+      entityId: created.id,
+      actorUserId: actor.id,
+      payload: {
+        opportunityId: created.id,
+        prospectId: input.prospectId,
+        assignedUserId: created.ownerId,
+      },
+    });
+    return created;
   }
 
   async opportunityDetail(id: string, actor: Actor) {
@@ -371,7 +397,7 @@ export class CrmService {
     if (current.status !== OpportunityStatus.OPEN)
       throw new UnprocessableEntityException('Una oportunidad cerrada no puede reabrirse');
     if (current.stageId === target.id && current.status === status) return current;
-    return this.db.$transaction(async (tx) => {
+    const moved = await this.db.$transaction(async (tx) => {
       const row = await tx.opportunity.update({
         where: { id },
         data: { stageId: target.id, status, closedAt },
@@ -422,6 +448,22 @@ export class CrmService {
       }
       return row;
     });
+    await this.eventBus?.publish({
+      eventId: `opportunity:stage:${id}:${moved.updatedAt.toISOString()}`,
+      type: 'OPPORTUNITY_STAGE_CHANGED',
+      entityType: 'Opportunity',
+      entityId: id,
+      actorUserId: actor.id,
+      payload: {
+        opportunityId: id,
+        prospectId: current.prospectId,
+        previousStageId: current.stageId,
+        newStageId: target.id,
+        stage: target.key,
+        status,
+      },
+    });
+    return moved;
   }
 
   async tasks(query: any, actor: Actor) {

@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { Prisma } from '@havona/database';
 import { createHash, randomUUID } from 'node:crypto';
@@ -12,6 +13,7 @@ import { PrismaService } from '../common/prisma.service';
 import { CommunicationsConfig } from './communications-config';
 import { CommunicationsQueueService } from './communications-queue.service';
 import { CommunicationError } from './communications.types';
+import { AutomationEventBus } from '../automations/automation-event-bus.service';
 
 type Actor = CalendarActor;
 type Relations = {
@@ -33,6 +35,7 @@ export class CommunicationsService {
     private access: CalendarAccessService,
     private config: CommunicationsConfig,
     private queue: CommunicationsQueueService,
+    @Optional() private eventBus?: AutomationEventBus,
   ) {}
   configStatus() {
     return this.config.status();
@@ -253,6 +256,15 @@ export class CommunicationsService {
       ctx,
       { previousMode: thread.handlingMode, mode },
     );
+    if (mode === 'HUMAN')
+      await this.eventBus?.publish({
+        eventId: `communication:takeover:${threadId}:${updated.updatedAt.toISOString()}`,
+        type: 'COMMUNICATION_HUMAN_ESCALATION',
+        entityType: 'CommunicationThread',
+        entityId: threadId,
+        actorUserId: actor.id,
+        payload: { threadId, previousMode: thread.handlingMode, mode },
+      });
     return updated;
   }
   async linkCrm(actor: Actor, threadId: string, relations: Relations, ctx: AuditContext) {
@@ -278,6 +290,14 @@ export class CommunicationsService {
       data: { status: 'CLOSED', handlingMode: 'CLOSED', closedAt: new Date() },
     });
     await this.audit.record('COMMUNICATION_CLOSED', 'CommunicationThread', threadId, ctx);
+    await this.eventBus?.publish({
+      eventId: `communication:closed:${threadId}:${updated.updatedAt.toISOString()}`,
+      type: 'COMMUNICATION_THREAD_CLOSED',
+      entityType: 'CommunicationThread',
+      entityId: threadId,
+      actorUserId: actor.id,
+      payload: { threadId },
+    });
     return updated;
   }
   async suppressByInstruction(threadId: string, text: string, source: string) {
@@ -305,14 +325,20 @@ export class CommunicationsService {
         data: { handlingMode: 'PAUSED' },
       }),
     ]);
+    await this.eventBus?.publish({
+      eventId: `communication:optout:${threadId}`,
+      type: 'COMMUNICATION_OPT_OUT',
+      entityType: 'CommunicationThread',
+      entityId: threadId,
+      payload: { threadId, source },
+      occurredAt: new Date(),
+    });
     return true;
   }
   normalizeIdentity(channel: 'WHATSAPP' | 'EMAIL', value: string) {
     const emailValue = value.match(/<([^>]+)>/)?.[1] ?? value;
     const normalized =
-      channel === 'EMAIL'
-        ? emailValue.trim().toLowerCase()
-        : value.trim().replace(/[\s()-]/g, '');
+      channel === 'EMAIL' ? emailValue.trim().toLowerCase() : value.trim().replace(/[\s()-]/g, '');
     if (channel === 'EMAIL' ? !EMAIL.test(normalized) : !E164.test(normalized))
       throw new BadRequestException(
         channel === 'EMAIL' ? 'Correo inválido' : 'Teléfono debe estar en formato E.164',
@@ -379,6 +405,19 @@ export class CommunicationsService {
     });
     await this.suppressByInstruction(thread.id, input.text, input.channel);
     await this.queue.enqueueInbound(message.id);
+    await this.eventBus?.publish({
+      eventId: `communication:inbound:${input.providerMessageId}`,
+      type: 'COMMUNICATION_INBOUND',
+      entityType: 'CommunicationThread',
+      entityId: thread.id,
+      payload: {
+        threadId: thread.id,
+        messageId: message.id,
+        prospectId: thread.prospectId,
+        channel: thread.channel,
+      },
+      occurredAt: input.providerCreatedAt ?? new Date(),
+    });
     return message;
   }
   providerEventId(provider: string, value: unknown) {
@@ -419,7 +458,7 @@ export class CommunicationsService {
   ) {
     const message = await this.db.communicationMessage.findUnique({ where: { providerMessageId } });
     if (!message) return null;
-    return this.db.$transaction(async (tx) => {
+    const updated = await this.db.$transaction(async (tx) => {
       await tx.messageDeliveryEvent.upsert({
         where: { providerEventId },
         update: {},
@@ -436,5 +475,15 @@ export class CommunicationsService {
         },
       });
     });
+    if (status === 'FAILED')
+      await this.eventBus?.publish({
+        eventId: `communication:delivery-failed:${providerEventId}`,
+        type: 'COMMUNICATION_DELIVERY_FAILED',
+        entityType: 'CommunicationThread',
+        entityId: message.threadId,
+        payload: { threadId: message.threadId, messageId: message.id, errorCode },
+        occurredAt,
+      });
+    return updated;
   }
 }

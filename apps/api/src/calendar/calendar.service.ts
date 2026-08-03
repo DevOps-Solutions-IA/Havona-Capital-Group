@@ -4,6 +4,7 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { ActivityType, Prisma } from '@havona/database';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
@@ -21,6 +22,7 @@ import {
 import { CalendarTokenVault } from './token-vault.service';
 import { CalendarAccessService, CalendarActor } from './calendar-access.service';
 import { MeetingService } from '../meetings/meeting.service';
+import { AutomationEventBus } from '../automations/automation-event-bus.service';
 
 type Actor = CalendarActor;
 type EventInput = CreateCalendarEvent & {
@@ -43,6 +45,7 @@ export class CalendarService {
     private readonly audit: AuditService,
     private readonly access: CalendarAccessService,
     private readonly meetings: MeetingService,
+    @Optional() private readonly automationEvents?: AutomationEventBus,
   ) {}
 
   async beginOAuth(actor: Actor) {
@@ -443,6 +446,22 @@ export class CalendarService {
         data: { status: 'SUCCEEDED', result: result as Prisma.InputJsonValue },
       });
       await this.crmEvent('CALENDAR_EVENT_CREATED', actor, normalizedInput, link.id, ctx);
+      await this.automationEvents?.publish({
+        eventId: `calendar:scheduled:${link.id}`,
+        type: 'CALENDAR_EVENT_SCHEDULED',
+        entityType: 'CalendarEventLink',
+        entityId: link.id,
+        actorUserId: actor.id,
+        payload: {
+          calendarEventLinkId: link.id,
+          ownerUserId: ownerId,
+          prospectId: normalizedInput.prospectId,
+          opportunityId: normalizedInput.opportunityId,
+          start: providerEvent.start,
+          end: providerEvent.end,
+          timezone: providerEvent.timezone,
+        },
+      });
       return result;
     } catch (error) {
       await this.db.calendarMutation.update({
@@ -508,6 +527,22 @@ export class CalendarService {
         ctx,
         { oldStart: link.startAt, oldEnd: link.endAt },
       );
+      await this.automationEvents?.publish({
+        eventId: `calendar:rescheduled:${link.id}:${updated.updatedAt.toISOString()}`,
+        type: 'CALENDAR_EVENT_RESCHEDULED',
+        entityType: 'CalendarEventLink',
+        entityId: link.id,
+        actorUserId: actor.id,
+        payload: {
+          calendarEventLinkId: link.id,
+          ownerUserId: connection.userId,
+          prospectId: link.prospectId,
+          opportunityId: link.opportunityId,
+          start: updated.startAt.toISOString(),
+          end: updated.endAt.toISOString(),
+          timezone: updated.timezone,
+        },
+      });
       return this.presentLink(updated);
     });
   }
@@ -545,6 +580,20 @@ export class CalendarService {
         ctx,
         { reason: input.reason, previousStart: link.startAt, previousEnd: link.endAt },
       );
+      await this.automationEvents?.publish({
+        eventId: `calendar:cancelled:${link.id}:${updated.updatedAt.toISOString()}`,
+        type: 'CALENDAR_EVENT_CANCELLED',
+        entityType: 'CalendarEventLink',
+        entityId: link.id,
+        actorUserId: actor.id,
+        payload: {
+          calendarEventLinkId: link.id,
+          ownerUserId: connection.userId,
+          prospectId: link.prospectId,
+          opportunityId: link.opportunityId,
+          reason: input.reason,
+        },
+      });
       return this.presentLink(updated);
     });
   }

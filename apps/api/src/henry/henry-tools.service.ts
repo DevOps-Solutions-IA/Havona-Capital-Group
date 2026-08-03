@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Optional } from '@nestjs/common';
 import { ActivityType, EscalationReason, Prisma } from '@havona/database';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
@@ -10,6 +10,8 @@ import { CalendarService } from '../calendar/calendar.service';
 import { MeetingService } from '../meetings/meeting.service';
 import { CommunicationsService } from '../communications/communications.service';
 import type { HenryActor } from './henry-context.service';
+import { ModuleRef } from '@nestjs/core';
+import { AutomationService } from '../automations/automation.service';
 
 type ToolContext = {
   conversationId: string;
@@ -158,6 +160,15 @@ const schemas = {
   }),
   close_communication_thread: z.object({
     threadId: z.string().uuid(),
+    confirmedByUser: z.literal(true),
+  }),
+  get_automation_workflow: z.object({ workflowId: z.string().uuid() }),
+  list_active_automation_workflows: z.object({}),
+  get_automation_execution: z.object({ executionId: z.string().uuid() }),
+  pause_automation_for_entity: z.object({
+    entityType: z.string().min(2).max(60),
+    entityId: z.string().uuid(),
+    reason: z.string().min(3).max(160),
     confirmedByUser: z.literal(true),
   }),
 } as const;
@@ -476,6 +487,34 @@ export class HenryToolsService {
         ['threadId', 'confirmedByUser'],
       ),
     },
+    {
+      name: 'get_automation_workflow',
+      description: 'Consulta un workflow autorizado de HAVONA Automations Core.',
+      parameters: objectSchema({ workflowId: { type: 'string' } }, ['workflowId']),
+    },
+    {
+      name: 'list_active_automation_workflows',
+      description: 'Lista workflows activos dentro del ámbito autorizado.',
+      parameters: objectSchema({}, []),
+    },
+    {
+      name: 'get_automation_execution',
+      description: 'Consulta una ejecución de automatización autorizada.',
+      parameters: objectSchema({ executionId: { type: 'string' } }, ['executionId']),
+    },
+    {
+      name: 'pause_automation_for_entity',
+      description: 'Pausa automatizaciones para una entidad tras confirmación explícita.',
+      parameters: objectSchema(
+        {
+          entityType: { type: 'string' },
+          entityId: { type: 'string' },
+          reason: { type: 'string' },
+          confirmedByUser: { type: 'boolean', const: true },
+        },
+        ['entityType', 'entityId', 'reason', 'confirmedByUser'],
+      ),
+    },
   ];
 
   constructor(
@@ -485,6 +524,7 @@ export class HenryToolsService {
     private readonly calendar: CalendarService,
     private readonly meetings: MeetingService,
     private readonly communications: CommunicationsService,
+    @Optional() private readonly moduleRef?: ModuleRef,
   ) {}
 
   isAllowed(name: string): name is ToolName {
@@ -624,7 +664,36 @@ export class HenryToolsService {
           input.threadId,
           context.audit,
         )) as unknown as Record<string, unknown>;
+      case 'get_automation_workflow':
+        return (await this.automation().get(
+          this.requireActor(context),
+          input.workflowId,
+        )) as Record<string, unknown>;
+      case 'list_active_automation_workflows':
+        return (await this.automation().list(this.requireActor(context), {
+          page: 1,
+          pageSize: 25,
+          status: 'ACTIVE',
+        })) as Record<string, unknown>;
+      case 'get_automation_execution':
+        return (await this.automation().getExecution(
+          this.requireActor(context),
+          input.executionId,
+        )) as Record<string, unknown>;
+      case 'pause_automation_for_entity':
+        return (await this.automation().pauseEntity(
+          this.requireActor(context),
+          input.entityType,
+          input.entityId,
+          input.reason,
+          context.audit,
+        )) as Record<string, unknown>;
     }
+  }
+
+  private automation() {
+    if (!this.moduleRef) throw new BadRequestException('Automations Core no disponible');
+    return this.moduleRef.get(AutomationService, { strict: false });
   }
 
   async escalate(reason: keyof typeof EscalationReason, summary: string, context: ToolContext) {

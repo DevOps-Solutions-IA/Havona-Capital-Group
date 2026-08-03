@@ -45,6 +45,13 @@ const permissions = [
   ['communications.takeover', 'Transferir atención entre humano y Henry'],
   ['communications.link_crm', 'Vincular comunicaciones con CRM autorizado'],
   ['communications.admin', 'Administrar Communications Core'],
+  ['automations.read', 'Consultar workflows y ejecuciones autorizadas'],
+  ['automations.create', 'Crear workflows estructurados'],
+  ['automations.manage_own', 'Gestionar automatizaciones propias'],
+  ['automations.manage_team', 'Gestionar automatizaciones del equipo autorizado'],
+  ['automations.activate', 'Activar, pausar y archivar workflows'],
+  ['automations.approve', 'Resolver aprobaciones de automatización asignadas'],
+  ['automations.admin', 'Administrar HAVONA Automations Core'],
 ] as const;
 const grants: Record<string, string[]> = {
   SUPER_ADMIN: permissions.map(([key]) => key),
@@ -84,6 +91,12 @@ const grants: Record<string, string[]> = {
     'communications.assign',
     'communications.takeover',
     'communications.link_crm',
+    'automations.read',
+    'automations.create',
+    'automations.manage_own',
+    'automations.manage_team',
+    'automations.activate',
+    'automations.approve',
   ],
   CONSULTOR: [
     'settings.read',
@@ -106,6 +119,9 @@ const grants: Record<string, string[]> = {
     'communications.manage_own',
     'communications.takeover',
     'communications.link_crm',
+    'automations.read',
+    'automations.manage_own',
+    'automations.approve',
   ],
 };
 async function main() {
@@ -219,6 +235,37 @@ async function main() {
     update: {},
     create: { userId: user.id, roleId: role.id },
   });
+  const templates = [
+    ['Seguimiento prospecto nuevo', 'PROSPECT_CREATED', 'Prospect'],
+    ['Recordatorio de cita', 'CALENDAR_EVENT_SCHEDULED', 'CalendarEventLink'],
+    ['Seguimiento post-cita', 'CALENDAR_AFTER_APPOINTMENT', 'CalendarEventLink'],
+    ['Reactivación de prospecto inactivo', 'PROSPECT_INACTIVE', 'Prospect'],
+    ['Escalamiento por cliente sin respuesta', 'COMMUNICATION_NO_REPLY', 'CommunicationThread'],
+    ['Notificación de entrega fallida', 'COMMUNICATION_DELIVERY_FAILED', 'CommunicationThread'],
+  ] as const;
+  for (const [workflowName, triggerType, entityType] of templates)
+    await db.automationWorkflow.upsert({
+      where: { name_version: { name: workflowName, version: 1 } },
+      update: {},
+      create: {
+        name: workflowName,
+        description: `Plantilla corporativa desactivada para ${workflowName.toLowerCase()}`,
+        status: 'DRAFT',
+        scope: 'TEAM',
+        version: 1,
+        createdById: user.id,
+        ownerUserId: user.id,
+        triggers: { create: { type: triggerType, definition: { entityType } } },
+        actions: {
+          create: {
+            stepOrder: 1,
+            type: 'CREATE_CRM_TASK',
+            definition: { title: workflowName, assignee: 'ENTITY_OWNER' },
+            approvalMode: 'AUTO',
+          },
+        },
+      },
+    });
 }
 main()
   .catch((e) => {
