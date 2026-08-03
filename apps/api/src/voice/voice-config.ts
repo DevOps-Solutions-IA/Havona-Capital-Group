@@ -5,6 +5,8 @@ const positive = (value: string | undefined, fallback: number) => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
+export const voiceMaxAudioSizeFromEnv = () => positive(process.env.VOICE_MAX_AUDIO_SIZE, 10 * 1024 * 1024);
+
 @Injectable()
 export class VoiceConfig {
   readonly provider = (process.env.VOICE_PROVIDER ?? 'elevenlabs').trim().toLowerCase();
@@ -14,7 +16,7 @@ export class VoiceConfig {
   readonly sttModel = process.env.ELEVENLABS_STT_MODEL?.trim() || 'scribe_v1';
   readonly baseUrl = (process.env.ELEVENLABS_BASE_URL?.trim() || 'https://api.elevenlabs.io/v1').replace(/\/$/, '');
   readonly gatewaySecret = process.env.ELEVENLABS_HENRY_GATEWAY_SECRET?.trim() ?? '';
-  readonly maxAudioSize = positive(process.env.VOICE_MAX_AUDIO_SIZE, 10 * 1024 * 1024);
+  readonly maxAudioSize = voiceMaxAudioSizeFromEnv();
   readonly maxDurationSeconds = positive(process.env.VOICE_MAX_DURATION_SECONDS, 120);
   readonly timeoutMs = positive(process.env.VOICE_REQUEST_TIMEOUT_MS, 30_000);
   readonly streamingEnabled = process.env.VOICE_STREAMING_ENABLED !== 'false';
