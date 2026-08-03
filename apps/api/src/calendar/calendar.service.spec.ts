@@ -53,7 +53,7 @@ describe('CalendarService como núcleo corporativo', () => {
       selectedCalendarId: 'primary',
       timezone: 'America/Bogota',
       encryptedAccessToken: 'encrypted',
-      accessTokenExpiresAt: new Date(Date.now() + 60_000),
+      accessTokenExpiresAt: new Date(Date.now() + 60 * 60_000),
     };
     const db = {
       calendarConnection: {
