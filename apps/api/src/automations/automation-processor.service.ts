@@ -43,7 +43,9 @@ export class AutomationProcessorService implements OnModuleInit, OnApplicationSh
     throw new Error('AUTOMATION_INVALID_TRIGGER');
   }
   async onApplicationShutdown() {
-    await this.worker?.close();
-    await this.connection.quit();
+    // A shutdown must not hang behind an active provider action. BullMQ releases the
+    // lock and the persisted execution is recovered safely by recoverPending().
+    await this.worker?.close(true);
+    this.connection.disconnect();
   }
 }

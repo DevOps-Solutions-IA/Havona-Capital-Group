@@ -15,4 +15,9 @@ describe('Arquitectura transversal de Automations Core', () => {
     expect(service).not.toMatch(/\beval\s*\(/);
     expect(service).not.toContain('new Function');
   });
+  it('libera el worker al apagar y recupera trabajo persistente al iniciar', () => {
+    const processor = readFileSync(join(__dirname, 'automation-processor.service.ts'), 'utf8');
+    expect(processor).toContain('recoverPending()');
+    expect(processor).toContain('close(true)');
+  });
 });
