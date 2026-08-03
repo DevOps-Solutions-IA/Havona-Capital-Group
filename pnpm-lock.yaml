@@ -202,6 +202,9 @@ importers:
       '@havona/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@havona/database':
+        specifier: workspace:*
+        version: link:../../packages/database
       '@havona/shared':
         specifier: workspace:*
         version: link:../../packages/shared

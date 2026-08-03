@@ -47,6 +47,10 @@ model User {
   meetingsAssigned               Meeting[]                 @relation("MeetingAssignee")
   meetingParticipants            MeetingParticipant[]
   meetingInvitationsCreated      MeetingInvitation[]       @relation("MeetingInvitationCreator")
+  communicationThreadsAssigned   CommunicationThread[]     @relation("CommunicationThreadAssignee")
+  communicationMessagesCreated   CommunicationMessage[]    @relation("CommunicationMessageCreator")
+  communicationAssignments       CommunicationAssignment[] @relation("CommunicationAssignmentAssignee")
+  communicationAssignmentsMade   CommunicationAssignment[] @relation("CommunicationAssignmentActor")
 
   @@map("users")
 }
@@ -113,6 +117,7 @@ model Prospect {
   conversationParticipants ConversationParticipant[]
   calendarEvents           CalendarEventLink[]
   meetings                 Meeting[]
+  communicationThreads     CommunicationThread[]
 
   @@index([status, createdAt])
   @@index([sourceId, createdAt])
@@ -191,18 +196,19 @@ model ClientProfile {
 }
 
 model Company {
-  id             String              @id @default(uuid()) @db.Uuid
-  name           String              @db.VarChar(160)
-  legalName      String?             @map("legal_name") @db.VarChar(200)
-  taxIdentifier  String?             @unique @map("tax_identifier") @db.VarChar(40)
-  city           String?             @db.VarChar(100)
-  email          String?             @db.VarChar(254)
-  phone          String?             @db.VarChar(30)
-  createdAt      DateTime            @default(now()) @map("created_at")
-  updatedAt      DateTime            @updatedAt @map("updated_at")
-  contacts       CompanyContact[]
-  calendarEvents CalendarEventLink[]
-  meetings       Meeting[]
+  id                   String                @id @default(uuid()) @db.Uuid
+  name                 String                @db.VarChar(160)
+  legalName            String?               @map("legal_name") @db.VarChar(200)
+  taxIdentifier        String?               @unique @map("tax_identifier") @db.VarChar(40)
+  city                 String?               @db.VarChar(100)
+  email                String?               @db.VarChar(254)
+  phone                String?               @db.VarChar(30)
+  createdAt            DateTime              @default(now()) @map("created_at")
+  updatedAt            DateTime              @updatedAt @map("updated_at")
+  contacts             CompanyContact[]
+  calendarEvents       CalendarEventLink[]
+  meetings             Meeting[]
+  communicationThreads CommunicationThread[]
 
   @@index([name])
   @@map("crm_companies")
@@ -246,26 +252,27 @@ model PipelineStage {
 }
 
 model Opportunity {
-  id             String                    @id @default(uuid()) @db.Uuid
-  prospectId     String                    @map("prospect_id") @db.Uuid
-  stageId        String                    @map("stage_id") @db.Uuid
-  ownerId        String?                   @map("owner_id") @db.Uuid
-  title          String                    @db.VarChar(160)
-  priority       OpportunityPriority       @default(MEDIUM)
-  status         OpportunityStatus         @default(OPEN)
-  closedAt       DateTime?                 @map("closed_at")
-  createdAt      DateTime                  @default(now()) @map("created_at")
-  updatedAt      DateTime                  @updatedAt @map("updated_at")
-  prospect       Prospect                  @relation(fields: [prospectId], references: [id], onDelete: Restrict)
-  stage          PipelineStage             @relation(fields: [stageId], references: [id], onDelete: Restrict)
-  owner          User?                     @relation("OpportunityOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  stageHistory   OpportunityStageHistory[]
-  tasks          Task[]
-  notes          Note[]
-  activities     Activity[]
-  interactions   Interaction[]
-  calendarEvents CalendarEventLink[]
-  meetings       Meeting[]
+  id                   String                    @id @default(uuid()) @db.Uuid
+  prospectId           String                    @map("prospect_id") @db.Uuid
+  stageId              String                    @map("stage_id") @db.Uuid
+  ownerId              String?                   @map("owner_id") @db.Uuid
+  title                String                    @db.VarChar(160)
+  priority             OpportunityPriority       @default(MEDIUM)
+  status               OpportunityStatus         @default(OPEN)
+  closedAt             DateTime?                 @map("closed_at")
+  createdAt            DateTime                  @default(now()) @map("created_at")
+  updatedAt            DateTime                  @updatedAt @map("updated_at")
+  prospect             Prospect                  @relation(fields: [prospectId], references: [id], onDelete: Restrict)
+  stage                PipelineStage             @relation(fields: [stageId], references: [id], onDelete: Restrict)
+  owner                User?                     @relation("OpportunityOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  stageHistory         OpportunityStageHistory[]
+  tasks                Task[]
+  notes                Note[]
+  activities           Activity[]
+  interactions         Interaction[]
+  calendarEvents       CalendarEventLink[]
+  meetings             Meeting[]
+  communicationThreads CommunicationThread[]
 
   @@index([stageId, status, updatedAt])
   @@index([ownerId, status, updatedAt])
@@ -492,27 +499,28 @@ enum EscalationStatus {
 }
 
 model Conversation {
-  id                String                    @id @default(uuid()) @db.Uuid
-  publicId          String                    @unique @default(uuid()) @map("public_id") @db.Uuid
-  accessTokenHash   String                    @map("access_token_hash") @db.Char(64)
-  channel           ConversationChannel       @default(WEB)
-  status            ConversationStatus        @default(ACTIVE)
-  intention         String?                   @db.VarChar(80)
-  prospectId        String?                   @map("prospect_id") @db.Uuid
-  consentAcceptedAt DateTime                  @map("consent_accepted_at")
-  privacyVersion    String                    @map("privacy_version") @db.VarChar(40)
-  lastMessageAt     DateTime?                 @map("last_message_at")
-  createdAt         DateTime                  @default(now()) @map("created_at")
-  updatedAt         DateTime                  @updatedAt @map("updated_at")
-  prospect          Prospect?                 @relation(fields: [prospectId], references: [id], onDelete: SetNull)
-  participants      ConversationParticipant[]
-  messages          Message[]
-  executions        AIExecution[]
-  state             ConversationState?
-  escalations       Escalation[]
-  voiceSessions     VoiceSession[]
-  calendarEvents    CalendarEventLink[]
-  meetings          Meeting[]
+  id                   String                    @id @default(uuid()) @db.Uuid
+  publicId             String                    @unique @default(uuid()) @map("public_id") @db.Uuid
+  accessTokenHash      String                    @map("access_token_hash") @db.Char(64)
+  channel              ConversationChannel       @default(WEB)
+  status               ConversationStatus        @default(ACTIVE)
+  intention            String?                   @db.VarChar(80)
+  prospectId           String?                   @map("prospect_id") @db.Uuid
+  consentAcceptedAt    DateTime                  @map("consent_accepted_at")
+  privacyVersion       String                    @map("privacy_version") @db.VarChar(40)
+  lastMessageAt        DateTime?                 @map("last_message_at")
+  createdAt            DateTime                  @default(now()) @map("created_at")
+  updatedAt            DateTime                  @updatedAt @map("updated_at")
+  prospect             Prospect?                 @relation(fields: [prospectId], references: [id], onDelete: SetNull)
+  participants         ConversationParticipant[]
+  messages             Message[]
+  executions           AIExecution[]
+  state                ConversationState?
+  escalations          Escalation[]
+  voiceSessions        VoiceSession[]
+  calendarEvents       CalendarEventLink[]
+  meetings             Meeting[]
+  communicationThreads CommunicationThread[]
 
   @@index([status, lastMessageAt])
   @@index([prospectId, createdAt])
@@ -1159,4 +1167,281 @@ model CalendarOAuthState {
 
   @@index([userId, expiresAt])
   @@map("calendar_oauth_states")
+}
+
+enum CommunicationChannel {
+  WHATSAPP
+  EMAIL
+}
+
+enum CommunicationProviderType {
+  META
+  RESEND
+}
+
+enum CommunicationThreadStatus {
+  OPEN
+  PENDING
+  CLOSED
+  BLOCKED
+}
+
+enum CommunicationHandlingMode {
+  HENRY
+  HUMAN
+  PAUSED
+  CLOSED
+}
+
+enum CommunicationDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum CommunicationSenderType {
+  CONTACT
+  USER
+  HENRY
+  SYSTEM
+}
+
+enum CommunicationContentType {
+  TEXT
+  HTML
+  TEMPLATE
+  IMAGE
+  DOCUMENT
+  AUDIO
+}
+
+enum CommunicationMessageStatus {
+  RECEIVED
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  BLOCKED
+}
+
+enum CommunicationConsentStatus {
+  UNKNOWN
+  OPTED_IN
+  OPTED_OUT
+  SUPPRESSED
+}
+
+enum CommunicationConnectionStatus {
+  ACTIVE
+  DISABLED
+  ERROR
+}
+
+enum CommunicationWebhookStatus {
+  RECEIVED
+  QUEUED
+  PROCESSED
+  FAILED
+}
+
+model CommunicationThread {
+  id                 String                     @id @default(uuid()) @db.Uuid
+  channel            CommunicationChannel
+  provider           CommunicationProviderType
+  providerThreadId   String?                    @map("provider_thread_id") @db.VarChar(255)
+  status             CommunicationThreadStatus  @default(OPEN)
+  handlingMode       CommunicationHandlingMode  @default(HUMAN) @map("handling_mode")
+  subject            String?                    @db.VarChar(300)
+  contactIdentity    String                     @map("contact_identity") @db.VarChar(320)
+  contactDisplayName String?                    @map("contact_display_name") @db.VarChar(160)
+  assignedUserId     String?                    @map("assigned_user_id") @db.Uuid
+  prospectId         String?                    @map("prospect_id") @db.Uuid
+  companyId          String?                    @map("company_id") @db.Uuid
+  opportunityId      String?                    @map("opportunity_id") @db.Uuid
+  conversationId     String?                    @map("conversation_id") @db.Uuid
+  unreadCount        Int                        @default(0) @map("unread_count")
+  lastMessageAt      DateTime?                  @map("last_message_at")
+  closedAt           DateTime?                  @map("closed_at")
+  createdAt          DateTime                   @default(now()) @map("created_at")
+  updatedAt          DateTime                   @updatedAt @map("updated_at")
+  assignedUser       User?                      @relation("CommunicationThreadAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  prospect           Prospect?                  @relation(fields: [prospectId], references: [id], onDelete: SetNull)
+  company            Company?                   @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  opportunity        Opportunity?               @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  conversation       Conversation?              @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  participants       CommunicationParticipant[]
+  messages           CommunicationMessage[]
+  assignments        CommunicationAssignment[]
+  consent            CommunicationConsent?
+
+  @@unique([provider, providerThreadId])
+  @@index([channel, status, lastMessageAt])
+  @@index([assignedUserId, status, lastMessageAt])
+  @@index([contactIdentity, channel])
+  @@index([prospectId, lastMessageAt])
+  @@map("communication_threads")
+}
+
+model CommunicationParticipant {
+  id          String                  @id @default(uuid()) @db.Uuid
+  threadId    String                  @map("thread_id") @db.Uuid
+  identity    String                  @db.VarChar(320)
+  displayName String?                 @map("display_name") @db.VarChar(160)
+  senderType  CommunicationSenderType @map("sender_type")
+  createdAt   DateTime                @default(now()) @map("created_at")
+  thread      CommunicationThread     @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@unique([threadId, identity])
+  @@map("communication_participants")
+}
+
+model CommunicationMessage {
+  id                String                     @id @default(uuid()) @db.Uuid
+  threadId          String                     @map("thread_id") @db.Uuid
+  providerMessageId String?                    @map("provider_message_id") @db.VarChar(255)
+  idempotencyKey    String                     @unique @map("idempotency_key") @db.VarChar(160)
+  direction         CommunicationDirection
+  senderType        CommunicationSenderType    @map("sender_type")
+  senderIdentity    String                     @map("sender_identity") @db.VarChar(320)
+  recipientIdentity String                     @map("recipient_identity") @db.VarChar(320)
+  bodyText          String?                    @map("body_text") @db.Text
+  bodyHtml          String?                    @map("body_html") @db.Text
+  contentType       CommunicationContentType   @default(TEXT) @map("content_type")
+  status            CommunicationMessageStatus @default(RECEIVED)
+  replyToId         String?                    @map("reply_to_id") @db.Uuid
+  metadata          Json?
+  errorCode         String?                    @map("error_code") @db.VarChar(100)
+  createdById       String?                    @map("created_by_id") @db.Uuid
+  generatedByHenry  Boolean                    @default(false) @map("generated_by_henry")
+  providerCreatedAt DateTime?                  @map("provider_created_at")
+  sentAt            DateTime?                  @map("sent_at")
+  deliveredAt       DateTime?                  @map("delivered_at")
+  readAt            DateTime?                  @map("read_at")
+  createdAt         DateTime                   @default(now()) @map("created_at")
+  updatedAt         DateTime                   @updatedAt @map("updated_at")
+  thread            CommunicationThread        @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  replyTo           CommunicationMessage?      @relation("CommunicationReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies           CommunicationMessage[]     @relation("CommunicationReplies")
+  createdBy         User?                      @relation("CommunicationMessageCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  attachments       CommunicationAttachment[]
+  deliveryEvents    MessageDeliveryEvent[]
+
+  @@unique([providerMessageId])
+  @@index([threadId, createdAt])
+  @@index([status, createdAt])
+  @@map("communication_messages")
+}
+
+model CommunicationAttachment {
+  id              String               @id @default(uuid()) @db.Uuid
+  messageId       String               @map("message_id") @db.Uuid
+  providerMediaId String?              @map("provider_media_id") @db.VarChar(255)
+  fileName        String?              @map("file_name") @db.VarChar(255)
+  mimeType        String               @map("mime_type") @db.VarChar(120)
+  sizeBytes       Int?                 @map("size_bytes")
+  storageKey      String?              @map("storage_key") @db.VarChar(500)
+  expiresAt       DateTime?            @map("expires_at")
+  createdAt       DateTime             @default(now()) @map("created_at")
+  message         CommunicationMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@map("communication_attachments")
+}
+
+model ChannelConnection {
+  id                String                        @id @default(uuid()) @db.Uuid
+  channel           CommunicationChannel
+  provider          CommunicationProviderType
+  externalAccountId String?                       @map("external_account_id") @db.VarChar(255)
+  displayName       String?                       @map("display_name") @db.VarChar(160)
+  status            CommunicationConnectionStatus @default(DISABLED)
+  inboundEnabled    Boolean                       @default(false) @map("inbound_enabled")
+  outboundEnabled   Boolean                       @default(false) @map("outbound_enabled")
+  lastWebhookAt     DateTime?                     @map("last_webhook_at")
+  lastErrorCode     String?                       @map("last_error_code") @db.VarChar(100)
+  createdAt         DateTime                      @default(now()) @map("created_at")
+  updatedAt         DateTime                      @updatedAt @map("updated_at")
+
+  @@unique([channel, provider, externalAccountId])
+  @@index([channel, status])
+  @@map("communication_channel_connections")
+}
+
+model MessageDeliveryEvent {
+  id              String                     @id @default(uuid()) @db.Uuid
+  messageId       String                     @map("message_id") @db.Uuid
+  providerEventId String?                    @unique @map("provider_event_id") @db.VarChar(255)
+  status          CommunicationMessageStatus
+  errorCode       String?                    @map("error_code") @db.VarChar(100)
+  occurredAt      DateTime                   @map("occurred_at")
+  metadata        Json?
+  createdAt       DateTime                   @default(now()) @map("created_at")
+  message         CommunicationMessage       @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId, occurredAt])
+  @@map("communication_delivery_events")
+}
+
+model CommunicationAssignment {
+  id           String              @id @default(uuid()) @db.Uuid
+  threadId     String              @map("thread_id") @db.Uuid
+  assigneeId   String              @map("assignee_id") @db.Uuid
+  assignedById String              @map("assigned_by_id") @db.Uuid
+  endedAt      DateTime?           @map("ended_at")
+  createdAt    DateTime            @default(now()) @map("created_at")
+  thread       CommunicationThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  assignee     User                @relation("CommunicationAssignmentAssignee", fields: [assigneeId], references: [id], onDelete: Restrict)
+  assignedBy   User                @relation("CommunicationAssignmentActor", fields: [assignedById], references: [id], onDelete: Restrict)
+
+  @@index([threadId, endedAt])
+  @@index([assigneeId, endedAt])
+  @@map("communication_assignments")
+}
+
+model CommunicationConsent {
+  id               String                     @id @default(uuid()) @db.Uuid
+  threadId         String                     @unique @map("thread_id") @db.Uuid
+  commercialStatus CommunicationConsentStatus @default(UNKNOWN) @map("commercial_status")
+  serviceStatus    CommunicationConsentStatus @default(UNKNOWN) @map("service_status")
+  source           String?                    @db.VarChar(120)
+  evidence         Json?
+  optedOutAt       DateTime?                  @map("opted_out_at")
+  updatedAt        DateTime                   @updatedAt @map("updated_at")
+  createdAt        DateTime                   @default(now()) @map("created_at")
+  thread           CommunicationThread        @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([commercialStatus, updatedAt])
+  @@map("communication_consents")
+}
+
+model WhatsAppTemplate {
+  id                 String   @id @default(uuid()) @db.Uuid
+  providerTemplateId String?  @map("provider_template_id") @db.VarChar(255)
+  name               String   @db.VarChar(160)
+  language           String   @db.VarChar(20)
+  status             String   @db.VarChar(40)
+  category           String?  @db.VarChar(80)
+  parameterSchema    Json?    @map("parameter_schema")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  @@unique([name, language])
+  @@map("communication_whatsapp_templates")
+}
+
+model CommunicationWebhookEvent {
+  id              String                     @id @default(uuid()) @db.Uuid
+  provider        CommunicationProviderType
+  providerEventId String                     @map("provider_event_id") @db.VarChar(255)
+  eventType       String                     @map("event_type") @db.VarChar(100)
+  status          CommunicationWebhookStatus @default(RECEIVED)
+  payload         Json
+  attempts        Int                        @default(0)
+  errorCode       String?                    @map("error_code") @db.VarChar(100)
+  receivedAt      DateTime                   @default(now()) @map("received_at")
+  processedAt     DateTime?                  @map("processed_at")
+
+  @@unique([provider, providerEventId])
+  @@index([status, receivedAt])
+  @@map("communication_webhook_events")
 }

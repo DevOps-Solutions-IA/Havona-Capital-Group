@@ -37,6 +37,14 @@ const permissions = [
   ['meeting.manage_team', 'Gestionar reuniones del equipo autorizado'],
   ['meeting.join', 'Ingresar a reuniones autorizadas'],
   ['meeting.admin', 'Administrar configuración de reuniones'],
+  ['communications.read', 'Consultar comunicaciones autorizadas'],
+  ['communications.send', 'Enviar comunicaciones autorizadas'],
+  ['communications.manage_own', 'Gestionar comunicaciones propias o asignadas'],
+  ['communications.manage_team', 'Gestionar comunicaciones del equipo autorizado'],
+  ['communications.assign', 'Asignar comunicaciones a responsables autorizados'],
+  ['communications.takeover', 'Transferir atención entre humano y Henry'],
+  ['communications.link_crm', 'Vincular comunicaciones con CRM autorizado'],
+  ['communications.admin', 'Administrar Communications Core'],
 ] as const;
 const grants: Record<string, string[]> = {
   SUPER_ADMIN: permissions.map(([key]) => key),
@@ -69,6 +77,13 @@ const grants: Record<string, string[]> = {
     'meeting.manage_own',
     'meeting.manage_team',
     'meeting.join',
+    'communications.read',
+    'communications.send',
+    'communications.manage_own',
+    'communications.manage_team',
+    'communications.assign',
+    'communications.takeover',
+    'communications.link_crm',
   ],
   CONSULTOR: [
     'settings.read',
@@ -86,6 +101,11 @@ const grants: Record<string, string[]> = {
     'meeting.create',
     'meeting.manage_own',
     'meeting.join',
+    'communications.read',
+    'communications.send',
+    'communications.manage_own',
+    'communications.takeover',
+    'communications.link_crm',
   ],
 };
 async function main() {

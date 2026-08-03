@@ -48,6 +48,13 @@ import { MeetingService } from './meetings/meeting.service';
 import { MeetingConfig } from './meetings/meeting-config';
 import { JitsiMeetingProvider } from './meetings/jitsi-meeting.provider';
 import { MEETING_PROVIDER } from './meetings/meeting.types';
+import { CommunicationsController } from './communications/communications.controller';
+import { CommunicationsConfig } from './communications/communications-config';
+import { CommunicationsQueueService } from './communications/communications-queue.service';
+import { CommunicationsService } from './communications/communications.service';
+import { MetaWhatsAppProvider } from './communications/meta-whatsapp.provider';
+import { ResendEmailProvider } from './communications/resend-email.provider';
+import { EMAIL_PROVIDER, MESSAGING_PROVIDER } from './communications/communications.types';
 
 @Module({
   imports: [
@@ -70,6 +77,7 @@ import { MEETING_PROVIDER } from './meetings/meeting.types';
     ElevenLabsCustomLlmController,
     CalendarController,
     MeetingController,
+    CommunicationsController,
   ],
   providers: [
     PrismaService,
@@ -106,6 +114,13 @@ import { MEETING_PROVIDER } from './meetings/meeting.types';
     JitsiMeetingProvider,
     { provide: MEETING_PROVIDER, useExisting: JitsiMeetingProvider },
     MeetingService,
+    CommunicationsConfig,
+    CommunicationsQueueService,
+    MetaWhatsAppProvider,
+    ResendEmailProvider,
+    { provide: MESSAGING_PROVIDER, useExisting: MetaWhatsAppProvider },
+    { provide: EMAIL_PROVIDER, useExisting: ResendEmailProvider },
+    CommunicationsService,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: AuthGuard },
   ],
