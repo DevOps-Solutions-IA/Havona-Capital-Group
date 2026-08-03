@@ -23,7 +23,7 @@ export class ElevenLabsProvider implements VoiceSTTProvider, VoiceTTSProvider {
       transcript: payload.text.trim(), provider: this.name,
       language: typeof payload.language_code === 'string' ? payload.language_code : undefined,
       durationMs: typeof payload.audio_duration === 'number' ? Math.round(payload.audio_duration * 1000) : audio.durationMs,
-      confidence: typeof payload.language_probability === 'number' ? payload.language_probability : undefined,
+      languageConfidence: typeof payload.language_probability === 'number' ? payload.language_probability : undefined,
     };
   }
 
