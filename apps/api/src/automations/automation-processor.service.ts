@@ -14,6 +14,10 @@ export class AutomationProcessorService implements OnModuleInit, OnApplicationSh
   private worker?: Worker;
   constructor(private automations: AutomationService) {}
   async onModuleInit() {
+    // Integration tests drive outbox dispatch and execution deterministically.
+    // Starting a competing background worker in the same Jest process introduces
+    // nondeterministic races and leaves an unnecessary Redis blocking connection.
+    if (process.env.NODE_ENV === 'test') return;
     this.worker = new Worker(
       process.env.AUTOMATIONS_QUEUE_NAME ?? 'havona-automations',
       (job) => this.process(job),

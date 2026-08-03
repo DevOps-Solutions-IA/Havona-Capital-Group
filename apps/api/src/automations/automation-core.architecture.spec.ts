@@ -19,6 +19,7 @@ describe('Arquitectura transversal de Automations Core', () => {
     const processor = readFileSync(join(__dirname, 'automation-processor.service.ts'), 'utf8');
     expect(processor).toContain('recoverPending()');
     expect(processor).toContain('close(true)');
+    expect(processor).toContain("process.env.NODE_ENV === 'test'");
   });
   it('reclama cada evento outbox de forma atómica antes de despacharlo', () => {
     const service = readFileSync(join(__dirname, 'automation.service.ts'), 'utf8');
