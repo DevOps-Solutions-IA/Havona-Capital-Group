@@ -36,6 +36,12 @@ import { VoiceSessionService } from './voice/voice-session.service';
 import { VOICE_STT_PROVIDER, VOICE_TTS_PROVIDER } from './voice/voice-provider';
 import { ElevenLabsCustomLlmController } from './voice/elevenlabs-custom-llm.controller';
 import { ElevenLabsCustomLlmService } from './voice/elevenlabs-custom-llm.service';
+import { CalendarController } from './calendar/calendar.controller';
+import { CalendarConfig } from './calendar/calendar-config';
+import { CalendarService } from './calendar/calendar.service';
+import { GoogleCalendarProvider } from './calendar/google-calendar.provider';
+import { CALENDAR_PROVIDER } from './calendar/calendar.types';
+import { CalendarTokenVault } from './calendar/token-vault.service';
 
 @Module({
   imports: [
@@ -56,6 +62,7 @@ import { ElevenLabsCustomLlmService } from './voice/elevenlabs-custom-llm.servic
     HenryController,
     VoiceController,
     ElevenLabsCustomLlmController,
+    CalendarController,
   ],
   providers: [
     PrismaService,
@@ -82,6 +89,11 @@ import { ElevenLabsCustomLlmService } from './voice/elevenlabs-custom-llm.servic
     VoiceSessionService,
     HenryVoiceGateway,
     ElevenLabsCustomLlmService,
+    CalendarConfig,
+    CalendarTokenVault,
+    GoogleCalendarProvider,
+    { provide: CALENDAR_PROVIDER, useExisting: GoogleCalendarProvider },
+    CalendarService,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: AuthGuard },
   ],

@@ -287,6 +287,7 @@ export const henryPageContextSchema = z
       'company-detail',
       'pipeline',
       'tasks',
+      'agenda',
       'henry-admin',
       'other',
     ]),
@@ -351,3 +352,46 @@ export type CreateHenryConversationInput = z.infer<typeof createHenryConversatio
 export type SendHenryMessageInput = z.infer<typeof sendHenryMessageSchema>;
 export type HenryConversationListInput = z.infer<typeof henryConversationListSchema>;
 export type HenryPageContextInput = z.infer<typeof henryPageContextSchema>;
+
+export const calendarAvailabilityQuerySchema = z.object({
+  timeMin: isoDate,
+  timeMax: isoDate,
+  durationMinutes: z.coerce.number().int().min(15).max(480).default(45),
+  timezone: z.string().trim().min(1).max(100).default('America/Bogota'),
+});
+export const calendarEventListQuerySchema = z.object({
+  timeMin: isoDate.optional(),
+  timeMax: isoDate.optional(),
+});
+export const calendarAvailabilityRuleSchema = z.object({
+  timezone: z.string().trim().min(1).max(100),
+  workingDays: z.array(z.number().int().min(1).max(7)).min(1).max(7),
+  workStart: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+  workEnd: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+  minimumNoticeMinutes: z.number().int().min(0).max(43_200),
+  defaultMeetingDuration: z.number().int().min(15).max(480),
+  bufferBeforeMinutes: z.number().int().min(0).max(240),
+  bufferAfterMinutes: z.number().int().min(0).max(240),
+  maximumFutureBookingDays: z.number().int().min(1).max(730),
+});
+const calendarAttendeeSchema = z.object({ email: z.string().trim().email().max(254) }).strict();
+export const createCalendarEventSchema = z.object({
+  title: plainText(240), description: optionalPlainText(2000), start: isoDate, end: isoDate,
+  timezone: z.string().trim().min(1).max(100), attendees: z.array(calendarAttendeeSchema).max(50).default([]),
+  location: optionalPlainText(500), createConference: z.boolean().default(false),
+  reminders: z.array(z.object({ method: z.enum(['email', 'popup']), minutes: z.number().int().min(0).max(40_320) })).max(5).optional(),
+  prospectId: uuid.optional(), companyId: uuid.optional(), opportunityId: uuid.optional(), conversationId: uuid.optional(),
+  confirmedByUser: z.literal(true), sendUpdates: z.enum(['all', 'externalOnly', 'none']).default('all'),
+}).refine((v) => new Date(v.end) > new Date(v.start), { message: 'El fin debe ser posterior al inicio', path: ['end'] });
+export const updateCalendarEventSchema = z.object({
+  title: plainText(240).optional(), description: optionalPlainText(2000), start: isoDate.optional(), end: isoDate.optional(),
+  timezone: z.string().trim().min(1).max(100).optional(), attendees: z.array(calendarAttendeeSchema).max(50).optional(),
+  location: optionalPlainText(500), createConference: z.boolean().optional(), confirmedByUser: z.literal(true),
+  sendUpdates: z.enum(['all', 'externalOnly', 'none']).default('all'),
+}).refine((v) => !v.start || !v.end || new Date(v.end) > new Date(v.start), { message: 'El fin debe ser posterior al inicio', path: ['end'] });
+export const cancelCalendarEventSchema = z.object({ reason: plainText(500), confirmedByUser: z.literal(true), sendUpdates: z.enum(['all', 'externalOnly', 'none']).default('all') });
+export const selectCalendarSchema = z.object({ calendarId: z.string().trim().min(1).max(512) });
+
+export type CalendarAvailabilityQuery = z.infer<typeof calendarAvailabilityQuerySchema>;
+export type CreateCalendarEventInput = z.infer<typeof createCalendarEventSchema>;
+export type UpdateCalendarEventInput = z.infer<typeof updateCalendarEventSchema>;

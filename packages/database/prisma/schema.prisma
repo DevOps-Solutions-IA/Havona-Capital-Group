@@ -35,6 +35,9 @@ model User {
   conversationParticipants ConversationParticipant[]
   assignedEscalations      Escalation[]              @relation("EscalationAssignee")
   voiceSessions            VoiceSession[]
+  calendarConnections      CalendarConnection[]
+  calendarAvailability     CalendarAvailabilityRule?
+  calendarEventsCreated    CalendarEventLink[]       @relation("CalendarEventCreator")
 
   @@map("users")
 }
@@ -99,6 +102,7 @@ model Prospect {
   companyContacts          CompanyContact[]
   conversations            Conversation[]
   conversationParticipants ConversationParticipant[]
+  calendarEvents           CalendarEventLink[]
 
   @@index([status, createdAt])
   @@index([sourceId, createdAt])
@@ -187,6 +191,7 @@ model Company {
   createdAt     DateTime         @default(now()) @map("created_at")
   updatedAt     DateTime         @updatedAt @map("updated_at")
   contacts      CompanyContact[]
+  calendarEvents CalendarEventLink[]
 
   @@index([name])
   @@map("crm_companies")
@@ -248,6 +253,7 @@ model Opportunity {
   notes        Note[]
   activities   Activity[]
   interactions Interaction[]
+  calendarEvents CalendarEventLink[]
 
   @@index([stageId, status, updatedAt])
   @@index([ownerId, status, updatedAt])
@@ -493,6 +499,7 @@ model Conversation {
   state             ConversationState?
   escalations       Escalation[]
   voiceSessions     VoiceSession[]
+  calendarEvents     CalendarEventLink[]
 
   @@index([status, lastMessageAt])
   @@index([prospectId, createdAt])
@@ -814,4 +821,173 @@ model SystemSetting {
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   @@map("system_settings")
+}
+
+enum CalendarProviderType {
+  GOOGLE
+}
+
+enum CalendarConnectionStatus {
+  ACTIVE
+  NEEDS_REAUTHORIZATION
+  DISCONNECTED
+  ERROR
+}
+
+enum CalendarEventStatus {
+  CONFIRMED
+  TENTATIVE
+  CANCELLED
+}
+
+enum CalendarMutationStatus {
+  PROCESSING
+  SUCCEEDED
+  FAILED
+}
+
+model CalendarConnection {
+  id                    String                   @id @default(uuid()) @db.Uuid
+  userId                String                   @map("user_id") @db.Uuid
+  provider              CalendarProviderType     @default(GOOGLE)
+  providerAccountId     String                   @map("provider_account_id") @db.VarChar(254)
+  accountEmail          String                   @map("account_email") @db.VarChar(254)
+  selectedCalendarId    String                   @default("primary") @map("selected_calendar_id") @db.VarChar(512)
+  selectedCalendarName  String?                  @map("selected_calendar_name") @db.VarChar(200)
+  timezone              String                   @default("America/Bogota") @db.VarChar(100)
+  encryptedAccessToken  String                   @map("encrypted_access_token") @db.Text
+  encryptedRefreshToken String?                  @map("encrypted_refresh_token") @db.Text
+  accessTokenExpiresAt  DateTime?                @map("access_token_expires_at")
+  grantedScopes         String[]                 @map("granted_scopes")
+  status                CalendarConnectionStatus @default(ACTIVE)
+  lastSyncedAt          DateTime?                @map("last_synced_at")
+  lastErrorCode         String?                  @map("last_error_code") @db.VarChar(80)
+  disconnectedAt        DateTime?                @map("disconnected_at")
+  createdAt             DateTime                 @default(now()) @map("created_at")
+  updatedAt             DateTime                 @updatedAt @map("updated_at")
+  user                  User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  events                CalendarEventLink[]
+  syncState             CalendarSyncState?
+  webhookChannels       CalendarWebhookChannel[]
+  mutations             CalendarMutation[]
+
+  @@unique([provider, providerAccountId, userId])
+  @@index([userId, status])
+  @@map("calendar_connections")
+}
+
+model CalendarAvailabilityRule {
+  id                       String   @id @default(uuid()) @db.Uuid
+  userId                   String   @unique @map("user_id") @db.Uuid
+  timezone                 String   @default("America/Bogota") @db.VarChar(100)
+  workingDays              Int[]    @default([1, 2, 3, 4, 5]) @map("working_days")
+  workStart                String   @default("08:00") @map("work_start") @db.VarChar(5)
+  workEnd                  String   @default("18:00") @map("work_end") @db.VarChar(5)
+  minimumNoticeMinutes     Int      @default(120) @map("minimum_notice_minutes")
+  defaultMeetingDuration   Int      @default(45) @map("default_meeting_duration")
+  bufferBeforeMinutes      Int      @default(15) @map("buffer_before_minutes")
+  bufferAfterMinutes       Int      @default(15) @map("buffer_after_minutes")
+  maximumFutureBookingDays Int      @default(90) @map("maximum_future_booking_days")
+  createdAt                DateTime @default(now()) @map("created_at")
+  updatedAt                DateTime @updatedAt @map("updated_at")
+  user                     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("calendar_availability_rules")
+}
+
+model CalendarEventLink {
+  id                  String              @id @default(uuid()) @db.Uuid
+  connectionId        String              @map("connection_id") @db.Uuid
+  providerEventId     String              @map("provider_event_id") @db.VarChar(512)
+  providerEtag        String?             @map("provider_etag") @db.VarChar(256)
+  calendarId          String              @map("calendar_id") @db.VarChar(512)
+  title               String              @db.VarChar(240)
+  startAt             DateTime            @map("start_at")
+  endAt               DateTime            @map("end_at")
+  timezone            String              @db.VarChar(100)
+  status              CalendarEventStatus @default(CONFIRMED)
+  htmlLink            String?             @map("html_link") @db.VarChar(1200)
+  conferenceLink      String?             @map("conference_link") @db.VarChar(1200)
+  attendees           Json?
+  prospectId          String?             @map("prospect_id") @db.Uuid
+  companyId           String?             @map("company_id") @db.Uuid
+  opportunityId       String?             @map("opportunity_id") @db.Uuid
+  conversationId      String?             @map("conversation_id") @db.Uuid
+  createdById         String              @map("created_by_id") @db.Uuid
+  cancellationReason  String?             @map("cancellation_reason") @db.VarChar(500)
+  cancelledAt         DateTime?           @map("cancelled_at")
+  createdAt           DateTime            @default(now()) @map("created_at")
+  updatedAt           DateTime            @updatedAt @map("updated_at")
+  connection          CalendarConnection  @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  prospect            Prospect?           @relation(fields: [prospectId], references: [id], onDelete: SetNull)
+  company             Company?            @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  opportunity         Opportunity?        @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  conversation        Conversation?       @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  createdBy           User                @relation("CalendarEventCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@unique([connectionId, providerEventId])
+  @@index([startAt, status])
+  @@index([prospectId, startAt])
+  @@index([opportunityId, startAt])
+  @@map("calendar_event_links")
+}
+
+model CalendarSyncState {
+  id             String             @id @default(uuid()) @db.Uuid
+  connectionId   String             @unique @map("connection_id") @db.Uuid
+  syncToken      String?            @map("sync_token") @db.Text
+  lastFullSyncAt DateTime?          @map("last_full_sync_at")
+  lastSyncAt     DateTime?          @map("last_sync_at")
+  lastStatus     String?            @map("last_status") @db.VarChar(40)
+  lastErrorCode  String?            @map("last_error_code") @db.VarChar(80)
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+  connection     CalendarConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@map("calendar_sync_states")
+}
+
+model CalendarWebhookChannel {
+  id                 String             @id @default(uuid()) @db.Uuid
+  connectionId       String             @map("connection_id") @db.Uuid
+  channelId          String             @unique @map("channel_id") @db.VarChar(160)
+  resourceId         String?            @map("resource_id") @db.VarChar(256)
+  encryptedToken     String             @map("encrypted_token") @db.Text
+  expiration         DateTime
+  stoppedAt          DateTime?          @map("stopped_at")
+  lastNotificationAt DateTime?          @map("last_notification_at")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  connection         CalendarConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@index([connectionId, expiration])
+  @@map("calendar_webhook_channels")
+}
+
+model CalendarMutation {
+  id             String                 @id @default(uuid()) @db.Uuid
+  connectionId   String                 @map("connection_id") @db.Uuid
+  idempotencyKey String                 @map("idempotency_key") @db.VarChar(120)
+  operation      String                 @db.VarChar(40)
+  status         CalendarMutationStatus @default(PROCESSING)
+  result         Json?
+  errorCode      String?                @map("error_code") @db.VarChar(80)
+  createdAt      DateTime               @default(now()) @map("created_at")
+  updatedAt      DateTime               @updatedAt @map("updated_at")
+  connection     CalendarConnection     @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, idempotencyKey])
+  @@index([createdAt])
+  @@map("calendar_mutations")
+}
+
+model CalendarOAuthState {
+  id                    String   @id @default(uuid()) @db.Uuid
+  stateHash             String   @unique @map("state_hash") @db.Char(64)
+  userId                String   @map("user_id") @db.Uuid
+  encryptedCodeVerifier String   @map("encrypted_code_verifier") @db.Text
+  expiresAt             DateTime @map("expires_at")
+  consumedAt            DateTime? @map("consumed_at")
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  @@index([userId, expiresAt])
+  @@map("calendar_oauth_states")
 }

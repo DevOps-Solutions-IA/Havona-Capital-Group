@@ -27,6 +27,10 @@ const permissions = [
   ['henry.read_assigned', 'Consultar conversaciones de Henry asignadas'],
   ['henry.dashboard', 'Consultar métricas reales de Henry'],
   ['henry.escalations.manage', 'Gestionar escalamientos de Henry'],
+  ['calendar.connect', 'Conectar y seleccionar Google Calendar'],
+  ['calendar.read', 'Consultar agenda y disponibilidad propias'],
+  ['calendar.manage_own', 'Crear, reprogramar y cancelar citas propias'],
+  ['calendar.manage_team', 'Gestionar agenda del equipo autorizado'],
 ] as const;
 const grants: Record<string, string[]> = {
   SUPER_ADMIN: permissions.map(([key]) => key),
@@ -50,6 +54,10 @@ const grants: Record<string, string[]> = {
     'henry.read_assigned',
     'henry.dashboard',
     'henry.escalations.manage',
+    'calendar.connect',
+    'calendar.read',
+    'calendar.manage_own',
+    'calendar.manage_team',
   ],
   CONSULTOR: [
     'settings.read',
@@ -60,6 +68,9 @@ const grants: Record<string, string[]> = {
     'crm.notes',
     'crm.close',
     'henry.read_assigned',
+    'calendar.connect',
+    'calendar.read',
+    'calendar.manage_own',
   ],
 };
 async function main() {
@@ -94,6 +105,11 @@ async function main() {
       value: 12,
       description: 'Duración de sesiones en horas',
     },
+  });
+  await db.systemSetting.upsert({
+    where: { key: 'calendar.availability_defaults' },
+    update: {},
+    create: { key: 'calendar.availability_defaults', value: { timezone: 'America/Bogota', workingDays: [1,2,3,4,5], workStart: '08:00', workEnd: '18:00', minimumNoticeMinutes: 120, defaultMeetingDuration: 45, bufferBeforeMinutes: 15, bufferAfterMinutes: 15, maximumFutureBookingDays: 90 }, description: 'Reglas corporativas predeterminadas de disponibilidad' },
   });
   for (const [key, name] of [
     ['direct', 'Directo'],
