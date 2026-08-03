@@ -17,7 +17,7 @@ export type ResolvedHenryContext = {
 
 const PUBLIC_PAGES = new Set(['public-home', 'public-solution', 'henry-full', 'other']);
 const PUBLIC_TOOLS = ['create_or_update_prospect', 'register_interaction', 'create_crm_activity', 'qualify_prospect', 'request_human_escalation', 'request_appointment_intent'];
-const CONSULTANT_TOOLS = ['get_prospect_context', 'register_interaction', 'create_crm_activity', 'create_task', 'request_human_escalation', 'request_appointment_intent'];
+const CONSULTANT_TOOLS = ['get_prospect_context', 'register_interaction', 'create_crm_activity', 'create_task', 'request_human_escalation', 'request_appointment_intent', 'get_calendar_availability', 'list_calendar_events', 'get_calendar_event', 'create_calendar_event', 'reschedule_calendar_event', 'cancel_calendar_event'];
 const MANAGER_TOOLS = [...CONSULTANT_TOOLS, 'qualify_prospect', 'get_available_consultants'];
 
 @Injectable()
@@ -48,7 +48,7 @@ export class HenryContextService {
           ? CONSULTANT_TOOLS
           : MANAGER_TOOLS;
     if (!normalized.entityId || !normalized.entityType) {
-      const operational = actor && ['dashboard', 'pipeline', 'tasks', 'prospect-list'].includes(normalized.pageType)
+      const operational = actor && ['dashboard', 'pipeline', 'tasks', 'prospect-list', 'agenda'].includes(normalized.pageType)
         ? await this.resolveOperationalEvidence(actor)
         : undefined;
       return { role, page: normalized, toolPermissions, ...operational };
@@ -98,6 +98,7 @@ export class HenryContextService {
       tasks: { where: { status: { in: ['PENDING', 'IN_PROGRESS'] } }, orderBy: { dueAt: 'asc' }, take: 5, select: { id: true, title: true, status: true, dueAt: true, priority: true } },
       interactions: { orderBy: { occurredAt: 'desc' }, take: 3, select: { method: true, summary: true, occurredAt: true } },
       notes: { orderBy: { createdAt: 'desc' }, take: 3, select: { body: true, createdAt: true } },
+      calendarEvents: { where: { status: { not: 'CANCELLED' }, startAt: { gte: new Date() } }, orderBy: { startAt: 'asc' }, take: 3, select: { id: true, title: true, startAt: true, endAt: true, timezone: true, conferenceLink: true } },
     } });
     if (!item) throw new NotFoundException('Entidad no encontrada o fuera de su ámbito');
     const missing = ['city', 'interest'].filter((field) => !item[field as 'city' | 'interest']);
@@ -134,6 +135,7 @@ export class HenryContextService {
       if (days >= 7) recommendations.push('Evaluar un seguimiento contextual, sujeto a consentimiento y confirmación del usuario interno.');
     }
     if (known.opportunities?.[0]?.stage?.name) evidence.push({ source: 'CRM:OPPORTUNITY', fact: `Etapa activa: ${known.opportunities[0].stage.name}` });
+    if (known.calendarEvents?.[0]?.startAt) evidence.push({ source: 'CALENDAR:EVENT', fact: `Próxima cita registrada: ${new Date(known.calendarEvents[0].startAt).toISOString()}`, observedAt: new Date().toISOString() });
     if (known.priority) evidence.push({ source: `CRM:${entity.type}`, fact: `Prioridad registrada: ${known.priority}` });
     return { evidence, recommendations };
   }

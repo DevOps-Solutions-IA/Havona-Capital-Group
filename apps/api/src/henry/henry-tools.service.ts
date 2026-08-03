@@ -6,11 +6,14 @@ import { AuditContext, AuditService } from '../audit/audit.service';
 import { AIToolDefinition } from '../ai/ai-provider';
 import { PrismaService } from '../common/prisma.service';
 import { ProspectsService } from '../prospects/prospects.service';
+import { CalendarService } from '../calendar/calendar.service';
+import type { HenryActor } from './henry-context.service';
 
 type ToolContext = {
   conversationId: string;
   audit: AuditContext;
   decision?: { policyId: string; ruleId: string };
+  actor?: HenryActor;
 };
 
 const optionalContact = z.object({
@@ -49,6 +52,12 @@ const schemas = {
   }),
   get_available_consultants: z.object({}),
   request_appointment_intent: z.object({ summary: z.string().trim().min(2).max(300) }),
+  get_calendar_availability: z.object({ timeMin: z.string().datetime({ offset: true }), timeMax: z.string().datetime({ offset: true }), durationMinutes: z.number().int().min(15).max(480), timezone: z.string().min(1).max(100) }),
+  list_calendar_events: z.object({ timeMin: z.string().datetime({ offset: true }).optional(), timeMax: z.string().datetime({ offset: true }).optional() }),
+  get_calendar_event: z.object({ eventLinkId: z.string().uuid() }),
+  create_calendar_event: z.object({ title: z.string().min(2).max(240), description: z.string().max(2000).optional(), start: z.string().datetime({ offset: true }), end: z.string().datetime({ offset: true }), timezone: z.string().min(1).max(100), attendees: z.array(z.object({ email: z.string().email() })).max(50).default([]), prospectId: z.string().uuid().optional(), opportunityId: z.string().uuid().optional(), createConference: z.boolean().default(false), confirmedByUser: z.literal(true), idempotencyKey: z.string().uuid() }),
+  reschedule_calendar_event: z.object({ eventLinkId: z.string().uuid(), start: z.string().datetime({ offset: true }), end: z.string().datetime({ offset: true }), timezone: z.string().min(1).max(100), confirmedByUser: z.literal(true), idempotencyKey: z.string().uuid() }),
+  cancel_calendar_event: z.object({ eventLinkId: z.string().uuid(), reason: z.string().min(2).max(500), confirmedByUser: z.literal(true), idempotencyKey: z.string().uuid() }),
 } as const;
 
 type ToolName = keyof typeof schemas;
@@ -71,12 +80,19 @@ export class HenryToolsService {
     { name: 'request_human_escalation', description: 'Solicita intervención humana y crea trazabilidad comercial.', parameters: objectSchema({ reason: { type: 'string', enum: ['USER_REQUEST', 'SENSITIVE_CONTEXT', 'LOW_CONFIDENCE', 'UNSUPPORTED_INTENT', 'REPEATED_ERROR', 'HIGH_VALUE_CASE', 'AUTOMATION_LIMIT', 'POLICY'] }, summary: { type: 'string' } }, ['reason', 'summary']) },
     { name: 'get_available_consultants', description: 'Comprueba si existe un responsable comercial disponible o asignado, sin exponer datos privados.', parameters: objectSchema({}) },
     { name: 'request_appointment_intent', description: 'Registra intención de agendar para que Fase 4 pueda procesarla; no crea una cita.', parameters: objectSchema({ summary: { type: 'string' } }, ['summary']) },
+    { name: 'get_calendar_availability', description: 'Consulta disponibilidad real de Google Calendar dentro de las reglas configuradas.', parameters: objectSchema({ timeMin: { type: 'string' }, timeMax: { type: 'string' }, durationMinutes: { type: 'number' }, timezone: { type: 'string' } }, ['timeMin', 'timeMax', 'durationMinutes', 'timezone']) },
+    { name: 'list_calendar_events', description: 'Lista citas reales del calendario propio autorizado.', parameters: objectSchema({ timeMin: { type: 'string' }, timeMax: { type: 'string' } }) },
+    { name: 'get_calendar_event', description: 'Consulta el detalle de una cita propia autorizada.', parameters: objectSchema({ eventLinkId: { type: 'string' } }, ['eventLinkId']) },
+    { name: 'create_calendar_event', description: 'Crea una cita real solo tras confirmación explícita.', parameters: objectSchema({ title: { type: 'string' }, description: { type: 'string' }, start: { type: 'string' }, end: { type: 'string' }, timezone: { type: 'string' }, attendees: { type: 'array', items: objectSchema({ email: { type: 'string' } }, ['email']) }, prospectId: { type: 'string' }, opportunityId: { type: 'string' }, createConference: { type: 'boolean' }, confirmedByUser: { type: 'boolean', const: true }, idempotencyKey: { type: 'string' } }, ['title', 'start', 'end', 'timezone', 'confirmedByUser', 'idempotencyKey']) },
+    { name: 'reschedule_calendar_event', description: 'Reprograma una cita real solo tras confirmación explícita.', parameters: objectSchema({ eventLinkId: { type: 'string' }, start: { type: 'string' }, end: { type: 'string' }, timezone: { type: 'string' }, confirmedByUser: { type: 'boolean', const: true }, idempotencyKey: { type: 'string' } }, ['eventLinkId', 'start', 'end', 'timezone', 'confirmedByUser', 'idempotencyKey']) },
+    { name: 'cancel_calendar_event', description: 'Cancela una cita real solo tras confirmación explícita.', parameters: objectSchema({ eventLinkId: { type: 'string' }, reason: { type: 'string' }, confirmedByUser: { type: 'boolean', const: true }, idempotencyKey: { type: 'string' } }, ['eventLinkId', 'reason', 'confirmedByUser', 'idempotencyKey']) },
   ];
 
   constructor(
     private readonly db: PrismaService,
     private readonly prospects: ProspectsService,
     private readonly auditService: AuditService,
+    private readonly calendar: CalendarService,
   ) {}
 
   isAllowed(name: string): name is ToolName {
@@ -98,6 +114,12 @@ export class HenryToolsService {
       case 'request_human_escalation': return this.escalate(input.reason, input.summary, context);
       case 'get_available_consultants': return this.availableConsultants(context.conversationId);
       case 'request_appointment_intent': return this.appointmentIntent(input.summary, context);
+      case 'get_calendar_availability': return this.calendar.availability(this.requireActor(context), input);
+      case 'list_calendar_events': return this.calendar.listEvents(this.requireActor(context), input);
+      case 'get_calendar_event': return this.calendar.getLinkedEvent(this.requireActor(context), input.eventLinkId);
+      case 'create_calendar_event': return await this.calendar.createEvent(this.requireActor(context), input, input.idempotencyKey, context.audit) as Record<string, unknown>;
+      case 'reschedule_calendar_event': return await this.calendar.updateEvent(this.requireActor(context), input.eventLinkId, input, input.idempotencyKey, context.audit) as Record<string, unknown>;
+      case 'cancel_calendar_event': return await this.calendar.cancelEvent(this.requireActor(context), input.eventLinkId, input, input.idempotencyKey, context.audit) as Record<string, unknown>;
     }
   }
 
@@ -241,4 +263,5 @@ export class HenryToolsService {
   private slug(value: string) {
     return value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'otra-consulta';
   }
+  private requireActor(context: ToolContext) { if (!context.actor) throw new BadRequestException('La herramienta de agenda requiere sesión autenticada'); return context.actor; }
 }

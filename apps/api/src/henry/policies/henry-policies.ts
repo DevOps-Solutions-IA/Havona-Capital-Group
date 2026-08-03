@@ -147,7 +147,7 @@ export class HenryToolPolicy extends StaticPolicy {
   instructions = (context: HenryPolicyContext) => [
     'Solo solicita herramientas de la allowlist y usa datos confirmados por la persona; valida consentimiento antes de persistir datos personales.',
     `Prospecto asociado: ${context.prospectAssociated ? 'sí' : 'no'}. No uses herramientas que requieren prospecto si todavía no está asociado.`,
-    'No afirmes creación, actualización, cita, tarea o escalamiento hasta recibir un ToolResult exitoso. Agenda real, WhatsApp, email y voz no están activos.',
+    'No afirmes creación, actualización, cita, tarea o escalamiento hasta recibir un ToolResult exitoso. Las lecturas de agenda no requieren confirmación; crear, reprogramar, cancelar o cambiar invitados exige confirmación explícita. WhatsApp y email no están activos.',
   ];
 }
 

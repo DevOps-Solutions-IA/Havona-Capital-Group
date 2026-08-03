@@ -31,7 +31,7 @@ export class HenryPolicyEngine {
   }
 
   evaluateTool(name: string, prospectAssociated: boolean): HenryPolicyDecision {
-    const allowed = ['get_prospect_context', 'create_or_update_prospect', 'register_interaction', 'create_crm_activity', 'create_task', 'qualify_prospect', 'request_human_escalation', 'get_available_consultants', 'request_appointment_intent'];
+    const allowed = ['get_prospect_context', 'create_or_update_prospect', 'register_interaction', 'create_crm_activity', 'create_task', 'qualify_prospect', 'request_human_escalation', 'get_available_consultants', 'request_appointment_intent', 'get_calendar_availability', 'list_calendar_events', 'get_calendar_event', 'create_calendar_event', 'reschedule_calendar_event', 'cancel_calendar_event'];
     if (!allowed.includes(name)) return { action: 'REJECT', policyId: 'tools', ruleId: 'TOOL-NOT-ALLOWLISTED-001' };
     const requiresProspect = ['get_prospect_context', 'register_interaction', 'create_crm_activity', 'create_task', 'qualify_prospect', 'get_available_consultants', 'request_appointment_intent'];
     if (requiresProspect.includes(name) && !prospectAssociated) return { action: 'REJECT', policyId: 'tools', ruleId: 'TOOL-PROSPECT-REQUIRED-001' };
@@ -40,7 +40,7 @@ export class HenryPolicyEngine {
 
   stageAfterTool(name: string, current: HenryConversationStage): HenryConversationStage {
     if (name === 'request_human_escalation') return 'ESCALATION';
-    if (name === 'request_appointment_intent') return 'APPOINTMENT';
+    if (['request_appointment_intent', 'create_calendar_event', 'reschedule_calendar_event', 'cancel_calendar_event'].includes(name)) return 'APPOINTMENT';
     if (name === 'qualify_prospect') return 'QUALIFICATION';
     if (name === 'create_or_update_prospect') return 'DIAGNOSIS';
     return current;

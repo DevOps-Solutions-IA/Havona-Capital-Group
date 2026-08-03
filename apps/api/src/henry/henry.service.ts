@@ -135,7 +135,7 @@ export class HenryService {
       metadata: { roleContext: resolved.role, pageContext: resolved.page, entityContext: resolved.entity ? { type: resolved.entity.type, id: resolved.entity.id } : undefined },
     } });
     await this.db.conversation.update({ where: { id: conversation.id }, data: { lastMessageAt: userMessage.createdAt } });
-    return this.orchestrate(conversation.id, userMessage.id, { ...context, actorUserId: actor?.id }, resolved, channel);
+    return this.orchestrate(conversation.id, userMessage.id, { ...context, actorUserId: actor?.id }, resolved, channel, actor);
   }
 
   async requestEscalation(publicId: string, token: string | undefined, reason: any, summary: string, context: AuditContext) {
@@ -196,7 +196,7 @@ export class HenryService {
     return { conversations, escalated, prospectLinked, toolCalls, errors, usage: usage._sum, generatedAt: new Date().toISOString() };
   }
 
-  private async orchestrate(conversationId: string, inputMessageId: string, context: AuditContext, runtimeContext: Awaited<ReturnType<HenryContextService['resolve']>>, channel: 'WEB' | 'VOICE' = 'WEB') {
+  private async orchestrate(conversationId: string, inputMessageId: string, context: AuditContext, runtimeContext: Awaited<ReturnType<HenryContextService['resolve']>>, channel: 'WEB' | 'VOICE' = 'WEB', actor?: Actor) {
     const conversation = await this.db.conversation.findUniqueOrThrow({ where: { id: conversationId }, include: { state: true } });
     let stage = this.readStage(conversation.state?.state);
     let prospectAssociated = Boolean(conversation.prospectId);
@@ -281,7 +281,7 @@ export class HenryService {
           let output: Record<string, unknown>;
           try {
             if (toolDecision.action === 'REJECT') throw new BadRequestException('Herramienta no autorizada para el estado actual');
-            output = await this.tools.execute(call.name, parsedArguments, { conversationId, audit: context, decision: toolDecision });
+            output = await this.tools.execute(call.name, parsedArguments, { conversationId, audit: context, decision: toolDecision, actor });
             await this.db.toolCall.update({ where: { id: persisted.id }, data: { status: 'SUCCEEDED', completedAt: new Date(), result: { create: { success: true, output: output as Prisma.InputJsonValue } } } });
             if (call.name === 'create_or_update_prospect') prospectAssociated = true;
             const nextStage = this.policyEngine.stageAfterTool(call.name, stage);
