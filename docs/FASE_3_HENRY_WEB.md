@@ -15,6 +15,14 @@ STT, TTS, micrófono accesible en la experiencia existente, continuidad multimod
 textual y gateway Custom LLM protegido. Razonamiento y acciones permanecen en Henry Core. La
 validación externa depende de credenciales locales autorizadas y no se simula en CI.
 
+## Ampliación operativa de agenda
+
+Henry integra Agenda Inteligente mediante `CalendarProvider` y `GoogleCalendarProvider`, sin crear
+otro cerebro ni Conversation Engine. Incluye OAuth server-side, tokens cifrados, FreeBusy, reglas
+por usuario, tools confirmables, eventos vinculados con CRM, idempotencia, sync tokens,
+`events.watch` y UI `/agenda`. Google Meet es una opción nativa de Calendar; no inicia Havona Meet.
+La operación se detalla en `HENRY_AGENDA_GOOGLE_CALENDAR.md`.
+
 Henry es el asistente virtual de HAVONA CAPITAL GROUP. Esta fase construye un canal web real,
 persistente, auditable e integrado con el CRM. Henry siempre se identifica como asistente virtual,
 no reemplaza al consultor y no promete resultados, coberturas ni decisiones contractuales.
@@ -23,11 +31,11 @@ no reemplaza al consultor y no promete resultados, coberturas ni decisiones cont
 
 Incluye conversación web, clasificación asistida por modelo y reglas, captación autorizada,
 herramientas controladas, contexto CRM, escalamiento humano, memoria controlada, observabilidad,
-costos y administración. No incluye WhatsApp, correo conversacional, voz, agenda completa, Havona
-Meet, automatización omnicanal ni IA predictiva.
+costos y administración. Las ampliaciones autorizadas añaden voz web y Agenda Google. No incluye
+WhatsApp, correo conversacional, Havona Meet, automatización omnicanal ni IA predictiva.
 
-Los canales `WHATSAPP`, `EMAIL` y `VOICE` existen únicamente como contratos futuros. En Fase 3 solo
-`WEB` puede iniciar intercambios.
+Los canales `WHATSAPP` y `EMAIL` permanecen como contratos futuros. `WEB` y `VOICE` comparten el
+único dominio conversacional; Calendar funciona como integración/tool, no como canal.
 
 ## Arquitectura
 

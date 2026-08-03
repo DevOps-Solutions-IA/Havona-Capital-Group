@@ -4,15 +4,19 @@ La operación de voz está descrita en `docs/HENRY_VOICE_ELEVENLABS.md`. ElevenL
 STT/TTS y transporte, no como un segundo cerebro. Toda entrada de voz atraviesa el mismo Henry
 Core, Policy Engine, contexto autorizado, memoria, RBAC y Tool Engine del canal textual.
 
+La Agenda Inteligente se documenta en
+[`HENRY_AGENDA_GOOGLE_CALENDAR.md`](./HENRY_AGENDA_GOOGLE_CALENDAR.md). Google Calendar es un
+provider operativo del mismo Henry Core: no crea conversación, permisos, memoria ni escalamiento
+paralelos. Toda mutación solicita confirmación y conserva el scope de la sesión.
+
 ## Alcance vigente
 
 Henry es el asistente virtual de HAVONA CAPITAL GROUP. En Fase 3 opera por canales `WEB` y `VOICE`,
 persiste conversaciones y mensajes, utiliza herramientas controladas para interactuar con
 el CRM y solicita escalamiento humano cuando una política o el usuario lo requiere.
 
-WhatsApp, email conversacional, voz, agenda real y Havona Meet no están activos. Los contratos de
-canal existen para integraciones futuras, pero la API rechaza que el público inicie un canal distinto
-de `WEB`.
+WhatsApp, email conversacional y Havona Meet no están activos. Agenda Google queda implementada
+como ampliación operativa en validación y solo se presenta disponible con conexión OAuth real.
 
 El comportamiento se rige por [`HENRY_MANUAL_MAESTRO.md`](./HENRY_MANUAL_MAESTRO.md), versión
 `1.1.0`. Trece políticas independientes se componen según el estado actual y el servidor aplica

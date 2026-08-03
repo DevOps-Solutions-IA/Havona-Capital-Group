@@ -135,8 +135,9 @@ Versión: `v0.3.0`
 Rama: `feature/fase-03-henry-web`
 
 La arquitectura, seguridad, dominio conversacional, integración CRM y límites se definen en
-`docs/FASE_3_HENRY_WEB.md`. En esta fase solo se activa el canal web; WhatsApp, email conversacional,
-voz, agenda completa y Havona Meet permanecen fuera de alcance.
+`docs/FASE_3_HENRY_WEB.md`. Las ampliaciones autorizadas incorporan voz web y Agenda Inteligente
+con Google Calendar dentro del mismo Henry Core. WhatsApp, email conversacional y Havona Meet
+permanecen fuera de alcance.
 
 Entregables:
 
@@ -148,17 +149,15 @@ Entregables:
 - Herramientas.
 - Escalamiento.
 - Auditoría.
+- Agenda Google: OAuth, FreeBusy, citas, sincronización, UI y tools confirmables.
 
 Versión: `v0.4.0`
 
-## Fase 4 — Agenda y Havona Meet
+## Fase 4 — Havona Meet y automatización de citas
 
 Entregables:
 
-- Disponibilidad.
-- Citas.
-- Reagendamiento.
-- Cancelación.
+- Evolución de disponibilidad y citas sobre la Agenda Google entregada en Fase 3.
 - Jitsi.
 - Creación de salas.
 - Recordatorios.
