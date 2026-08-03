@@ -1,5 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  forwardRef,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@havona/database';
 import { AuditContext, AuditService } from '../audit/audit.service';
 import { CalendarAccessService } from '../calendar/calendar-access.service';
@@ -33,7 +39,7 @@ export class AutomationService {
     private access: CalendarAccessService,
     private crm: CrmService,
     private communications: CommunicationsService,
-    private henry: HenryService,
+    @Inject(forwardRef(() => HenryService)) private henry: HenryService,
     private eventBus: AutomationEventBus,
   ) {
     this.dbx = db as any;

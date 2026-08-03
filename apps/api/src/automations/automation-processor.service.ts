@@ -7,10 +7,7 @@ import { AutomationService } from './automation.service';
 @Injectable()
 export class AutomationProcessorService implements OnModuleInit, OnApplicationShutdown {
   private logger = new Logger(AutomationProcessorService.name);
-  private connection = new Redis(process.env.REDIS_URL ?? 'redis://127.0.0.1:6379', {
-    maxRetriesPerRequest: null,
-    enableReadyCheck: true,
-  });
+  private connection?: Redis;
   private worker?: Worker;
   constructor(private automations: AutomationService) {}
   async onModuleInit() {
@@ -18,6 +15,10 @@ export class AutomationProcessorService implements OnModuleInit, OnApplicationSh
     // Starting a competing background worker in the same Jest process introduces
     // nondeterministic races and leaves an unnecessary Redis blocking connection.
     if (process.env.NODE_ENV === 'test') return;
+    this.connection = new Redis(process.env.REDIS_URL ?? 'redis://127.0.0.1:6379', {
+      maxRetriesPerRequest: null,
+      enableReadyCheck: true,
+    });
     this.worker = new Worker(
       process.env.AUTOMATIONS_QUEUE_NAME ?? 'havona-automations',
       (job) => this.process(job),
@@ -50,6 +51,8 @@ export class AutomationProcessorService implements OnModuleInit, OnApplicationSh
     // A shutdown must not hang behind an active provider action. BullMQ releases the
     // lock and the persisted execution is recovered safely by recoverPending().
     await this.worker?.close(true);
-    this.connection.disconnect();
+    if (this.connection?.status !== 'end') await this.connection?.quit();
+    this.worker = undefined;
+    this.connection = undefined;
   }
 }

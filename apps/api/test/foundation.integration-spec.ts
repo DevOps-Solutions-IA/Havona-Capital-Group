@@ -33,9 +33,12 @@ describe('Fase 0 (PostgreSQL + Redis)', () => {
   });
 
   afterAll(async () => {
-    await redis.quit();
-    await app.close();
-  });
+    try {
+      await app?.close();
+    } finally {
+      if (redis?.status !== 'end') await redis?.quit();
+    }
+  }, 15_000);
 
   it('comprueba conexiones y readiness', async () => {
     await expect(db.$queryRaw`SELECT 1`).resolves.toBeDefined();
