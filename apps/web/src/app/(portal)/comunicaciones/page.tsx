@@ -29,6 +29,7 @@ export default function CommunicationsPage() {
     [busy, setBusy] = useState(false),
     [linkOpen, setLinkOpen] = useState(false),
     [prospectId, setProspectId] = useState('');
+  const selectedId = selected?.id;
   const load = useCallback(async () => {
     setError('');
     try {
@@ -38,8 +39,8 @@ export default function CommunicationsPage() {
       ]);
       setThreads(list.data);
       setConfig(status);
-      if (selected) {
-        const fresh = await communicationsApi.get(selected.id);
+      if (selectedId) {
+        const fresh = await communicationsApi.get(selectedId);
         setSelected(fresh);
       }
     } catch (e) {
@@ -47,7 +48,7 @@ export default function CommunicationsPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, selected?.id]);
+  }, [search, selectedId]);
   useEffect(() => {
     void load();
   }, [load]);
