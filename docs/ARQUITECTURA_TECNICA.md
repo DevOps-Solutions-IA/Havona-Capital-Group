@@ -6,6 +6,11 @@ HAVONA CAPITAL GROUP se construirá como un monorepo con monolito modular, prepa
 
 ## 2. Aplicaciones
 
+HAVONA Meet Core es un dominio corporativo transversal. Agenda/Calendar, CRM, Henry, Portal y
+futuras automatizaciones consumen `MeetingService`, que delega en `MeetingProvider`; Jitsi es la
+implementación inicial. La dependencia permitida es Henry → Meet Core y Calendar → Meet Core.
+Meet Core nunca depende de Henry y Google Meet no se confunde con HAVONA Meet.
+
 ### `apps/web`
 
 Responsabilidades:

@@ -156,6 +156,11 @@ Versión: `v0.4.0`
 
 ## Fase 4 — Havona Meet y automatización de citas
 
+HAVONA Meet Core se implementa como motor corporativo mediante `MeetingProvider` y Jitsi, con
+reuniones vinculables a Agenda, CRM y Henry, acceso interno RBAC, invitados firmados y sala web
+real. La validación Jitsi externa se ejecutará en VPS/preproducción cuando exista infraestructura
+autorizada; no se simularán videollamadas durante desarrollo.
+
 Entregables:
 
 - Evolución de disponibilidad y citas sobre la Agenda Google entregada en Fase 3.
