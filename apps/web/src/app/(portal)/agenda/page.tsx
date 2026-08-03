@@ -15,6 +15,7 @@ import { Alert, Button, Card, EmptyState, Skeleton } from '@havona/ui';
 import { PageHeader } from '@/components/page';
 import { calendarApi, CalendarEvent, CalendarStatus, AvailabilityRule } from '@/lib/calendar';
 import { messageOf } from '@/lib/api';
+import { meetingsApi } from '@/lib/meetings';
 const zone = 'America/Bogota';
 const initialRule: AvailabilityRule = {
   timezone: zone,
@@ -28,7 +29,12 @@ const initialRule: AvailabilityRule = {
   maximumFutureBookingDays: 90,
 };
 function Input(props: InputHTMLAttributes<HTMLInputElement>) {
-  return <input {...props} className={`mt-1.5 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-slate-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 ${props.className ?? ''}`} />;
+  return (
+    <input
+      {...props}
+      className={`mt-1.5 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-slate-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 ${props.className ?? ''}`}
+    />
+  );
 }
 export default function AgendaPage() {
   const [status, setStatus] = useState<CalendarStatus | null>(null),
@@ -107,7 +113,7 @@ export default function AgendaPage() {
     try {
       const start = new Date(String(data.get('start'))),
         end = new Date(start.getTime() + Number(data.get('duration')) * 60000);
-      await calendarApi.create({
+      const calendarEvent = await calendarApi.create({
         title: String(data.get('title')),
         start: start.toISOString(),
         end: end.toISOString(),
@@ -118,6 +124,15 @@ export default function AgendaPage() {
         createConference: data.get('meet') === 'on',
         sendUpdates: 'all',
       });
+      if (data.get('havonaMeet') === 'on') {
+        await meetingsApi.create({
+          title: String(data.get('title')),
+          scheduledStartAt: start.toISOString(),
+          scheduledEndAt: end.toISOString(),
+          timezone: rules.timezone,
+          calendarEventLinkId: calendarEvent.id,
+        });
+      }
       setCreating(false);
       setNotice('Cita creada y registrada en Google Calendar.');
       await load();
@@ -184,15 +199,24 @@ export default function AgendaPage() {
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-                <Button className="bg-white text-brand-800 ring-1 ring-slate-200 hover:bg-slate-50" onClick={() => void sync()}>
+              <Button
+                className="bg-white text-brand-800 ring-1 ring-slate-200 hover:bg-slate-50"
+                onClick={() => void sync()}
+              >
                 <RefreshCw className="size-4" />
                 Sincronizar
               </Button>
-                <Button className="bg-white text-brand-800 ring-1 ring-slate-200 hover:bg-slate-50" onClick={() => setSettings(!settings)}>
+              <Button
+                className="bg-white text-brand-800 ring-1 ring-slate-200 hover:bg-slate-50"
+                onClick={() => setSettings(!settings)}
+              >
                 <Settings2 className="size-4" />
                 Disponibilidad
               </Button>
-                <Button className="bg-white text-brand-800 ring-1 ring-slate-200 hover:bg-slate-50" onClick={() => void disconnect()}>
+              <Button
+                className="bg-white text-brand-800 ring-1 ring-slate-200 hover:bg-slate-50"
+                onClick={() => void disconnect()}
+              >
                 <Unplug className="size-4" />
                 Desconectar
               </Button>
@@ -286,9 +310,17 @@ export default function AgendaPage() {
                   <input name="meet" type="checkbox" />
                   Crear enlace de Google Meet
                 </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input name="havonaMeet" type="checkbox" />
+                  Crear sala segura de HAVONA Meet
+                </label>
                 <div className="md:col-span-2 flex gap-2">
                   <Button type="submit">Confirmar y crear</Button>
-                    <Button type="button" className="bg-white text-brand-800 ring-1 ring-slate-200 hover:bg-slate-50" onClick={() => setCreating(false)}>
+                  <Button
+                    type="button"
+                    className="bg-white text-brand-800 ring-1 ring-slate-200 hover:bg-slate-50"
+                    onClick={() => setCreating(false)}
+                  >
                     Cancelar
                   </Button>
                 </div>
@@ -342,6 +374,11 @@ export default function AgendaPage() {
                             {item.conferenceLink && (
                               <a href={item.conferenceLink} target="_blank" rel="noreferrer">
                                 Unirse con Google Meet <ExternalLink className="size-3" />
+                              </a>
+                            )}
+                            {item.meetingId && item.meetingStatus !== 'CANCELLED' && (
+                              <a href={`/meet/${item.meetingId}`}>
+                                Entrar a HAVONA Meet <ExternalLink className="size-3" />
                               </a>
                             )}
                           </div>
