@@ -300,10 +300,16 @@ export const henryPageContextSchema = z
   .strict()
   .superRefine((value, context) => {
     if (Boolean(value.entityType) !== Boolean(value.entityId)) {
-      context.addIssue({ code: z.ZodIssueCode.custom, message: 'entityType y entityId deben enviarse juntos' });
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'entityType y entityId deben enviarse juntos',
+      });
     }
     if (value.entityType && !['prospect-detail', 'company-detail'].includes(value.pageType)) {
-      context.addIssue({ code: z.ZodIssueCode.custom, message: 'La entidad no corresponde al tipo de página' });
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'La entidad no corresponde al tipo de página',
+      });
     }
   });
 
@@ -364,7 +370,10 @@ export const calendarEventListQuerySchema = z.object({
   timeMax: isoDate.optional(),
 });
 export const calendarTeamAvailabilityQuerySchema = calendarAvailabilityQuerySchema.extend({
-  userIds: z.preprocess((value) => typeof value === 'string' ? value.split(',').filter(Boolean) : value, z.array(uuid).min(1).max(20)),
+  userIds: z.preprocess(
+    (value) => (typeof value === 'string' ? value.split(',').filter(Boolean) : value),
+    z.array(uuid).min(1).max(20),
+  ),
 });
 export const calendarTeamEventsQuerySchema = calendarEventListQuerySchema.extend({ userId: uuid });
 export const calendarTeamMembershipSchema = z.object({ managerId: uuid }).strict();
@@ -380,24 +389,139 @@ export const calendarAvailabilityRuleSchema = z.object({
   maximumFutureBookingDays: z.number().int().min(1).max(730),
 });
 const calendarAttendeeSchema = z.object({ email: z.string().trim().email().max(254) }).strict();
-export const createCalendarEventSchema = z.object({
-  title: plainText(240), description: optionalPlainText(2000), start: isoDate, end: isoDate,
-  timezone: z.string().trim().min(1).max(100), attendees: z.array(calendarAttendeeSchema).max(50).default([]),
-  location: optionalPlainText(500), createConference: z.boolean().default(false),
-  reminders: z.array(z.object({ method: z.enum(['email', 'popup']), minutes: z.number().int().min(0).max(40_320) })).max(5).optional(),
-  prospectId: uuid.optional(), companyId: uuid.optional(), opportunityId: uuid.optional(), conversationId: uuid.optional(),
-  calendarOwnerUserId: uuid.optional(), assignedConsultantId: uuid.optional(),
-  confirmedByUser: z.literal(true), sendUpdates: z.enum(['all', 'externalOnly', 'none']).default('all'),
-}).refine((v) => new Date(v.end) > new Date(v.start), { message: 'El fin debe ser posterior al inicio', path: ['end'] });
-export const updateCalendarEventSchema = z.object({
-  title: plainText(240).optional(), description: optionalPlainText(2000), start: isoDate.optional(), end: isoDate.optional(),
-  timezone: z.string().trim().min(1).max(100).optional(), attendees: z.array(calendarAttendeeSchema).max(50).optional(),
-  location: optionalPlainText(500), createConference: z.boolean().optional(), confirmedByUser: z.literal(true),
+export const createCalendarEventSchema = z
+  .object({
+    title: plainText(240),
+    description: optionalPlainText(2000),
+    start: isoDate,
+    end: isoDate,
+    timezone: z.string().trim().min(1).max(100),
+    attendees: z.array(calendarAttendeeSchema).max(50).default([]),
+    location: optionalPlainText(500),
+    createConference: z.boolean().default(false),
+    reminders: z
+      .array(
+        z.object({
+          method: z.enum(['email', 'popup']),
+          minutes: z.number().int().min(0).max(40_320),
+        }),
+      )
+      .max(5)
+      .optional(),
+    prospectId: uuid.optional(),
+    companyId: uuid.optional(),
+    opportunityId: uuid.optional(),
+    conversationId: uuid.optional(),
+    calendarOwnerUserId: uuid.optional(),
+    assignedConsultantId: uuid.optional(),
+    confirmedByUser: z.literal(true),
+    sendUpdates: z.enum(['all', 'externalOnly', 'none']).default('all'),
+  })
+  .refine((v) => new Date(v.end) > new Date(v.start), {
+    message: 'El fin debe ser posterior al inicio',
+    path: ['end'],
+  });
+export const updateCalendarEventSchema = z
+  .object({
+    title: plainText(240).optional(),
+    description: optionalPlainText(2000),
+    start: isoDate.optional(),
+    end: isoDate.optional(),
+    timezone: z.string().trim().min(1).max(100).optional(),
+    attendees: z.array(calendarAttendeeSchema).max(50).optional(),
+    location: optionalPlainText(500),
+    createConference: z.boolean().optional(),
+    confirmedByUser: z.literal(true),
+    sendUpdates: z.enum(['all', 'externalOnly', 'none']).default('all'),
+  })
+  .refine((v) => !v.start || !v.end || new Date(v.end) > new Date(v.start), {
+    message: 'El fin debe ser posterior al inicio',
+    path: ['end'],
+  });
+export const cancelCalendarEventSchema = z.object({
+  reason: plainText(500),
+  confirmedByUser: z.literal(true),
   sendUpdates: z.enum(['all', 'externalOnly', 'none']).default('all'),
-}).refine((v) => !v.start || !v.end || new Date(v.end) > new Date(v.start), { message: 'El fin debe ser posterior al inicio', path: ['end'] });
-export const cancelCalendarEventSchema = z.object({ reason: plainText(500), confirmedByUser: z.literal(true), sendUpdates: z.enum(['all', 'externalOnly', 'none']).default('all') });
+});
 export const selectCalendarSchema = z.object({ calendarId: z.string().trim().min(1).max(512) });
 
 export type CalendarAvailabilityQuery = z.infer<typeof calendarAvailabilityQuerySchema>;
 export type CreateCalendarEventInput = z.infer<typeof createCalendarEventSchema>;
 export type UpdateCalendarEventInput = z.infer<typeof updateCalendarEventSchema>;
+
+const meetingRelations = {
+  calendarEventLinkId: uuid.optional(),
+  prospectId: uuid.optional(),
+  companyId: uuid.optional(),
+  opportunityId: uuid.optional(),
+  conversationId: uuid.optional(),
+  assignedConsultantId: uuid.optional(),
+};
+export const createMeetingSchema = z
+  .object({
+    title: plainText(240),
+    description: optionalPlainText(2000),
+    scheduledStartAt: isoDate,
+    scheduledEndAt: isoDate,
+    timezone: z.string().trim().min(1).max(100),
+    ownerUserId: uuid.optional(),
+    ...meetingRelations,
+    joinPolicy: z.enum(['AUTHENTICATED', 'INVITED']).default('AUTHENTICATED'),
+    guestAccessPolicy: z.enum(['DISABLED', 'SIGNED_INVITATION']).default('SIGNED_INVITATION'),
+    allowGuestBeforeHost: z.boolean().default(false),
+    joinEarlyMinutes: z.number().int().min(0).max(240).default(15),
+    joinLateMinutes: z.number().int().min(0).max(1440).default(30),
+    lobbyRequired: z.boolean().default(true),
+    confirmedByUser: z.literal(true),
+  })
+  .strict()
+  .refine((v) => new Date(v.scheduledEndAt) > new Date(v.scheduledStartAt), {
+    message: 'El fin debe ser posterior al inicio',
+    path: ['scheduledEndAt'],
+  });
+export const updateMeetingSchema = z
+  .object({
+    title: plainText(240).optional(),
+    description: optionalPlainText(2000),
+    scheduledStartAt: isoDate.optional(),
+    scheduledEndAt: isoDate.optional(),
+    timezone: z.string().trim().min(1).max(100).optional(),
+    assignedConsultantId: uuid.optional(),
+    confirmedByUser: z.literal(true),
+  })
+  .strict()
+  .refine(
+    (v) =>
+      !v.scheduledStartAt ||
+      !v.scheduledEndAt ||
+      new Date(v.scheduledEndAt) > new Date(v.scheduledStartAt),
+    { message: 'El fin debe ser posterior al inicio', path: ['scheduledEndAt'] },
+  );
+export const cancelMeetingSchema = z
+  .object({ reason: plainText(500), confirmedByUser: z.literal(true) })
+  .strict();
+export const meetingInvitationSchema = z
+  .object({
+    expectedEmail: z.string().trim().email().max(254).optional(),
+    displayName: optionalPlainText(120),
+    expiresAt: isoDate,
+  })
+  .strict();
+export const publicMeetingJoinSchema = z
+  .object({ token: z.string().min(32).max(512), displayName: plainText(120).optional() })
+  .strict();
+export const meetingListQuerySchema = z.object({
+  ownerUserId: uuid.optional(),
+  from: isoDate.optional(),
+  to: isoDate.optional(),
+  status: z.enum(['SCHEDULED', 'ACTIVE', 'COMPLETED', 'CANCELLED', 'FAILED']).optional(),
+});
+export const meetingProviderEventSchema = z
+  .object({
+    meetingId: uuid,
+    providerEventId: z.string().trim().min(8).max(180),
+    type: z.enum(['STARTED', 'JOINED', 'LEFT', 'ENDED']),
+    occurredAt: isoDate,
+    participantExternalId: z.string().trim().max(180).optional(),
+  })
+  .strict();

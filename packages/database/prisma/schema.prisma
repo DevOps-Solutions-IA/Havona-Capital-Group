@@ -8,40 +8,45 @@ datasource db {
 }
 
 model User {
-  id                       String                    @id @default(uuid()) @db.Uuid
-  email                    String                    @unique @db.VarChar(254)
-  name                     String                    @db.VarChar(120)
-  passwordHash             String                    @map("password_hash")
-  isActive                 Boolean                   @default(true) @map("is_active")
-  failedLoginAttempts      Int                       @default(0) @map("failed_login_attempts")
-  lockedUntil              DateTime?                 @map("locked_until")
-  lastLoginAt              DateTime?                 @map("last_login_at")
-  createdAt                DateTime                  @default(now()) @map("created_at")
-  updatedAt                DateTime                  @updatedAt @map("updated_at")
-  roles                    UserRole[]
-  sessions                 Session[]
-  passwordResetTokens      PasswordResetToken[]
-  auditLogs                AuditLog[]                @relation("AuditActor")
-  assignedProspects        Assignment[]              @relation("AssignmentAssignee")
-  prospectAssignments      Assignment[]              @relation("AssignmentActor")
-  opportunities            Opportunity[]             @relation("OpportunityOwner")
-  stageChanges             OpportunityStageHistory[] @relation("StageChangedBy")
-  crmTasks                 Task[]                    @relation("TaskAssignee")
-  createdTasks             Task[]                    @relation("TaskCreator")
-  notes                    Note[]                    @relation("NoteAuthor")
-  activities               Activity[]                @relation("ActivityActor")
-  interactions             Interaction[]             @relation("InteractionActor")
-  convertedClients         ClientProfile[]           @relation("ClientConvertedBy")
-  conversationParticipants ConversationParticipant[]
-  assignedEscalations      Escalation[]              @relation("EscalationAssignee")
-  voiceSessions            VoiceSession[]
-  calendarConnections      CalendarConnection[]
-  calendarAvailability     CalendarAvailabilityRule?
-  calendarEventsCreated    CalendarEventLink[]       @relation("CalendarEventCreator")
-  calendarEventsAssigned   CalendarEventLink[]       @relation("CalendarEventAssignee")
-  calendarTeamMembers      CalendarTeamMembership[]  @relation("CalendarTeamManager")
-  calendarTeamManagers     CalendarTeamMembership[]  @relation("CalendarTeamMember")
-  calendarTeamAssignmentsCreated CalendarTeamMembership[] @relation("CalendarTeamCreatedBy")
+  id                             String                    @id @default(uuid()) @db.Uuid
+  email                          String                    @unique @db.VarChar(254)
+  name                           String                    @db.VarChar(120)
+  passwordHash                   String                    @map("password_hash")
+  isActive                       Boolean                   @default(true) @map("is_active")
+  failedLoginAttempts            Int                       @default(0) @map("failed_login_attempts")
+  lockedUntil                    DateTime?                 @map("locked_until")
+  lastLoginAt                    DateTime?                 @map("last_login_at")
+  createdAt                      DateTime                  @default(now()) @map("created_at")
+  updatedAt                      DateTime                  @updatedAt @map("updated_at")
+  roles                          UserRole[]
+  sessions                       Session[]
+  passwordResetTokens            PasswordResetToken[]
+  auditLogs                      AuditLog[]                @relation("AuditActor")
+  assignedProspects              Assignment[]              @relation("AssignmentAssignee")
+  prospectAssignments            Assignment[]              @relation("AssignmentActor")
+  opportunities                  Opportunity[]             @relation("OpportunityOwner")
+  stageChanges                   OpportunityStageHistory[] @relation("StageChangedBy")
+  crmTasks                       Task[]                    @relation("TaskAssignee")
+  createdTasks                   Task[]                    @relation("TaskCreator")
+  notes                          Note[]                    @relation("NoteAuthor")
+  activities                     Activity[]                @relation("ActivityActor")
+  interactions                   Interaction[]             @relation("InteractionActor")
+  convertedClients               ClientProfile[]           @relation("ClientConvertedBy")
+  conversationParticipants       ConversationParticipant[]
+  assignedEscalations            Escalation[]              @relation("EscalationAssignee")
+  voiceSessions                  VoiceSession[]
+  calendarConnections            CalendarConnection[]
+  calendarAvailability           CalendarAvailabilityRule?
+  calendarEventsCreated          CalendarEventLink[]       @relation("CalendarEventCreator")
+  calendarEventsAssigned         CalendarEventLink[]       @relation("CalendarEventAssignee")
+  calendarTeamMembers            CalendarTeamMembership[]  @relation("CalendarTeamManager")
+  calendarTeamManagers           CalendarTeamMembership[]  @relation("CalendarTeamMember")
+  calendarTeamAssignmentsCreated CalendarTeamMembership[]  @relation("CalendarTeamCreatedBy")
+  meetingsCreated                Meeting[]                 @relation("MeetingCreator")
+  meetingsOwned                  Meeting[]                 @relation("MeetingOwner")
+  meetingsAssigned               Meeting[]                 @relation("MeetingAssignee")
+  meetingParticipants            MeetingParticipant[]
+  meetingInvitationsCreated      MeetingInvitation[]       @relation("MeetingInvitationCreator")
 
   @@map("users")
 }
@@ -107,6 +112,7 @@ model Prospect {
   conversations            Conversation[]
   conversationParticipants ConversationParticipant[]
   calendarEvents           CalendarEventLink[]
+  meetings                 Meeting[]
 
   @@index([status, createdAt])
   @@index([sourceId, createdAt])
@@ -185,17 +191,18 @@ model ClientProfile {
 }
 
 model Company {
-  id            String           @id @default(uuid()) @db.Uuid
-  name          String           @db.VarChar(160)
-  legalName     String?          @map("legal_name") @db.VarChar(200)
-  taxIdentifier String?          @unique @map("tax_identifier") @db.VarChar(40)
-  city          String?          @db.VarChar(100)
-  email         String?          @db.VarChar(254)
-  phone         String?          @db.VarChar(30)
-  createdAt     DateTime         @default(now()) @map("created_at")
-  updatedAt     DateTime         @updatedAt @map("updated_at")
-  contacts      CompanyContact[]
+  id             String              @id @default(uuid()) @db.Uuid
+  name           String              @db.VarChar(160)
+  legalName      String?             @map("legal_name") @db.VarChar(200)
+  taxIdentifier  String?             @unique @map("tax_identifier") @db.VarChar(40)
+  city           String?             @db.VarChar(100)
+  email          String?             @db.VarChar(254)
+  phone          String?             @db.VarChar(30)
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+  contacts       CompanyContact[]
   calendarEvents CalendarEventLink[]
+  meetings       Meeting[]
 
   @@index([name])
   @@map("crm_companies")
@@ -239,25 +246,26 @@ model PipelineStage {
 }
 
 model Opportunity {
-  id           String                    @id @default(uuid()) @db.Uuid
-  prospectId   String                    @map("prospect_id") @db.Uuid
-  stageId      String                    @map("stage_id") @db.Uuid
-  ownerId      String?                   @map("owner_id") @db.Uuid
-  title        String                    @db.VarChar(160)
-  priority     OpportunityPriority       @default(MEDIUM)
-  status       OpportunityStatus         @default(OPEN)
-  closedAt     DateTime?                 @map("closed_at")
-  createdAt    DateTime                  @default(now()) @map("created_at")
-  updatedAt    DateTime                  @updatedAt @map("updated_at")
-  prospect     Prospect                  @relation(fields: [prospectId], references: [id], onDelete: Restrict)
-  stage        PipelineStage             @relation(fields: [stageId], references: [id], onDelete: Restrict)
-  owner        User?                     @relation("OpportunityOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  stageHistory OpportunityStageHistory[]
-  tasks        Task[]
-  notes        Note[]
-  activities   Activity[]
-  interactions Interaction[]
+  id             String                    @id @default(uuid()) @db.Uuid
+  prospectId     String                    @map("prospect_id") @db.Uuid
+  stageId        String                    @map("stage_id") @db.Uuid
+  ownerId        String?                   @map("owner_id") @db.Uuid
+  title          String                    @db.VarChar(160)
+  priority       OpportunityPriority       @default(MEDIUM)
+  status         OpportunityStatus         @default(OPEN)
+  closedAt       DateTime?                 @map("closed_at")
+  createdAt      DateTime                  @default(now()) @map("created_at")
+  updatedAt      DateTime                  @updatedAt @map("updated_at")
+  prospect       Prospect                  @relation(fields: [prospectId], references: [id], onDelete: Restrict)
+  stage          PipelineStage             @relation(fields: [stageId], references: [id], onDelete: Restrict)
+  owner          User?                     @relation("OpportunityOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  stageHistory   OpportunityStageHistory[]
+  tasks          Task[]
+  notes          Note[]
+  activities     Activity[]
+  interactions   Interaction[]
   calendarEvents CalendarEventLink[]
+  meetings       Meeting[]
 
   @@index([stageId, status, updatedAt])
   @@index([ownerId, status, updatedAt])
@@ -503,7 +511,8 @@ model Conversation {
   state             ConversationState?
   escalations       Escalation[]
   voiceSessions     VoiceSession[]
-  calendarEvents     CalendarEventLink[]
+  calendarEvents    CalendarEventLink[]
+  meetings          Meeting[]
 
   @@index([status, lastMessageAt])
   @@index([prospectId, createdAt])
@@ -900,14 +909,14 @@ model CalendarAvailabilityRule {
 }
 
 model CalendarTeamMembership {
-  id        String   @id @default(uuid()) @db.Uuid
-  managerId String   @map("manager_id") @db.Uuid
-  memberId  String   @map("member_id") @db.Uuid
-  createdById String @map("created_by_id") @db.Uuid
-  createdAt DateTime @default(now()) @map("created_at")
-  manager   User     @relation("CalendarTeamManager", fields: [managerId], references: [id], onDelete: Cascade)
-  member    User     @relation("CalendarTeamMember", fields: [memberId], references: [id], onDelete: Cascade)
-  createdBy User     @relation("CalendarTeamCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  id          String   @id @default(uuid()) @db.Uuid
+  managerId   String   @map("manager_id") @db.Uuid
+  memberId    String   @map("member_id") @db.Uuid
+  createdById String   @map("created_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+  manager     User     @relation("CalendarTeamManager", fields: [managerId], references: [id], onDelete: Cascade)
+  member      User     @relation("CalendarTeamMember", fields: [memberId], references: [id], onDelete: Cascade)
+  createdBy   User     @relation("CalendarTeamCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
 
   @@unique([managerId, memberId])
   @@index([memberId])
@@ -915,36 +924,37 @@ model CalendarTeamMembership {
 }
 
 model CalendarEventLink {
-  id                  String              @id @default(uuid()) @db.Uuid
-  connectionId        String              @map("connection_id") @db.Uuid
-  providerEventId     String              @map("provider_event_id") @db.VarChar(512)
-  providerEtag        String?             @map("provider_etag") @db.VarChar(256)
-  calendarId          String              @map("calendar_id") @db.VarChar(512)
-  title               String              @db.VarChar(240)
-  startAt             DateTime            @map("start_at")
-  endAt               DateTime            @map("end_at")
-  timezone            String              @db.VarChar(100)
-  status              CalendarEventStatus @default(CONFIRMED)
-  htmlLink            String?             @map("html_link") @db.VarChar(1200)
-  conferenceLink      String?             @map("conference_link") @db.VarChar(1200)
-  attendees           Json?
-  prospectId          String?             @map("prospect_id") @db.Uuid
-  companyId           String?             @map("company_id") @db.Uuid
-  opportunityId       String?             @map("opportunity_id") @db.Uuid
-  conversationId      String?             @map("conversation_id") @db.Uuid
-  createdById         String              @map("created_by_id") @db.Uuid
-  assignedConsultantId String?            @map("assigned_consultant_id") @db.Uuid
-  cancellationReason  String?             @map("cancellation_reason") @db.VarChar(500)
-  cancelledAt         DateTime?           @map("cancelled_at")
-  createdAt           DateTime            @default(now()) @map("created_at")
-  updatedAt           DateTime            @updatedAt @map("updated_at")
-  connection          CalendarConnection  @relation(fields: [connectionId], references: [id], onDelete: Cascade)
-  prospect            Prospect?           @relation(fields: [prospectId], references: [id], onDelete: SetNull)
-  company             Company?            @relation(fields: [companyId], references: [id], onDelete: SetNull)
-  opportunity         Opportunity?        @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
-  conversation        Conversation?       @relation(fields: [conversationId], references: [id], onDelete: SetNull)
-  createdBy           User                @relation("CalendarEventCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  assignedConsultant  User?               @relation("CalendarEventAssignee", fields: [assignedConsultantId], references: [id], onDelete: SetNull)
+  id                   String              @id @default(uuid()) @db.Uuid
+  connectionId         String              @map("connection_id") @db.Uuid
+  providerEventId      String              @map("provider_event_id") @db.VarChar(512)
+  providerEtag         String?             @map("provider_etag") @db.VarChar(256)
+  calendarId           String              @map("calendar_id") @db.VarChar(512)
+  title                String              @db.VarChar(240)
+  startAt              DateTime            @map("start_at")
+  endAt                DateTime            @map("end_at")
+  timezone             String              @db.VarChar(100)
+  status               CalendarEventStatus @default(CONFIRMED)
+  htmlLink             String?             @map("html_link") @db.VarChar(1200)
+  conferenceLink       String?             @map("conference_link") @db.VarChar(1200)
+  attendees            Json?
+  prospectId           String?             @map("prospect_id") @db.Uuid
+  companyId            String?             @map("company_id") @db.Uuid
+  opportunityId        String?             @map("opportunity_id") @db.Uuid
+  conversationId       String?             @map("conversation_id") @db.Uuid
+  createdById          String              @map("created_by_id") @db.Uuid
+  assignedConsultantId String?             @map("assigned_consultant_id") @db.Uuid
+  cancellationReason   String?             @map("cancellation_reason") @db.VarChar(500)
+  cancelledAt          DateTime?           @map("cancelled_at")
+  createdAt            DateTime            @default(now()) @map("created_at")
+  updatedAt            DateTime            @updatedAt @map("updated_at")
+  connection           CalendarConnection  @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  prospect             Prospect?           @relation(fields: [prospectId], references: [id], onDelete: SetNull)
+  company              Company?            @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  opportunity          Opportunity?        @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  conversation         Conversation?       @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  createdBy            User                @relation("CalendarEventCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  assignedConsultant   User?               @relation("CalendarEventAssignee", fields: [assignedConsultantId], references: [id], onDelete: SetNull)
+  meeting              Meeting?
 
   @@unique([connectionId, providerEventId])
   @@index([startAt, status])
@@ -952,6 +962,143 @@ model CalendarEventLink {
   @@index([opportunityId, startAt])
   @@index([assignedConsultantId, startAt])
   @@map("calendar_event_links")
+}
+
+enum MeetingProviderType {
+  JITSI
+}
+
+enum MeetingStatus {
+  SCHEDULED
+  ACTIVE
+  COMPLETED
+  CANCELLED
+  FAILED
+}
+
+enum MeetingJoinPolicy {
+  AUTHENTICATED
+  INVITED
+}
+
+enum MeetingGuestAccessPolicy {
+  DISABLED
+  SIGNED_INVITATION
+}
+
+enum MeetingParticipantRole {
+  HOST
+  MODERATOR
+  PARTICIPANT
+  GUEST
+}
+
+enum MeetingInvitationStatus {
+  ACTIVE
+  REVOKED
+  USED
+}
+
+enum MeetingAttendanceEventType {
+  STARTED
+  JOINED
+  LEFT
+  ENDED
+}
+
+model Meeting {
+  id                   String                   @id @default(uuid()) @db.Uuid
+  provider             MeetingProviderType      @default(JITSI)
+  providerMeetingId    String                   @unique @map("provider_meeting_id") @db.VarChar(180)
+  idempotencyKey       String                   @unique @map("idempotency_key") @db.VarChar(120)
+  title                String                   @db.VarChar(240)
+  description          String?                  @db.VarChar(2000)
+  status               MeetingStatus            @default(SCHEDULED)
+  scheduledStartAt     DateTime                 @map("scheduled_start_at")
+  scheduledEndAt       DateTime                 @map("scheduled_end_at")
+  timezone             String                   @db.VarChar(100)
+  createdById          String                   @map("created_by_id") @db.Uuid
+  ownerUserId          String                   @map("owner_user_id") @db.Uuid
+  assignedConsultantId String?                  @map("assigned_consultant_id") @db.Uuid
+  calendarEventLinkId  String?                  @unique @map("calendar_event_link_id") @db.Uuid
+  prospectId           String?                  @map("prospect_id") @db.Uuid
+  companyId            String?                  @map("company_id") @db.Uuid
+  opportunityId        String?                  @map("opportunity_id") @db.Uuid
+  conversationId       String?                  @map("conversation_id") @db.Uuid
+  joinPolicy           MeetingJoinPolicy        @default(AUTHENTICATED) @map("join_policy")
+  guestAccessPolicy    MeetingGuestAccessPolicy @default(SIGNED_INVITATION) @map("guest_access_policy")
+  allowGuestBeforeHost Boolean                  @default(false) @map("allow_guest_before_host")
+  joinEarlyMinutes     Int                      @default(15) @map("join_early_minutes")
+  joinLateMinutes      Int                      @default(30) @map("join_late_minutes")
+  lobbyRequired        Boolean                  @default(true) @map("lobby_required")
+  cancellationReason   String?                  @map("cancellation_reason") @db.VarChar(500)
+  cancelledAt          DateTime?                @map("cancelled_at")
+  createdAt            DateTime                 @default(now()) @map("created_at")
+  updatedAt            DateTime                 @updatedAt @map("updated_at")
+  createdBy            User                     @relation("MeetingCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  owner                User                     @relation("MeetingOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
+  assignedConsultant   User?                    @relation("MeetingAssignee", fields: [assignedConsultantId], references: [id], onDelete: SetNull)
+  calendarEventLink    CalendarEventLink?       @relation(fields: [calendarEventLinkId], references: [id], onDelete: SetNull)
+  prospect             Prospect?                @relation(fields: [prospectId], references: [id], onDelete: SetNull)
+  company              Company?                 @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  opportunity          Opportunity?             @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  conversation         Conversation?            @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  participants         MeetingParticipant[]
+  invitations          MeetingInvitation[]
+  attendanceEvents     MeetingAttendanceEvent[]
+
+  @@index([ownerUserId, scheduledStartAt])
+  @@index([assignedConsultantId, scheduledStartAt])
+  @@index([prospectId, scheduledStartAt])
+  @@index([status, scheduledStartAt])
+  @@map("meetings")
+}
+
+model MeetingParticipant {
+  id        String                 @id @default(uuid()) @db.Uuid
+  meetingId String                 @map("meeting_id") @db.Uuid
+  userId    String                 @map("user_id") @db.Uuid
+  role      MeetingParticipantRole @default(PARTICIPANT)
+  createdAt DateTime               @default(now()) @map("created_at")
+  meeting   Meeting                @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user      User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([meetingId, userId])
+  @@map("meeting_participants")
+}
+
+model MeetingInvitation {
+  id            String                  @id @default(uuid()) @db.Uuid
+  meetingId     String                  @map("meeting_id") @db.Uuid
+  tokenHash     String                  @unique @map("token_hash") @db.Char(64)
+  expectedEmail String?                 @map("expected_email") @db.VarChar(254)
+  displayName   String?                 @map("display_name") @db.VarChar(120)
+  status        MeetingInvitationStatus @default(ACTIVE)
+  expiresAt     DateTime                @map("expires_at")
+  createdById   String                  @map("created_by_id") @db.Uuid
+  revokedAt     DateTime?               @map("revoked_at")
+  usedAt        DateTime?               @map("used_at")
+  createdAt     DateTime                @default(now()) @map("created_at")
+  meeting       Meeting                 @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  createdBy     User                    @relation("MeetingInvitationCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([meetingId, status, expiresAt])
+  @@map("meeting_invitations")
+}
+
+model MeetingAttendanceEvent {
+  id                    String                     @id @default(uuid()) @db.Uuid
+  meetingId             String                     @map("meeting_id") @db.Uuid
+  providerEventId       String                     @unique @map("provider_event_id") @db.VarChar(180)
+  participantExternalId String?                    @map("participant_external_id") @db.VarChar(180)
+  type                  MeetingAttendanceEventType
+  occurredAt            DateTime                   @map("occurred_at")
+  metadata              Json?
+  createdAt             DateTime                   @default(now()) @map("created_at")
+  meeting               Meeting                    @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId, occurredAt])
+  @@map("meeting_attendance_events")
 }
 
 model CalendarSyncState {
@@ -1002,13 +1149,13 @@ model CalendarMutation {
 }
 
 model CalendarOAuthState {
-  id                    String   @id @default(uuid()) @db.Uuid
-  stateHash             String   @unique @map("state_hash") @db.Char(64)
-  userId                String   @map("user_id") @db.Uuid
-  encryptedCodeVerifier String   @map("encrypted_code_verifier") @db.Text
-  expiresAt             DateTime @map("expires_at")
+  id                    String    @id @default(uuid()) @db.Uuid
+  stateHash             String    @unique @map("state_hash") @db.Char(64)
+  userId                String    @map("user_id") @db.Uuid
+  encryptedCodeVerifier String    @map("encrypted_code_verifier") @db.Text
+  expiresAt             DateTime  @map("expires_at")
   consumedAt            DateTime? @map("consumed_at")
-  createdAt             DateTime @default(now()) @map("created_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
 
   @@index([userId, expiresAt])
   @@map("calendar_oauth_states")

@@ -24,10 +24,10 @@ describe('CalendarService como núcleo corporativo', () => {
           selectedCalendarId: 'primary',
           timezone: 'America/Bogota',
           encryptedAccessToken: 'encrypted',
-        accessTokenExpiresAt: new Date(Date.now() + 60 * 60_000),
+          accessTokenExpiresAt: new Date(Date.now() + 60 * 60_000),
         }),
       },
-      calendarEventLink: { findUnique: jest.fn() },
+      calendarEventLink: { findUnique: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
     } as any;
     const provider = { listEvents: jest.fn().mockResolvedValue({ events: [external] }) } as any;
     const access = { assertUserScope: jest.fn().mockResolvedValue(undefined) } as any;
@@ -38,6 +38,7 @@ describe('CalendarService como núcleo corporativo', () => {
       provider,
       {} as any,
       access,
+      {} as any,
     );
 
     const result = await service.listEvents(actor, {});
@@ -94,6 +95,7 @@ describe('CalendarService como núcleo corporativo', () => {
       provider,
       { record: jest.fn() } as any,
       access,
+      {} as any,
     );
     jest.spyOn(service as any, 'assertAvailable').mockResolvedValue(undefined);
 

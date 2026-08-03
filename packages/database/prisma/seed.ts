@@ -31,6 +31,12 @@ const permissions = [
   ['calendar.read', 'Consultar agenda y disponibilidad propias'],
   ['calendar.manage_own', 'Crear, reprogramar y cancelar citas propias'],
   ['calendar.manage_team', 'Gestionar agenda del equipo autorizado'],
+  ['meeting.read', 'Consultar reuniones autorizadas'],
+  ['meeting.create', 'Crear reuniones corporativas'],
+  ['meeting.manage_own', 'Gestionar reuniones propias'],
+  ['meeting.manage_team', 'Gestionar reuniones del equipo autorizado'],
+  ['meeting.join', 'Ingresar a reuniones autorizadas'],
+  ['meeting.admin', 'Administrar configuración de reuniones'],
 ] as const;
 const grants: Record<string, string[]> = {
   SUPER_ADMIN: permissions.map(([key]) => key),
@@ -58,6 +64,11 @@ const grants: Record<string, string[]> = {
     'calendar.read',
     'calendar.manage_own',
     'calendar.manage_team',
+    'meeting.read',
+    'meeting.create',
+    'meeting.manage_own',
+    'meeting.manage_team',
+    'meeting.join',
   ],
   CONSULTOR: [
     'settings.read',
@@ -71,6 +82,10 @@ const grants: Record<string, string[]> = {
     'calendar.connect',
     'calendar.read',
     'calendar.manage_own',
+    'meeting.read',
+    'meeting.create',
+    'meeting.manage_own',
+    'meeting.join',
   ],
 };
 async function main() {
@@ -109,7 +124,21 @@ async function main() {
   await db.systemSetting.upsert({
     where: { key: 'calendar.availability_defaults' },
     update: {},
-    create: { key: 'calendar.availability_defaults', value: { timezone: 'America/Bogota', workingDays: [1,2,3,4,5], workStart: '08:00', workEnd: '18:00', minimumNoticeMinutes: 120, defaultMeetingDuration: 45, bufferBeforeMinutes: 15, bufferAfterMinutes: 15, maximumFutureBookingDays: 90 }, description: 'Reglas corporativas predeterminadas de disponibilidad' },
+    create: {
+      key: 'calendar.availability_defaults',
+      value: {
+        timezone: 'America/Bogota',
+        workingDays: [1, 2, 3, 4, 5],
+        workStart: '08:00',
+        workEnd: '18:00',
+        minimumNoticeMinutes: 120,
+        defaultMeetingDuration: 45,
+        bufferBeforeMinutes: 15,
+        bufferAfterMinutes: 15,
+        maximumFutureBookingDays: 90,
+      },
+      description: 'Reglas corporativas predeterminadas de disponibilidad',
+    },
   });
   for (const [key, name] of [
     ['direct', 'Directo'],

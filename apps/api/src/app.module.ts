@@ -43,6 +43,11 @@ import { CalendarAccessService } from './calendar/calendar-access.service';
 import { GoogleCalendarProvider } from './calendar/google-calendar.provider';
 import { CALENDAR_PROVIDER } from './calendar/calendar.types';
 import { CalendarTokenVault } from './calendar/token-vault.service';
+import { MeetingController } from './meetings/meeting.controller';
+import { MeetingService } from './meetings/meeting.service';
+import { MeetingConfig } from './meetings/meeting-config';
+import { JitsiMeetingProvider } from './meetings/jitsi-meeting.provider';
+import { MEETING_PROVIDER } from './meetings/meeting.types';
 
 @Module({
   imports: [
@@ -64,6 +69,7 @@ import { CalendarTokenVault } from './calendar/token-vault.service';
     VoiceController,
     ElevenLabsCustomLlmController,
     CalendarController,
+    MeetingController,
   ],
   providers: [
     PrismaService,
@@ -96,6 +102,10 @@ import { CalendarTokenVault } from './calendar/token-vault.service';
     GoogleCalendarProvider,
     { provide: CALENDAR_PROVIDER, useExisting: GoogleCalendarProvider },
     CalendarService,
+    MeetingConfig,
+    JitsiMeetingProvider,
+    { provide: MEETING_PROVIDER, useExisting: JitsiMeetingProvider },
+    MeetingService,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: AuthGuard },
   ],
