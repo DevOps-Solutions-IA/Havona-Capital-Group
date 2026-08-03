@@ -363,6 +363,11 @@ export const calendarEventListQuerySchema = z.object({
   timeMin: isoDate.optional(),
   timeMax: isoDate.optional(),
 });
+export const calendarTeamAvailabilityQuerySchema = calendarAvailabilityQuerySchema.extend({
+  userIds: z.preprocess((value) => typeof value === 'string' ? value.split(',').filter(Boolean) : value, z.array(uuid).min(1).max(20)),
+});
+export const calendarTeamEventsQuerySchema = calendarEventListQuerySchema.extend({ userId: uuid });
+export const calendarTeamMembershipSchema = z.object({ managerId: uuid }).strict();
 export const calendarAvailabilityRuleSchema = z.object({
   timezone: z.string().trim().min(1).max(100),
   workingDays: z.array(z.number().int().min(1).max(7)).min(1).max(7),
@@ -381,6 +386,7 @@ export const createCalendarEventSchema = z.object({
   location: optionalPlainText(500), createConference: z.boolean().default(false),
   reminders: z.array(z.object({ method: z.enum(['email', 'popup']), minutes: z.number().int().min(0).max(40_320) })).max(5).optional(),
   prospectId: uuid.optional(), companyId: uuid.optional(), opportunityId: uuid.optional(), conversationId: uuid.optional(),
+  calendarOwnerUserId: uuid.optional(), assignedConsultantId: uuid.optional(),
   confirmedByUser: z.literal(true), sendUpdates: z.enum(['all', 'externalOnly', 'none']).default('all'),
 }).refine((v) => new Date(v.end) > new Date(v.start), { message: 'El fin debe ser posterior al inicio', path: ['end'] });
 export const updateCalendarEventSchema = z.object({

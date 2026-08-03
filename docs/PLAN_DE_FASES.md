@@ -135,9 +135,10 @@ Versión: `v0.3.0`
 Rama: `feature/fase-03-henry-web`
 
 La arquitectura, seguridad, dominio conversacional, integración CRM y límites se definen en
-`docs/FASE_3_HENRY_WEB.md`. Las ampliaciones autorizadas incorporan voz web y Agenda Inteligente
-con Google Calendar dentro del mismo Henry Core. WhatsApp, email conversacional y Havona Meet
-permanecen fuera de alcance.
+`docs/FASE_3_HENRY_WEB.md`. Las ampliaciones autorizadas incorporan voz web y HAVONA Calendar Core
+con Google Calendar. Calendar Core es transversal a Agenda, CRM, Henry, gerentes, futuras
+automatizaciones y Portal; Henry es un consumidor y no el propietario de la agenda. WhatsApp,
+email conversacional y Havona Meet permanecen fuera de alcance.
 
 Entregables:
 

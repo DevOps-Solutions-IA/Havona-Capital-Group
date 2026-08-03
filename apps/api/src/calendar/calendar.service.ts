@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { ActivityType, Prisma } from '@havona/database';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { DateTime, IANAZone, Interval } from 'luxon';
@@ -7,14 +7,15 @@ import { PrismaService } from '../common/prisma.service';
 import { CalendarConfig } from './calendar-config';
 import { CALENDAR_PROVIDER, CalendarError, CalendarEvent, CalendarProvider, CreateCalendarEvent } from './calendar.types';
 import { CalendarTokenVault } from './token-vault.service';
+import { CalendarAccessService, CalendarActor } from './calendar-access.service';
 
-type Actor = { id: string; roles?: string[]; permissions: string[] };
-type EventInput = CreateCalendarEvent & { prospectId?: string; companyId?: string; opportunityId?: string; conversationId?: string; sendUpdates?: 'all' | 'externalOnly' | 'none' };
+type Actor = CalendarActor;
+type EventInput = CreateCalendarEvent & { prospectId?: string; companyId?: string; opportunityId?: string; conversationId?: string; calendarOwnerUserId?: string; assignedConsultantId?: string; sendUpdates?: 'all' | 'externalOnly' | 'none' };
 
 @Injectable()
 export class CalendarService {
   constructor(private readonly db: PrismaService, private readonly config: CalendarConfig, private readonly vault: CalendarTokenVault,
-    @Inject(CALENDAR_PROVIDER) private readonly provider: CalendarProvider, private readonly audit: AuditService) {}
+    @Inject(CALENDAR_PROVIDER) private readonly provider: CalendarProvider, private readonly audit: AuditService, private readonly access: CalendarAccessService) {}
 
   async beginOAuth(actor: Actor) {
     this.config.assertConfigured();
@@ -87,7 +88,21 @@ export class CalendarService {
   }
 
   async availability(actor: Actor, input: { timeMin: string; timeMax: string; timezone: string; durationMinutes: number }, ignoredBusy?: { start: Date; end: Date }) {
-    this.assertTimezone(input.timezone); const connection = await this.requireConnection(actor.id); const rules = await this.getRules(actor);
+    return this.availabilityForUser(actor, actor.id, input, ignoredBusy);
+  }
+
+  async teamMembers(actor: Actor) { return this.access.teamMembers(actor); }
+  async assignTeamMember(actor: Actor, managerId: string, memberId: string, ctx: AuditContext) { return this.access.assignTeamMember(actor, managerId, memberId, ctx); }
+  async removeTeamMember(actor: Actor, managerId: string, memberId: string, ctx: AuditContext) { return this.access.removeTeamMember(actor, managerId, memberId, ctx); }
+  async teamAvailability(actor: Actor, userIds: string[], input: { timeMin: string; timeMax: string; timezone: string; durationMinutes: number }) {
+    const unique = [...new Set(userIds)];
+    if (!unique.length || unique.length > 20) throw new BadRequestException('Seleccione entre 1 y 20 miembros');
+    return { members: await Promise.all(unique.map(async (userId) => ({ userId, ...(await this.availabilityForUser(actor, userId, input)) }))) };
+  }
+  async teamEvents(actor: Actor, userId: string, input: { timeMin?: string; timeMax?: string }) { return this.listEventsForUser(actor, userId, input); }
+
+  private async availabilityForUser(actor: Actor, userId: string, input: { timeMin: string; timeMax: string; timezone: string; durationMinutes: number }, ignoredBusy?: { start: Date; end: Date }) {
+    this.assertTimezone(input.timezone); await this.access.assertUserScope(actor, userId); const connection = await this.requireConnection(userId); const rules = await this.getRulesForUser(userId);
     const min = DateTime.fromISO(input.timeMin, { setZone: true }); const max = DateTime.fromISO(input.timeMax, { setZone: true });
     if (!min.isValid || !max.isValid || max <= min || max.diff(min, 'days').days > 31 || max > DateTime.utc().plus({ days: rules.maximumFutureBookingDays })) throw new BadRequestException('Rango de disponibilidad inválido');
     let busy = (await this.provider.getAvailability(await this.credentials(connection), { calendarIds: [connection.selectedCalendarId], timeMin: min.toUTC().toISO()!, timeMax: max.toUTC().toISO()!, timezone: input.timezone }))[connection.selectedCalendarId] ?? [];
@@ -97,45 +112,52 @@ export class CalendarService {
   }
 
   async listEvents(actor: Actor, input: { timeMin?: string; timeMax?: string }) {
-    const connection = await this.requireConnection(actor.id); const page = await this.provider.listEvents(await this.credentials(connection), { calendarId: connection.selectedCalendarId, ...input });
+    return this.listEventsForUser(actor, actor.id, input);
+  }
+  private async listEventsForUser(actor: Actor, userId: string, input: { timeMin?: string; timeMax?: string }) {
+    await this.access.assertUserScope(actor, userId); const connection = await this.requireConnection(userId); const page = await this.provider.listEvents(await this.credentials(connection), { calendarId: connection.selectedCalendarId, ...input });
     return { data: page.events.filter((event) => event.status !== 'cancelled'), timezone: connection.timezone };
   }
 
-  async getLinkedEvent(actor: Actor, id: string) { const link = await this.authorizedLink(actor, id); const connection = await this.requireConnection(actor.id); return this.provider.getEvent(await this.credentials(connection), link.calendarId, link.providerEventId); }
+  async getLinkedEvent(actor: Actor, id: string) { const link = await this.authorizedLink(actor, id); return this.provider.getEvent(await this.credentials(link.connection), link.calendarId, link.providerEventId); }
 
   async createEvent(actor: Actor, input: EventInput, idempotencyKey: string, ctx: AuditContext) {
     if (!idempotencyKey || idempotencyKey.length > 120) throw new BadRequestException('Idempotency-Key es obligatorio'); this.assertEventInput(input);
-    const connection = await this.requireConnection(actor.id); await this.authorizeRelations(actor, input);
+    const ownerId = input.calendarOwnerUserId ?? actor.id; await this.access.assertUserScope(actor, ownerId);
+    const connection = await this.requireConnection(ownerId); await this.access.authorizeRelations(actor, input);
+    const assignedConsultantId = await this.access.resolveAssignedConsultant(actor, input.assignedConsultantId, ownerId);
+    const normalizedInput = { ...input, assignedConsultantId };
     const existing = await this.db.calendarMutation.findUnique({ where: { connectionId_idempotencyKey: { connectionId: connection.id, idempotencyKey } } });
     if (existing?.status === 'SUCCEEDED') return existing.result; if (existing?.status === 'PROCESSING') throw new ConflictException('La operación ya está en proceso');
     const mutation = existing ? await this.db.calendarMutation.update({ where: { id: existing.id }, data: { status: 'PROCESSING', errorCode: null } }) : await this.db.calendarMutation.create({ data: { connectionId: connection.id, idempotencyKey, operation: 'CREATE' } });
     try {
-      await this.assertAvailable(actor, input.start, input.end, input.timezone);
+      await this.assertAvailable(actor, ownerId, normalizedInput.start, normalizedInput.end, normalizedInput.timezone);
       const providerEvent = await this.provider.createEvent(await this.credentials(connection), connection.selectedCalendarId,
-        { ...input, id: createHash('sha256').update(`${connection.id}:${idempotencyKey}`).digest('hex').slice(0, 32), createConference: Boolean(input.createConference && this.config.allowMeet) }, input.sendUpdates ?? 'all');
-      const link = await this.persistEvent(connection.id, actor.id, providerEvent, input);
+        { ...normalizedInput, id: createHash('sha256').update(`${connection.id}:${idempotencyKey}`).digest('hex').slice(0, 32), createConference: Boolean(normalizedInput.createConference && this.config.allowMeet) }, normalizedInput.sendUpdates ?? 'all');
+      const link = await this.persistEvent(connection.id, actor.id, providerEvent, normalizedInput);
       const result = this.presentLink(link); await this.db.calendarMutation.update({ where: { id: mutation.id }, data: { status: 'SUCCEEDED', result: result as Prisma.InputJsonValue } });
-      await this.crmEvent('CALENDAR_EVENT_CREATED', actor, input, link.id, ctx); return result;
+      await this.crmEvent('CALENDAR_EVENT_CREATED', actor, normalizedInput, link.id, ctx); return result;
     } catch (error) { await this.db.calendarMutation.update({ where: { id: mutation.id }, data: { status: 'FAILED', errorCode: this.errorCode(error) } }); throw error; }
   }
 
   async updateEvent(actor: Actor, linkId: string, input: Partial<EventInput>, idempotencyKey: string, ctx: AuditContext) {
-    const link = await this.authorizedLink(actor, linkId); const connection = await this.requireConnection(actor.id);
+    const link = await this.authorizedLink(actor, linkId); const connection = link.connection;
+    await this.access.authorizeRelations(actor, input);
     const start = input.start ?? link.startAt.toISOString(), end = input.end ?? link.endAt.toISOString(), timezone = input.timezone ?? link.timezone;
     this.assertEventInput({ title: input.title ?? link.title, start, end, timezone, attendees: input.attendees ?? [], createConference: input.createConference });
-    await this.assertAvailable(actor, start, end, timezone, { start: link.startAt, end: link.endAt });
+    await this.assertAvailable(actor, connection.userId, start, end, timezone, { start: link.startAt, end: link.endAt });
     return this.mutate(connection.id, idempotencyKey, 'UPDATE', async () => {
       const event = await this.provider.updateEvent(await this.credentials(connection), link.calendarId, link.providerEventId, { ...input, start, end, timezone }, input.sendUpdates ?? 'all');
-      const updated = await this.db.calendarEventLink.update({ where: { id: link.id }, data: this.eventData(event) });
-      await this.crmEvent('CALENDAR_EVENT_UPDATED', actor, { ...input, prospectId: link.prospectId ?? undefined, opportunityId: link.opportunityId ?? undefined }, link.id, ctx, { oldStart: link.startAt, oldEnd: link.endAt }); return this.presentLink(updated);
+      const updated = await this.db.calendarEventLink.update({ where: { id: link.id }, data: this.eventData(event), include: { connection: true } });
+      await this.crmEvent('CALENDAR_EVENT_UPDATED', actor, { prospectId: link.prospectId ?? undefined, opportunityId: link.opportunityId ?? undefined }, link.id, ctx, { oldStart: link.startAt, oldEnd: link.endAt }); return this.presentLink(updated);
     });
   }
 
   async cancelEvent(actor: Actor, linkId: string, input: { reason: string; sendUpdates?: 'all' | 'externalOnly' | 'none' }, idempotencyKey: string, ctx: AuditContext) {
-    const link = await this.authorizedLink(actor, linkId); const connection = await this.requireConnection(actor.id);
+    const link = await this.authorizedLink(actor, linkId); const connection = link.connection;
     return this.mutate(connection.id, idempotencyKey, 'CANCEL', async () => {
       await this.provider.cancelEvent(await this.credentials(connection), link.calendarId, link.providerEventId, input.sendUpdates ?? 'all');
-      const updated = await this.db.calendarEventLink.update({ where: { id: link.id }, data: { status: 'CANCELLED', cancelledAt: new Date(), cancellationReason: input.reason } });
+      const updated = await this.db.calendarEventLink.update({ where: { id: link.id }, data: { status: 'CANCELLED', cancelledAt: new Date(), cancellationReason: input.reason }, include: { connection: true } });
       await this.crmEvent('CALENDAR_EVENT_CANCELLED', actor, { prospectId: link.prospectId ?? undefined, opportunityId: link.opportunityId ?? undefined }, link.id, ctx, { reason: input.reason, previousStart: link.startAt, previousEnd: link.endAt }); return this.presentLink(updated);
     });
   }
@@ -172,12 +194,11 @@ export class CalendarService {
     const existing = await this.db.calendarEventLink.findUnique({ where: { connectionId_providerEventId: { connectionId: connection.id, providerEventId: event.id } } }); if (!existing) return;
     await this.db.calendarEventLink.update({ where: { id: existing.id }, data: this.eventData(event) });
   }
-  private async persistEvent(connectionId: string, userId: string, event: CalendarEvent, input: EventInput) { return this.db.calendarEventLink.create({ data: { connectionId, providerEventId: event.id, calendarId: (await this.db.calendarConnection.findUniqueOrThrow({ where: { id: connectionId } })).selectedCalendarId, createdById: userId, prospectId: input.prospectId, companyId: input.companyId, opportunityId: input.opportunityId, conversationId: input.conversationId, ...this.eventData(event) } }); }
+  private async persistEvent(connectionId: string, userId: string, event: CalendarEvent, input: EventInput) { return this.db.calendarEventLink.create({ data: { connectionId, providerEventId: event.id, calendarId: (await this.db.calendarConnection.findUniqueOrThrow({ where: { id: connectionId } })).selectedCalendarId, createdById: userId, assignedConsultantId: input.assignedConsultantId, prospectId: input.prospectId, companyId: input.companyId, opportunityId: input.opportunityId, conversationId: input.conversationId, ...this.eventData(event) }, include: { connection: true } }); }
   private eventData(event: CalendarEvent) { return { providerEtag: event.etag, title: event.title, startAt: new Date(event.start), endAt: new Date(event.end), timezone: event.timezone, status: event.status.toUpperCase() as any, htmlLink: event.htmlLink, conferenceLink: event.conferenceLink, attendees: event.attendees as Prisma.InputJsonValue }; }
-  private presentLink(link: any) { return { id: link.id, title: link.title, start: link.startAt, end: link.endAt, timezone: link.timezone, status: link.status, attendees: link.attendees, htmlLink: link.htmlLink, conferenceLink: link.conferenceLink, prospectId: link.prospectId, opportunityId: link.opportunityId }; }
-  private async authorizedLink(actor: Actor, id: string) { const link = await this.db.calendarEventLink.findFirst({ where: { id, connection: { userId: actor.id } } }); if (!link) throw new NotFoundException('Cita no encontrada o fuera de su ámbito'); return link; }
-  private async authorizeRelations(actor: Actor, input: Partial<EventInput>) { if (!input.prospectId) return; const unrestricted = actor.permissions.includes('crm.read_all') || actor.roles?.includes('SUPER_ADMIN'); const prospect = await this.db.prospect.findFirst({ where: unrestricted ? { id: input.prospectId } : { id: input.prospectId, assignments: { some: { assigneeId: actor.id, endedAt: null } } } }); if (!prospect) throw new ForbiddenException('La relación CRM está fuera de su ámbito'); }
-  private async assertAvailable(actor: Actor, start: string, end: string, timezone: string, ignoredBusy?: { start: Date; end: Date }) { const result = await this.availability(actor, { timeMin: start, timeMax: end, timezone, durationMinutes: Math.round((new Date(end).getTime() - new Date(start).getTime()) / 60_000) }, ignoredBusy); const exact = result.slots.some((slot: any) => new Date(slot.start).getTime() === new Date(start).getTime()); if (!exact) throw new CalendarError('CALENDAR_CONFLICT', 'Ese espacio acaba de dejar de estar disponible', 409); }
+  private presentLink(link: any) { return { id: link.id, title: link.title, start: link.startAt, end: link.endAt, timezone: link.timezone, status: link.status, attendees: link.attendees, htmlLink: link.htmlLink, conferenceLink: link.conferenceLink, prospectId: link.prospectId, companyId: link.companyId, opportunityId: link.opportunityId, conversationId: link.conversationId, createdById: link.createdById, calendarOwnerUserId: link.connection?.userId, assignedConsultantId: link.assignedConsultantId }; }
+  private async authorizedLink(actor: Actor, id: string) { const link = await this.db.calendarEventLink.findUnique({ where: { id }, include: { connection: true } }); if (!link) throw new NotFoundException('Cita no encontrada o fuera de su ámbito'); await this.access.assertUserScope(actor, link.connection.userId); return link; }
+  private async assertAvailable(actor: Actor, ownerId: string, start: string, end: string, timezone: string, ignoredBusy?: { start: Date; end: Date }) { const result = await this.availabilityForUser(actor, ownerId, { timeMin: start, timeMax: end, timezone, durationMinutes: Math.round((new Date(end).getTime() - new Date(start).getTime()) / 60_000) }, ignoredBusy); const exact = result.slots.some((slot: any) => new Date(slot.start).getTime() === new Date(start).getTime()); if (!exact) throw new CalendarError('CALENDAR_CONFLICT', 'Ese espacio acaba de dejar de estar disponible', 409); }
   private findSlots(min: DateTime, max: DateTime, duration: number, rules: any, busy: Array<{ start: string; end: string }>) { const zone = rules.timezone; const now = DateTime.utc().plus({ minutes: rules.minimumNoticeMinutes }); const occupied = busy.map((x) => Interval.fromDateTimes(DateTime.fromISO(x.start).minus({ minutes: rules.bufferBeforeMinutes }), DateTime.fromISO(x.end).plus({ minutes: rules.bufferAfterMinutes })));
     const slots: Array<{ start: string; end: string }> = []; let day = min.setZone(zone).startOf('day'); const last = max.setZone(zone);
     while (day <= last && slots.length < 50) { if (rules.workingDays.includes(day.weekday)) { const [sh, sm] = rules.workStart.split(':').map(Number), [eh, em] = rules.workEnd.split(':').map(Number); let cursor = day.set({ hour: sh, minute: sm }); const close = day.set({ hour: eh, minute: em });
@@ -197,6 +218,7 @@ export class CalendarService {
   private async crmEvent(action: string, actor: Actor, input: Partial<EventInput>, linkId: string, ctx: AuditContext, extra: Record<string, unknown> = {}) { await this.db.$transaction(async (tx) => { if (input.prospectId) { await tx.activity.create({ data: { prospectId: input.prospectId, opportunityId: input.opportunityId, actorId: actor.id, type: action === 'CALENDAR_EVENT_CREATED' ? ActivityType.INTERACTION_RECORDED : ActivityType.PROSPECT_UPDATED, summary: action === 'CALENDAR_EVENT_CANCELLED' ? 'Cita cancelada' : action === 'CALENDAR_EVENT_UPDATED' ? 'Cita reprogramada o actualizada' : 'Cita agendada', metadata: { calendarEventLinkId: linkId } } }); await tx.interaction.create({ data: { prospectId: input.prospectId, opportunityId: input.opportunityId, actorId: actor.id, method: 'MEETING', summary: action, occurredAt: new Date() } }); } await this.audit.record(action, 'CalendarEventLink', linkId, ctx, extra as Prisma.InputJsonValue, tx); }); }
   private errorCode(error: unknown) { return error instanceof CalendarError ? error.code : 'CALENDAR_PROVIDER_UNAVAILABLE'; }
   private async defaultRules() { const setting = await this.db.systemSetting.findUnique({ where: { key: 'calendar.availability_defaults' } }); const value = setting?.value as Record<string, unknown> | undefined; return { timezone: String(value?.timezone ?? this.config.timezone), workingDays: Array.isArray(value?.workingDays) ? value.workingDays as number[] : [1,2,3,4,5], workStart: String(value?.workStart ?? '08:00'), workEnd: String(value?.workEnd ?? '18:00'), minimumNoticeMinutes: Number(value?.minimumNoticeMinutes ?? 120), defaultMeetingDuration: Number(value?.defaultMeetingDuration ?? 45), bufferBeforeMinutes: Number(value?.bufferBeforeMinutes ?? 15), bufferAfterMinutes: Number(value?.bufferAfterMinutes ?? 15), maximumFutureBookingDays: Number(value?.maximumFutureBookingDays ?? 90) }; }
+  private async getRulesForUser(userId: string) { return this.db.calendarAvailabilityRule.upsert({ where: { userId }, update: {}, create: { userId, ...(await this.defaultRules()) } }); }
 }
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const safeEqual = (left: string, right: string) => { const a = Buffer.from(left), b = Buffer.from(right); return a.length === b.length && timingSafeEqual(a, b); };

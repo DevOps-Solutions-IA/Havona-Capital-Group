@@ -1,13 +1,23 @@
-# Henry Agenda — Google Calendar
+# HAVONA Calendar Core — Google Calendar
 
 Estado: implementación operativa dentro de Fase 3; PR Draft. No constituye release ni Havona Meet.
 
 ## Arquitectura
 
+**HAVONA Calendar Core es el motor corporativo de agenda de la plataforma. Henry es uno de sus
+consumidores, no su propietario.**
+
 ```text
-Henry Core → Policy Engine → HenryToolsService → CalendarService
-→ CalendarProvider → GoogleCalendarProvider → Google Calendar API
-→ CalendarEventLink + CRM Activity/Interaction + AuditLog
+Google Calendar
+        ↓
+HAVONA Calendar Core / CalendarProvider
+        ↓
+├── Agenda Web
+├── CRM
+├── Henry
+├── Gerentes / equipos
+├── Automatizaciones futuras
+└── Portal
 ```
 
 Existe un solo Henry. Google no accede a OpenRouter, Prisma, CRM ni políticas. `CalendarProvider`
@@ -52,6 +62,7 @@ de Google; no se declara realizada ni se solicita sin autorización.
 - `CalendarConnection`: cuenta, calendario, scopes, estado y tokens cifrados.
 - `CalendarAvailabilityRule`: horario, notice, duración, buffers, horizonte y zona IANA.
 - `CalendarEventLink`: referencia Google y relaciones CRM/conversación.
+- `CalendarTeamMembership`: ámbito explícito gerente–consultor, administrado y auditado.
 - `CalendarSyncState`: sync token y resultados de sincronización.
 - `CalendarWebhookChannel`: channel/resource, token cifrado y expiración.
 - `CalendarMutation`: idempotencia de create/update/cancel.
@@ -59,6 +70,12 @@ de Google; no se declara realizada ni se solicita sin autorización.
 
 Google es fuente externa de verdad. HAVONA conserva referencias y metadata operativa, no una copia
 completa del calendario.
+
+`CalendarEventLink.createdById` identifica al actor que solicitó la creación;
+`CalendarConnection.userId` identifica al propietario/organizador del calendario; y
+`assignedConsultantId` identifica al consultor responsable cuando aplica. Henry y futuras
+automatizaciones pueden solicitar una cita para un consultor autorizado sin convertirse en dueños
+del calendario.
 
 ## API
 
@@ -73,6 +90,11 @@ GET    /api/v1/calendar/rules
 PUT    /api/v1/calendar/rules
 GET    /api/v1/calendar/availability
 GET    /api/v1/calendar/events
+GET    /api/v1/calendar/team/members
+PUT    /api/v1/calendar/team/members/:memberId
+DELETE /api/v1/calendar/team/members/:memberId
+GET    /api/v1/calendar/team/availability
+GET    /api/v1/calendar/team/events
 POST   /api/v1/calendar/events
 PATCH  /api/v1/calendar/events/:id
 DELETE /api/v1/calendar/events/:id
@@ -84,6 +106,25 @@ POST   /api/v1/integrations/google/calendar/webhook
 
 Las mutaciones requieren sesión, CSRF, permiso, confirmación e `Idempotency-Key`. Antes de crear o
 reprogramar se consulta FreeBusy de nuevo. CONSULTOR solo vincula entidades asignadas.
+
+## RBAC y agenda de equipo
+
+- `calendar.connect`: conecta, selecciona y desconecta la cuenta propia.
+- `calendar.read`: consulta agenda, reglas y disponibilidad propias.
+- `calendar.manage_own`: configura y muta la agenda propia.
+- `calendar.manage_team`: consulta agendas y disponibilidad dentro de un ámbito resuelto por el
+  servidor; nunca confía en un `userId` enviado por el navegador.
+
+CONSULTOR permanece limitado a sí mismo. GERENTE accede solo a miembros registrados en
+`CalendarTeamMembership`. ADMIN y SUPER_ADMIN pueden operar el alcance administrativo permitido.
+Solo ADMIN/SUPER_ADMIN con `users.update` pueden definir membresías; toda asignación o retiro se
+audita. La API de disponibilidad de equipo acepta hasta veinte miembros autorizados y consulta el
+FreeBusy real de cada conexión, permitiendo localizar slots sin dobles reservas.
+
+Todas las relaciones de una cita (`prospectId`, `companyId`, `opportunityId` y `conversationId`)
+se autorizan individualmente. Además se comprueba que oportunidad, empresa y conversación sean
+consistentes con el prospecto canónico. Un UUID existente fuera del scope produce rechazo y nunca
+se persiste, evitando IDOR.
 
 ## Henry tools
 
@@ -110,6 +151,11 @@ horario corporativo/override, notice, duración y buffers. Los defaults viven en
 guarda channel ID, resource ID, token cifrado y expiración. El webhook valida headers y después
 consulta Google; no confía en un body. La URL debe ser HTTPS. La recepción externa se difiere a
 preproducción si no existe URL pública estable, aunque código y validación interna estén completos.
+
+Los eventos creados directamente en Google se leen desde `events.list` y cuentan como ocupación en
+FreeBusy aunque no tengan `CalendarEventLink`. El sync solo actualiza enlaces HAVONA ya conocidos:
+no fabrica relaciones CRM para eventos externos. Los eventos creados por HAVONA conservan sus
+referencias y trazabilidad interna.
 
 ## Validación OAuth real en desarrollo
 

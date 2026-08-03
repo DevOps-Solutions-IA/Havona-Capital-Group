@@ -47,6 +47,11 @@ Responsabilidades:
 - Henry.
 - Configuración.
 
+La agenda se implementa como **HAVONA Calendar Core**, un módulo corporativo independiente de
+Henry. `CalendarService` y `CalendarProvider` son consumidos por Agenda Web, CRM, Henry, gerentes,
+workers/automatizaciones futuras y Portal. La dependencia permitida es `Henry → Calendar Core`;
+Calendar Core no depende de Henry.
+
 Tecnología:
 
 - NestJS.

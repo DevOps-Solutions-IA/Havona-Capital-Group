@@ -38,6 +38,10 @@ model User {
   calendarConnections      CalendarConnection[]
   calendarAvailability     CalendarAvailabilityRule?
   calendarEventsCreated    CalendarEventLink[]       @relation("CalendarEventCreator")
+  calendarEventsAssigned   CalendarEventLink[]       @relation("CalendarEventAssignee")
+  calendarTeamMembers      CalendarTeamMembership[]  @relation("CalendarTeamManager")
+  calendarTeamManagers     CalendarTeamMembership[]  @relation("CalendarTeamMember")
+  calendarTeamAssignmentsCreated CalendarTeamMembership[] @relation("CalendarTeamCreatedBy")
 
   @@map("users")
 }
@@ -895,6 +899,21 @@ model CalendarAvailabilityRule {
   @@map("calendar_availability_rules")
 }
 
+model CalendarTeamMembership {
+  id        String   @id @default(uuid()) @db.Uuid
+  managerId String   @map("manager_id") @db.Uuid
+  memberId  String   @map("member_id") @db.Uuid
+  createdById String @map("created_by_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  manager   User     @relation("CalendarTeamManager", fields: [managerId], references: [id], onDelete: Cascade)
+  member    User     @relation("CalendarTeamMember", fields: [memberId], references: [id], onDelete: Cascade)
+  createdBy User     @relation("CalendarTeamCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@unique([managerId, memberId])
+  @@index([memberId])
+  @@map("calendar_team_memberships")
+}
+
 model CalendarEventLink {
   id                  String              @id @default(uuid()) @db.Uuid
   connectionId        String              @map("connection_id") @db.Uuid
@@ -914,6 +933,7 @@ model CalendarEventLink {
   opportunityId       String?             @map("opportunity_id") @db.Uuid
   conversationId      String?             @map("conversation_id") @db.Uuid
   createdById         String              @map("created_by_id") @db.Uuid
+  assignedConsultantId String?            @map("assigned_consultant_id") @db.Uuid
   cancellationReason  String?             @map("cancellation_reason") @db.VarChar(500)
   cancelledAt         DateTime?           @map("cancelled_at")
   createdAt           DateTime            @default(now()) @map("created_at")
@@ -924,11 +944,13 @@ model CalendarEventLink {
   opportunity         Opportunity?        @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
   conversation        Conversation?       @relation(fields: [conversationId], references: [id], onDelete: SetNull)
   createdBy           User                @relation("CalendarEventCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  assignedConsultant  User?               @relation("CalendarEventAssignee", fields: [assignedConsultantId], references: [id], onDelete: SetNull)
 
   @@unique([connectionId, providerEventId])
   @@index([startAt, status])
   @@index([prospectId, startAt])
   @@index([opportunityId, startAt])
+  @@index([assignedConsultantId, startAt])
   @@map("calendar_event_links")
 }
 

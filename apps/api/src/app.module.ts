@@ -39,6 +39,7 @@ import { ElevenLabsCustomLlmService } from './voice/elevenlabs-custom-llm.servic
 import { CalendarController } from './calendar/calendar.controller';
 import { CalendarConfig } from './calendar/calendar-config';
 import { CalendarService } from './calendar/calendar.service';
+import { CalendarAccessService } from './calendar/calendar-access.service';
 import { GoogleCalendarProvider } from './calendar/google-calendar.provider';
 import { CALENDAR_PROVIDER } from './calendar/calendar.types';
 import { CalendarTokenVault } from './calendar/token-vault.service';
@@ -90,6 +91,7 @@ import { CalendarTokenVault } from './calendar/token-vault.service';
     HenryVoiceGateway,
     ElevenLabsCustomLlmService,
     CalendarConfig,
+    CalendarAccessService,
     CalendarTokenVault,
     GoogleCalendarProvider,
     { provide: CALENDAR_PROVIDER, useExisting: GoogleCalendarProvider },

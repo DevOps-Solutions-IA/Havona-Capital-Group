@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Headers, Param, ParseUUIDPipe, Patch, Post, Put, Query, Req, Res } from '@nestjs/common';
 import { Response } from 'express';
 import { Throttle } from '@nestjs/throttler';
-import { calendarAvailabilityQuerySchema, calendarAvailabilityRuleSchema, calendarEventListQuerySchema, cancelCalendarEventSchema, createCalendarEventSchema, selectCalendarSchema, updateCalendarEventSchema } from '@havona/contracts';
+import { calendarAvailabilityQuerySchema, calendarAvailabilityRuleSchema, calendarEventListQuerySchema, calendarTeamAvailabilityQuerySchema, calendarTeamEventsQuerySchema, calendarTeamMembershipSchema, cancelCalendarEventSchema, createCalendarEventSchema, selectCalendarSchema, updateCalendarEventSchema } from '@havona/contracts';
 import { Public, RequirePermissions } from '../common/decorators';
 import { ZodPipe } from '../common/zod.pipe';
 import { CalendarService } from './calendar.service';
@@ -32,6 +32,11 @@ export class CalendarController {
   @Put('calendar/rules') @RequirePermissions('calendar.manage_own') updateRules(@Body(new ZodPipe(calendarAvailabilityRuleSchema)) body: any, @Req() req: any) { return this.calendar.updateRules(req.auth.user, body, audit(req)); }
   @Get('calendar/availability') @RequirePermissions('calendar.read') availability(@Query(new ZodPipe(calendarAvailabilityQuerySchema)) query: any, @Req() req: any) { return this.calendar.availability(req.auth.user, query); }
   @Get('calendar/events') @RequirePermissions('calendar.read') events(@Query(new ZodPipe(calendarEventListQuerySchema)) query: any, @Req() req: any) { return this.calendar.listEvents(req.auth.user, query); }
+  @Get('calendar/team/members') @RequirePermissions('calendar.manage_team') teamMembers(@Req() req: any) { return this.calendar.teamMembers(req.auth.user); }
+  @Put('calendar/team/members/:memberId') @RequirePermissions('calendar.manage_team', 'users.update') assignTeamMember(@Param('memberId', ParseUUIDPipe) memberId: string, @Body(new ZodPipe(calendarTeamMembershipSchema)) body: any, @Req() req: any) { return this.calendar.assignTeamMember(req.auth.user, body.managerId, memberId, audit(req)); }
+  @Delete('calendar/team/members/:memberId') @RequirePermissions('calendar.manage_team', 'users.update') removeTeamMember(@Param('memberId', ParseUUIDPipe) memberId: string, @Query('managerId', ParseUUIDPipe) managerId: string, @Req() req: any) { return this.calendar.removeTeamMember(req.auth.user, managerId, memberId, audit(req)); }
+  @Get('calendar/team/availability') @RequirePermissions('calendar.manage_team') teamAvailability(@Query(new ZodPipe(calendarTeamAvailabilityQuerySchema)) query: any, @Req() req: any) { const { userIds, ...range } = query; return this.calendar.teamAvailability(req.auth.user, userIds, range); }
+  @Get('calendar/team/events') @RequirePermissions('calendar.manage_team') teamEvents(@Query(new ZodPipe(calendarTeamEventsQuerySchema)) query: any, @Req() req: any) { const { userId, ...range } = query; return this.calendar.teamEvents(req.auth.user, userId, range); }
   @Post('calendar/events') @RequirePermissions('calendar.manage_own') create(@Body(new ZodPipe(createCalendarEventSchema)) body: any, @Headers('idempotency-key') key: string, @Req() req: any) { return this.calendar.createEvent(req.auth.user, body, key, audit(req)); }
   @Patch('calendar/events/:id') @RequirePermissions('calendar.manage_own') update(@Param('id', ParseUUIDPipe) id: string, @Body(new ZodPipe(updateCalendarEventSchema)) body: any, @Headers('idempotency-key') key: string, @Req() req: any) { return this.calendar.updateEvent(req.auth.user, id, body, key, audit(req)); }
   @Delete('calendar/events/:id') @RequirePermissions('calendar.manage_own') cancel(@Param('id', ParseUUIDPipe) id: string, @Body(new ZodPipe(cancelCalendarEventSchema)) body: any, @Headers('idempotency-key') key: string, @Req() req: any) { return this.calendar.cancelEvent(req.auth.user, id, body, key, audit(req)); }
