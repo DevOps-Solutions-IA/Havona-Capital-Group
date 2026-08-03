@@ -21,6 +21,7 @@ import {
   ContactRound,
   UserSearch,
   Users,
+  CalendarDays,
   X,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
@@ -42,6 +43,7 @@ const links = [
   },
   { href: '/crm/pipeline', label: 'Pipeline', icon: Columns3, permission: 'crm.read_assigned' },
   { href: '/crm/tareas', label: 'Tareas', icon: CheckSquare2, permission: 'crm.tasks.own' },
+  { href: '/agenda', label: 'Agenda', icon: CalendarDays, permission: 'calendar.read' },
   { href: '/crm/clientes', label: 'Clientes', icon: ContactRound, permission: 'crm.read_assigned' },
   { href: '/crm/empresas', label: 'Empresas', icon: Building2, permission: 'crm.read_all' },
   { href: '/crm/consultores', label: 'Consultores', icon: UserRound, permission: 'crm.assign' },

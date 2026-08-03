@@ -10,7 +10,7 @@ export type HenryMessage = {
 
 export type HenrySession = { id: string; accessToken: string };
 export type HenryPageContext = {
-  pageType: 'public-home' | 'public-solution' | 'henry-full' | 'dashboard' | 'prospect-list' | 'prospect-detail' | 'company-detail' | 'pipeline' | 'tasks' | 'henry-admin' | 'other';
+  pageType: 'public-home' | 'public-solution' | 'henry-full' | 'dashboard' | 'prospect-list' | 'prospect-detail' | 'company-detail' | 'pipeline' | 'tasks' | 'agenda' | 'henry-admin' | 'other';
   section?: string;
   intentHint?: string;
   entityType?: 'prospect' | 'company' | 'opportunity';
@@ -54,6 +54,7 @@ export function pageContextFromPath(pathname: string): HenryPageContext {
   const parts = pathname.split('/').filter(Boolean);
   if (pathname === '/') return { pageType: 'public-home', section: 'home' };
   if (pathname === '/henry') return { pageType: 'henry-full', section: 'henry' };
+  if (pathname.startsWith('/agenda')) return { pageType: 'agenda', section: 'calendar' };
   const publicSolutions = new Set(['pension','educacion','patrimonio','proteccion','accidentes','empresarios','socios','socio-unico','consultores']);
   if (parts.length === 1 && publicSolutions.has(parts[0])) return { pageType: 'public-solution', section: parts[0], intentHint: parts[0] === 'proteccion' ? 'proteccion-familiar' : parts[0] };
   if (pathname === '/crm/pipeline') return { pageType: 'pipeline' };
