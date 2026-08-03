@@ -195,6 +195,12 @@ Versión: `v0.6.0`
 
 ## Fase 6 — Seguimientos inteligentes
 
+**Estado: EN CONSTRUCCIÓN TÉCNICA EN PR #4**
+
+Se implementa HAVONA Automations Core como dominio corporativo transversal con event bus, outbox,
+workflows versionados, scheduler BullMQ, cadencias, suppression, approvals y acciones allowlisted.
+Henry aporta razonamiento controlado; el motor conserva la decisión y ejecución determinística.
+
 Entregables:
 
 - Secuencias.

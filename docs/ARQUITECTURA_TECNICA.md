@@ -17,6 +17,13 @@ que delega en `MessagingProvider` o `EmailProvider`. Meta WhatsApp y Resend son 
 iniciales. La dependencia permitida es Henry → Communications Core; Communications Core no depende
 de Henry y opera aunque la IA esté deshabilitada.
 
+HAVONA Automations Core es el motor corporativo transversal de workflows. CRM, Calendar, Meet y
+Communications publican eventos mediante un bus interno respaldado por transactional outbox;
+Automations Core decide enrollments, conditions, delays, approvals y actions allowlisted mediante
+BullMQ. Henry puede aportar razonamiento estructurado, pero no ejecuta providers ni sustituye el
+motor determinístico. La dependencia permitida es `Henry → Automations Core`; Automations Core no
+depende de providers externos concretos.
+
 ### `apps/web`
 
 Responsabilidades:
