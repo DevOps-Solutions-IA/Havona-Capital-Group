@@ -20,4 +20,10 @@ describe('Arquitectura transversal de Automations Core', () => {
     expect(processor).toContain('recoverPending()');
     expect(processor).toContain('close(true)');
   });
+  it('reclama cada evento outbox de forma atómica antes de despacharlo', () => {
+    const service = readFileSync(join(__dirname, 'automation.service.ts'), 'utf8');
+    expect(service).toContain("status: { in: ['PENDING', 'FAILED'] }");
+    expect(service).toContain("data: { status: 'PROCESSING', attempts: { increment: 1 } }");
+    expect(service).toContain("status: 'FAILED'");
+  });
 });

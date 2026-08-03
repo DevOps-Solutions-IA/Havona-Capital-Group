@@ -321,79 +321,97 @@ export class AutomationService {
   async dispatchOutbox(eventId: string) {
     const outbox = await this.dbx.domainOutboxEvent.findUnique({ where: { eventId } });
     if (!outbox || outbox.status === 'PROCESSED') return { processed: true, executions: 0 };
-    const event = await this.dbx.automationEvent.findUniqueOrThrow({ where: { eventId } });
-    const triggers = await this.dbx.automationTrigger.findMany({
-      where: { type: event.type, isActive: true, workflow: { status: 'ACTIVE' } },
-      include: { workflow: true },
+    const claimed = await this.dbx.domainOutboxEvent.updateMany({
+      where: { eventId, status: { in: ['PENDING', 'FAILED'] } },
+      data: { status: 'PROCESSING', attempts: { increment: 1 } },
     });
-    let executions = 0;
-    for (const trigger of triggers) {
-      if (!this.matchesDefinition(trigger.definition, event)) continue;
-      const perDayLimit = Math.min(
-        100,
-        Math.max(
-          1,
-          Number(
-            (trigger.definition as any)?.maxExecutionsPerEntityPerDay ??
-              process.env.AUTOMATIONS_MAX_EXECUTIONS_PER_ENTITY_DAY ??
-              10,
+    // Webhook retries, recovery and the BullMQ worker may observe the same outbox
+    // event concurrently. Only the process that atomically claims it may dispatch.
+    if (claimed.count === 0) return { processed: false, executions: 0 };
+    try {
+      const event = await this.dbx.automationEvent.findUniqueOrThrow({ where: { eventId } });
+      const triggers = await this.dbx.automationTrigger.findMany({
+        where: { type: event.type, isActive: true, workflow: { status: 'ACTIVE' } },
+        include: { workflow: true },
+      });
+      let executions = 0;
+      for (const trigger of triggers) {
+        if (!this.matchesDefinition(trigger.definition, event)) continue;
+        const perDayLimit = Math.min(
+          100,
+          Math.max(
+            1,
+            Number(
+              (trigger.definition as any)?.maxExecutionsPerEntityPerDay ??
+                process.env.AUTOMATIONS_MAX_EXECUTIONS_PER_ENTITY_DAY ??
+                10,
+            ),
           ),
-        ),
-      );
-      const recent = await this.dbx.automationExecution.count({
-        where: {
-          workflowId: trigger.workflowId,
-          entityType: event.entityType,
-          entityId: event.entityId,
-          createdAt: { gte: new Date(Date.now() - 86_400_000) },
-        },
-      });
-      if (recent >= perDayLimit) continue;
-      const key = this.executionKey(
-        event.eventId,
-        trigger.workflowId,
-        event.entityId,
-        trigger.workflow.version,
-      );
-      const execution = await this.dbx.automationExecution.upsert({
-        where: { idempotencyKey: key },
-        update: {},
-        create: {
-          workflowId: trigger.workflowId,
-          workflowVersion: trigger.workflow.version,
-          entityType: event.entityType,
-          entityId: event.entityId,
-          idempotencyKey: key,
-          correlationId: event.eventId,
-          context: event.payload,
-        },
-      });
-      await this.dbx.automationEnrollment.upsert({
-        where: {
-          workflowId_entityType_entityId: {
+        );
+        const recent = await this.dbx.automationExecution.count({
+          where: {
+            workflowId: trigger.workflowId,
+            entityType: event.entityType,
+            entityId: event.entityId,
+            createdAt: { gte: new Date(Date.now() - 86_400_000) },
+          },
+        });
+        if (recent >= perDayLimit) continue;
+        const key = this.executionKey(
+          event.eventId,
+          trigger.workflowId,
+          event.entityId,
+          trigger.workflow.version,
+        );
+        const execution = await this.dbx.automationExecution.upsert({
+          where: { idempotencyKey: key },
+          update: {},
+          create: {
+            workflowId: trigger.workflowId,
+            workflowVersion: trigger.workflow.version,
+            entityType: event.entityType,
+            entityId: event.entityId,
+            idempotencyKey: key,
+            correlationId: event.eventId,
+            context: event.payload,
+          },
+        });
+        await this.dbx.automationEnrollment.upsert({
+          where: {
+            workflowId_entityType_entityId: {
+              workflowId: trigger.workflowId,
+              entityType: event.entityType,
+              entityId: event.entityId,
+            },
+          },
+          update: { status: 'ACTIVE', endedAt: null },
+          create: {
             workflowId: trigger.workflowId,
             entityType: event.entityType,
             entityId: event.entityId,
           },
-        },
-        update: { status: 'ACTIVE', endedAt: null },
-        create: {
-          workflowId: trigger.workflowId,
-          entityType: event.entityType,
-          entityId: event.entityId,
+        });
+        await this.queue.enqueueExecution(execution.id, 0, 0);
+        executions++;
+      }
+      await this.dbx.$transaction([
+        this.dbx.domainOutboxEvent.update({
+          where: { eventId },
+          data: { status: 'PROCESSED', processedAt: new Date() },
+        }),
+        this.dbx.automationEvent.update({ where: { eventId }, data: { processedAt: new Date() } }),
+      ]);
+      return { processed: true, executions };
+    } catch (error) {
+      await this.dbx.domainOutboxEvent.update({
+        where: { eventId },
+        data: {
+          status: 'FAILED',
+          errorCode: error instanceof AutomationError ? error.code : 'AUTOMATION_ACTION_FAILED',
         },
       });
-      await this.queue.enqueueExecution(execution.id, 0, 0);
-      executions++;
+      throw error;
     }
-    await this.dbx.$transaction([
-      this.dbx.domainOutboxEvent.update({
-        where: { eventId },
-        data: { status: 'PROCESSED', processedAt: new Date(), attempts: { increment: 1 } },
-      }),
-      this.dbx.automationEvent.update({ where: { eventId }, data: { processedAt: new Date() } }),
-    ]);
-    return { processed: true, executions };
   }
   async recoverPending() {
     const outbox = await this.dbx.domainOutboxEvent.findMany({
