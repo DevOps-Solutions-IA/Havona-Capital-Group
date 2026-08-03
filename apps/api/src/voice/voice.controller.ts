@@ -4,13 +4,14 @@ import { Throttle } from '@nestjs/throttler';
 import { Response } from 'express';
 import { Public } from '../common/decorators';
 import { HenryVoiceGateway } from './henry-voice-gateway.service';
-import { VoiceConfig } from './voice-config';
+import { VoiceConfig, voiceMaxAudioSizeFromEnv } from './voice-config';
 
 const auditContext = (request: any) => ({ actorUserId: request.auth?.user?.id, ipAddress: request.ip, userAgent: request.headers['user-agent'] });
 const parseContext = (raw: unknown) => {
   if (!raw) return undefined;
   try { return JSON.parse(String(raw)); } catch { throw new BadRequestException('PageContext inválido'); }
 };
+const voiceUploadLimits = { files: 1, fileSize: voiceMaxAudioSizeFromEnv() };
 
 @Controller('henry')
 export class VoiceController {
@@ -19,7 +20,7 @@ export class VoiceController {
   @Post('conversations/:id/voice/turns')
   @Public()
   @Throttle({ default: { limit: 6, ttl: 60_000 } })
-  @UseInterceptors(FileInterceptor('audio', { limits: { files: 1, fileSize: 10 * 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor('audio', { limits: voiceUploadLimits }))
   async publicTurn(@Param('id', ParseUUIDPipe) id: string, @Headers('x-henry-token') token: string | undefined, @UploadedFile() audio: any, @Body() body: any, @Req() request: any) {
     if (!audio?.buffer) throw new BadRequestException('Audio requerido');
     return this.voice.turn({ publicId: id, token, audio, durationMs: body.durationMs ? Number(body.durationMs) : undefined, pageContext: parseContext(body.pageContext), audit: auditContext(request) });
@@ -27,7 +28,7 @@ export class VoiceController {
 
   @Post('internal/conversations/:id/voice/turns')
   @Throttle({ default: { limit: 12, ttl: 60_000 } })
-  @UseInterceptors(FileInterceptor('audio', { limits: { files: 1, fileSize: 10 * 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor('audio', { limits: voiceUploadLimits }))
   async internalTurn(@Param('id', ParseUUIDPipe) id: string, @Headers('x-henry-token') token: string | undefined, @UploadedFile() audio: any, @Body() body: any, @Req() request: any) {
     if (!audio?.buffer) throw new BadRequestException('Audio requerido');
     return this.voice.turn({ publicId: id, token, audio, durationMs: body.durationMs ? Number(body.durationMs) : undefined, pageContext: parseContext(body.pageContext), actor: request.auth.user, audit: auditContext(request) });
