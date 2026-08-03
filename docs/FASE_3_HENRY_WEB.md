@@ -1,5 +1,8 @@
 # FASE 3 — HENRY WEB
 
+> Ampliación operativa autorizada: Henry consume HAVONA Communications Core mediante tools y
+> permisos; no controla Meta ni Resend, no duplica memoria y no introduce un cerebro paralelo.
+
 ## Estado y objetivo
 
 **Estado: EN CONSTRUCCIÓN**

@@ -11,6 +11,12 @@ futuras automatizaciones consumen `MeetingService`, que delega en `MeetingProvid
 implementación inicial. La dependencia permitida es Henry → Meet Core y Calendar → Meet Core.
 Meet Core nunca depende de Henry y Google Meet no se confunde con HAVONA Meet.
 
+HAVONA Communications Core es el dominio corporativo omnicanal transversal. CRM, Henry,
+consultores, gerentes, Portal, servicio al cliente y automatizaciones futuras consumen el servicio,
+que delega en `MessagingProvider` o `EmailProvider`. Meta WhatsApp y Resend son implementaciones
+iniciales. La dependencia permitida es Henry → Communications Core; Communications Core no depende
+de Henry y opera aunque la IA esté deshabilitada.
+
 ### `apps/web`
 
 Responsabilidades:

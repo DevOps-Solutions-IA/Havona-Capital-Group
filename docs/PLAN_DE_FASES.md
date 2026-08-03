@@ -174,6 +174,13 @@ Versión: `v0.5.0`
 
 ## Fase 5 — WhatsApp y correo
 
+**Estado: EN CONSTRUCCIÓN TÉCNICA EN PR #4**
+
+La ampliación autorizada implementa HAVONA Communications Core como motor omnicanal corporativo,
+independiente de Henry y reutilizable desde CRM, Portal, operación humana y automatizaciones
+futuras. Meta WhatsApp y Resend son providers iniciales; sus validaciones externas requieren
+cuentas, dominios y webhooks autorizados y se reportan separadamente de la implementación técnica.
+
 Entregables:
 
 - WhatsApp Business oficial.

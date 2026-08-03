@@ -9,6 +9,7 @@ import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/common/prisma.service';
 import { AI_PROVIDER } from '../src/ai/ai-provider';
 import { FakeAIProvider } from '../src/ai/fake-ai.provider';
+import { CommunicationsService } from '../src/communications/communications.service';
 
 describe('Fase 0 (PostgreSQL + Redis)', () => {
   let app: INestApplication;
@@ -370,5 +371,22 @@ describe('Fase 0 (PostgreSQL + Redis)', () => {
     const scoped = await consultantAgent.get('/api/v1/henry/admin/conversations?page=1&pageSize=25').expect(200);
     expect(scoped.body.data.map((item: { id: string }) => item.id)).toContain(conversation.id);
     await consultantAgent.get('/api/v1/henry/admin/dashboard').expect(403);
+  });
+
+  it('persiste inbound omnicanal, deduplica, aplica opt-out y RBAC', async () => {
+    const communications = app.get(CommunicationsService);
+    const providerMessageId = `integration-${randomUUID()}`;
+    const first = await communications.receiveInbound({ channel: 'EMAIL', provider: 'RESEND', providerMessageId, from: `communications-${randomUUID()}@example.com`, to: 'servicio@example.com', text: 'Necesito orientación', subject: 'Consulta de integración' });
+    const repeated = await communications.receiveInbound({ channel: 'EMAIL', provider: 'RESEND', providerMessageId, from: `ignored-${randomUUID()}@example.com`, to: 'servicio@example.com', text: 'Duplicado' });
+    expect(repeated.id).toBe(first.id);
+    expect(await db.communicationMessage.count({ where: { providerMessageId } })).toBe(1);
+    await communications.suppressByInstruction(first.threadId, 'No quiero recibir mensajes', 'INTEGRATION_TEST');
+    expect(await db.communicationConsent.findUnique({ where: { threadId: first.threadId } })).toEqual(expect.objectContaining({ commercialStatus: 'OPTED_OUT' }));
+
+    const admin = request.agent(app.getHttpServer());
+    await admin.post('/api/v1/auth/login').send({ email: process.env.INITIAL_SUPER_ADMIN_EMAIL, password: process.env.INITIAL_SUPER_ADMIN_PASSWORD }).expect(201);
+    await admin.get('/api/v1/communications/config-status').expect(200).expect((result) => expect(result.body).toEqual(expect.objectContaining({ whatsapp: expect.any(Object), email: expect.any(Object) })));
+    const list = await admin.get('/api/v1/communications?page=1&pageSize=25').expect(200);
+    expect(list.body.data.map((thread: { id: string }) => thread.id)).toContain(first.threadId);
   });
 });
