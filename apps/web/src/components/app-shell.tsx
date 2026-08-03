@@ -24,6 +24,7 @@ import {
   CalendarDays,
   Video,
   MessagesSquare,
+  Workflow,
   X,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
@@ -52,6 +53,12 @@ const links = [
     label: 'Comunicaciones',
     icon: MessagesSquare,
     permission: 'communications.read',
+  },
+  {
+    href: '/automatizaciones',
+    label: 'Automatizaciones',
+    icon: Workflow,
+    permission: 'automations.read',
   },
   { href: '/crm/clientes', label: 'Clientes', icon: ContactRound, permission: 'crm.read_assigned' },
   { href: '/crm/empresas', label: 'Empresas', icon: Building2, permission: 'crm.read_all' },
