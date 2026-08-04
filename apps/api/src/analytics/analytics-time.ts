@@ -2,7 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import { DateTime } from 'luxon';
 import { AnalyticsPeriod } from './analytics.types';
 
-export function analyticsPeriod(input: { preset?: string; start?: string; end?: string; timezone?: string }, now = DateTime.now()): AnalyticsPeriod {
+export function analyticsPeriod(input: { preset?: string; start?: string; end?: string; timezone?: string }, now: DateTime = DateTime.now()): AnalyticsPeriod {
   const timezone = input.timezone ?? 'America/Bogota';
   if (!DateTime.local().setZone(timezone).isValid) throw new BadRequestException('Timezone IANA inválido');
   const localNow = now.setZone(timezone);
