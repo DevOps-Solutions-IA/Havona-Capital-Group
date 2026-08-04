@@ -51,6 +51,8 @@ model User {
   communicationMessagesCreated   CommunicationMessage[]    @relation("CommunicationMessageCreator")
   communicationAssignments       CommunicationAssignment[] @relation("CommunicationAssignmentAssignee")
   communicationAssignmentsMade   CommunicationAssignment[] @relation("CommunicationAssignmentActor")
+  analyticsGoalsCreated           AnalyticsGoal[]            @relation("AnalyticsGoalCreator")
+  analyticsGoalsScoped            AnalyticsGoal[]            @relation("AnalyticsGoalScopeUser")
 
   @@map("users")
 }
@@ -1686,6 +1688,89 @@ model AutomationApproval {
   @@unique([executionId, stepOrder])
   @@index([approverUserId, status, expiresAt])
   @@map("automation_approvals")
+}
+
+enum AnalyticsGoalStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum AnalyticsSignalSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum AnalyticsSignalStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+model AnalyticsGoal {
+  id          String              @id @default(uuid()) @db.Uuid
+  metricKey   String              @map("metric_key") @db.VarChar(120)
+  targetValue Decimal             @map("target_value") @db.Decimal(20, 4)
+  unit        String              @db.VarChar(30)
+  scopeType   String              @map("scope_type") @db.VarChar(30)
+  scopeUserId String?             @map("scope_user_id") @db.Uuid
+  periodStart DateTime            @map("period_start")
+  periodEnd   DateTime            @map("period_end")
+  timezone    String              @default("America/Bogota") @db.VarChar(80)
+  status      AnalyticsGoalStatus @default(ACTIVE)
+  createdById String              @map("created_by_id") @db.Uuid
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+  createdBy   User                @relation("AnalyticsGoalCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  scopeUser   User?               @relation("AnalyticsGoalScopeUser", fields: [scopeUserId], references: [id], onDelete: Restrict)
+
+  @@index([metricKey, periodStart, periodEnd])
+  @@index([scopeType, scopeUserId, status])
+  @@map("analytics_goals")
+}
+
+model AnalyticsMetricSnapshot {
+  id            String   @id @default(uuid()) @db.Uuid
+  metricKey     String   @map("metric_key") @db.VarChar(120)
+  metricVersion Int      @map("metric_version")
+  scopeKey      String   @map("scope_key") @db.VarChar(160)
+  periodStart   DateTime @map("period_start")
+  periodEnd     DateTime @map("period_end")
+  timezone      String   @db.VarChar(80)
+  value         Decimal? @db.Decimal(20, 4)
+  numerator     Decimal? @db.Decimal(20, 4)
+  denominator   Decimal? @db.Decimal(20, 4)
+  coverage      Json
+  dimensions    Json?
+  sourceVersion String   @map("source_version") @db.VarChar(80)
+  computedAt    DateTime @default(now()) @map("computed_at")
+
+  @@unique([metricKey, metricVersion, scopeKey, periodStart, periodEnd])
+  @@index([metricKey, computedAt])
+  @@map("analytics_metric_snapshots")
+}
+
+model AnalyticsSignal {
+  id              String                  @id @default(uuid()) @db.Uuid
+  signalKey       String                  @unique @map("signal_key") @db.VarChar(200)
+  type            String                  @db.VarChar(100)
+  severity        AnalyticsSignalSeverity
+  status          AnalyticsSignalStatus   @default(OPEN)
+  entityType      String                  @map("entity_type") @db.VarChar(60)
+  entityId        String                  @map("entity_id") @db.Uuid
+  ownerUserId     String?                 @map("owner_user_id") @db.Uuid
+  score           Int?
+  evidence        Json
+  suggestedAction String?                 @map("suggested_action") @db.VarChar(120)
+  detectedAt      DateTime                @default(now()) @map("detected_at")
+  resolvedAt      DateTime?               @map("resolved_at")
+  updatedAt       DateTime                @updatedAt @map("updated_at")
+
+  @@index([status, severity, detectedAt])
+  @@index([ownerUserId, status, detectedAt])
+  @@index([entityType, entityId])
+  @@map("analytics_signals")
 }
 
 model DomainOutboxEvent {

@@ -60,6 +60,8 @@ import { AutomationQueueService } from './automations/automation-queue.service';
 import { AutomationService } from './automations/automation.service';
 import { AutomationProcessorService } from './automations/automation-processor.service';
 import { AutomationEventBus } from './automations/automation-event-bus.service';
+import { AnalyticsController } from './analytics/analytics.controller';
+import { AnalyticsService } from './analytics/analytics.service';
 
 @Module({
   imports: [
@@ -84,6 +86,7 @@ import { AutomationEventBus } from './automations/automation-event-bus.service';
     MeetingController,
     CommunicationsController,
     AutomationController,
+    AnalyticsController,
   ],
   providers: [
     PrismaService,
@@ -95,7 +98,6 @@ import { AutomationEventBus } from './automations/automation-event-bus.service';
     AIConfig,
     OpenRouterProvider,
     { provide: AI_PROVIDER, useExisting: OpenRouterProvider },
-    HenryToolsService,
     HenryContextService,
     HenryExpertCopilotService,
     ...HENRY_POLICY_PROVIDERS,
@@ -131,6 +133,8 @@ import { AutomationEventBus } from './automations/automation-event-bus.service';
     AutomationEventBus,
     AutomationService,
     AutomationProcessorService,
+    AnalyticsService,
+    HenryToolsService,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: AuthGuard },
   ],

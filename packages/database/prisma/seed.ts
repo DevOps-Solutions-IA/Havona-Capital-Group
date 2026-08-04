@@ -52,6 +52,12 @@ const permissions = [
   ['automations.activate', 'Activar, pausar y archivar workflows'],
   ['automations.approve', 'Resolver aprobaciones de automatización asignadas'],
   ['automations.admin', 'Administrar HAVONA Automations Core'],
+  ['analytics.read', 'Consultar analítica comercial autorizada'],
+  ['analytics.read_team', 'Consultar analítica del equipo autorizado'],
+  ['analytics.read_all', 'Consultar analítica comercial global'],
+  ['analytics.goals.manage', 'Crear y actualizar objetivos comerciales'],
+  ['analytics.export', 'Exportar datasets analíticos autorizados'],
+  ['analytics.admin', 'Administrar HAVONA Analytics Core'],
 ] as const;
 const grants: Record<string, string[]> = {
   SUPER_ADMIN: permissions.map(([key]) => key),
@@ -97,6 +103,10 @@ const grants: Record<string, string[]> = {
     'automations.manage_team',
     'automations.activate',
     'automations.approve',
+    'analytics.read',
+    'analytics.read_team',
+    'analytics.goals.manage',
+    'analytics.export',
   ],
   CONSULTOR: [
     'settings.read',
@@ -122,6 +132,7 @@ const grants: Record<string, string[]> = {
     'automations.read',
     'automations.manage_own',
     'automations.approve',
+    'analytics.read',
   ],
 };
 async function main() {
