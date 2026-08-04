@@ -588,4 +588,27 @@ describe('Fase 0 (PostgreSQL + Redis)', () => {
       expect.objectContaining({ status: 'PROCESSED' }),
     );
   });
+
+  it('calcula analítica desde PostgreSQL con catálogo, cobertura y RBAC', async () => {
+    const admin = request.agent(app.getHttpServer());
+    await admin.post('/api/v1/auth/login').send({ email: process.env.INITIAL_SUPER_ADMIN_EMAIL, password: process.env.INITIAL_SUPER_ADMIN_PASSWORD }).expect(201);
+    const catalog = await admin.get('/api/v1/analytics/catalog').expect(200);
+    expect(catalog.body.definitions).toEqual(expect.arrayContaining([expect.objectContaining({ key: 'sales.win_rate', version: 1 })]));
+    const summary = await admin.get('/api/v1/analytics/summary?preset=year').expect(200);
+    expect(summary.body.metrics).toEqual(expect.arrayContaining([expect.objectContaining({ current: expect.objectContaining({ metric: 'sales.pipeline_value', value: null, availability: 'notAvailable' }) })]));
+    expect(summary.body.funnel.semantics).toContain('Cada oportunidad cuenta una vez');
+    expect(summary.body.priorities).toEqual(expect.any(Array));
+    const quality = await admin.get('/api/v1/analytics/data-quality?preset=year').expect(200);
+    expect(quality.body.unknownIsZero).toBe(false);
+
+    const role = await db.role.findUniqueOrThrow({ where: { name: 'CONSULTOR' } });
+    const password = 'Analytics-Isolation-2026!';
+    const consultant = await db.user.create({ data: { email: `analytics-${randomUUID()}@example.com`, name: 'Consultor Analytics', passwordHash: await hashPassword(password), roles: { create: { roleId: role.id } } } });
+    const own = request.agent(app.getHttpServer());
+    await own.post('/api/v1/auth/login').send({ email: consultant.email, password }).expect(201);
+    await own.get(`/api/v1/analytics/consultants/${consultant.id}?preset=month`).expect(200);
+    const other = await db.user.findFirstOrThrow({ where: { id: { not: consultant.id } } });
+    await own.get(`/api/v1/analytics/consultants/${other.id}?preset=month`).expect(403);
+    await own.get('/api/v1/analytics/team?preset=month').expect(403);
+  });
 });

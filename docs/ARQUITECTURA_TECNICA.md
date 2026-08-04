@@ -24,6 +24,12 @@ BullMQ. Henry puede aportar razonamiento estructurado, pero no ejecuta providers
 motor determinístico. La dependencia permitida es `Henry → Automations Core`; Automations Core no
 depende de providers externos concretos.
 
+HAVONA Enterprise Analytics & Commercial Intelligence Core es la capa semántica transversal que
+calcula hechos reproducibles desde CRM, Calendar, Meet, Communications, Automations y Henry. No
+depende de Henry: la dependencia correcta es `Henry → Analytics Core`. El catálogo centraliza
+fórmulas, fuentes, periodos, cobertura y versiones; PostgreSQL es la fuente inicial y los datos
+desconocidos nunca se convierten en cero.
+
 ### `apps/web`
 
 Responsabilidades:

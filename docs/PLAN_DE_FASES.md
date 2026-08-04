@@ -216,6 +216,13 @@ Versión: `v0.7.0`
 
 ## Fase 7 — Analítica
 
+**Estado: EN CONSTRUCCIÓN TÉCNICA EN PR #4**
+
+La ampliación autorizada implementa HAVONA Enterprise Analytics & Commercial Intelligence Core
+como capa transversal independiente de Henry para calcular hechos. Incluye catálogo semántico,
+tiempo explícito, embudo, riesgo explicable, prioridades, objetivos, calidad de datos, métricas
+operativas, herramientas Henry y Command Center con RBAC.
+
 Entregables:
 
 - Prospectos por canal.
