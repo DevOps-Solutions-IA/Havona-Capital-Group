@@ -1,5 +1,7 @@
 # ARQUITECTURA TÉCNICA — HAVONA CAPITAL GROUP
 
+> Knowledge Core es transversal y no depende de Henry. Storage, embeddings, recuperación autorizada, formación y memoria gobernada son dominios reutilizables; Henry los consume mediante tools y un único ContextAssembler.
+
 ## 1. Enfoque
 
 HAVONA CAPITAL GROUP se construirá como un monorepo con monolito modular, preparado para separar servicios cuando el crecimiento lo requiera.
