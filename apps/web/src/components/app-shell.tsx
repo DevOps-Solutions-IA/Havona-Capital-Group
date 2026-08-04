@@ -25,6 +25,7 @@ import {
   Video,
   MessagesSquare,
   Workflow,
+  ChartNoAxesCombined,
   X,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
@@ -59,6 +60,12 @@ const links = [
     label: 'Automatizaciones',
     icon: Workflow,
     permission: 'automations.read',
+  },
+  {
+    href: '/analitica',
+    label: 'Inteligencia comercial',
+    icon: ChartNoAxesCombined,
+    permission: 'analytics.read',
   },
   { href: '/crm/clientes', label: 'Clientes', icon: ContactRound, permission: 'crm.read_assigned' },
   { href: '/crm/empresas', label: 'Empresas', icon: Building2, permission: 'crm.read_all' },

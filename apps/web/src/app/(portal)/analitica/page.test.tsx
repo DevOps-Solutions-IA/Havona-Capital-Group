@@ -1,0 +1,12 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import AnalyticsPage from './page';
+import { analyticsApi } from '@/lib/analytics';
+vi.mock('@/lib/auth', () => ({ useAuth: () => ({ user: { id: 'self' }, can: (permission: string) => ['analytics.read_team', 'analytics.export'].includes(permission) }) }));
+vi.mock('@/lib/analytics', async () => { const actual = await vi.importActual<typeof import('@/lib/analytics')>('@/lib/analytics'); return { ...actual, analyticsApi: { summary: vi.fn(), team: vi.fn(), quality: vi.fn() } }; });
+const summary: any = { period: { start: '2026-08-01', end: '2026-09-01', timezone: 'America/Bogota' }, freshness: { status: 'LIVE', generatedAt: '2026-08-03T12:00:00Z' }, metrics: [{ current: { metric: 'crm.prospects.created', value: 4, availability: 'available', coverage: { status: 'COMPLETE' }, period: {} }, previous: { value: 2 }, delta: { absolute: 2, percentage: 1, status: 'COMPARABLE' } }], funnel: { stages: [{ stage: { key: 'new', name: 'Nuevo' }, entered: 4, conversionToNext: null, averageDays: null, medianDays: null }] }, pipeline: { active: 1, monetaryValue: { availability: 'notAvailable', coverage: { warning: 'No modelado' } }, stalled: [] }, priorities: [{ type: 'OVERDUE_TASK', severity: 'WARNING', entityType: 'Task', entityId: 'task', title: 'Seguimiento vencido', reason: 'Vencida', suggestedAction: 'ACT' }], goals: [], dataQuality: { status: 'PARTIAL', issues: 2 } };
+describe('AnalyticsPage', () => {
+  beforeEach(() => { vi.mocked(analyticsApi.summary).mockResolvedValue(summary); vi.mocked(analyticsApi.team).mockResolvedValue([]); vi.mocked(analyticsApi.quality).mockResolvedValue({ summary: { status: 'PARTIAL', issues: 2 }, checks: [] }); });
+  it('muestra hechos, comparación, prioridad y calidad sin datos decorativos', async () => { render(<AnalyticsPage />); expect(await screen.findByText('Command Center comercial')).toBeInTheDocument(); expect(screen.getByText('4')).toBeInTheDocument(); expect(screen.getByText('Seguimiento vencido')).toBeInTheDocument(); expect(screen.getByText(/2 observaciones incompletas/)).toBeInTheDocument(); });
+  it('actualiza el periodo mediante consulta backend', async () => { render(<AnalyticsPage />); await screen.findByText('Command Center comercial'); fireEvent.change(screen.getByLabelText('Periodo'), { target: { value: 'week' } }); await waitFor(() => expect(analyticsApi.summary).toHaveBeenLastCalledWith({ preset: 'week' })); });
+});
+
