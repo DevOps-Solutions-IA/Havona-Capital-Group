@@ -51,6 +51,16 @@ const CONSULTANT_TOOLS = [
   'list_active_automation_workflows',
   'get_automation_execution',
   'pause_automation_for_entity',
+  'get_commercial_summary',
+  'get_analytics_metric',
+  'get_commercial_funnel',
+  'get_pipeline_health',
+  'get_priority_actions',
+  'get_goal_progress',
+  'get_analytics_data_quality',
+  'get_analytics_anomalies',
+  'get_communications_performance',
+  'get_automations_performance',
 ];
 const MANAGER_TOOLS = [
   ...CONSULTANT_TOOLS,
@@ -60,6 +70,7 @@ const MANAGER_TOOLS = [
   'return_thread_to_henry',
   'link_thread_to_crm',
   'close_communication_thread',
+  'get_team_scorecard',
 ];
 
 @Injectable()
