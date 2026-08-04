@@ -19,6 +19,10 @@ que delega en `MessagingProvider` o `EmailProvider`. Meta WhatsApp y Resend son 
 iniciales. La dependencia permitida es Henry → Communications Core; Communications Core no depende
 de Henry y opera aunque la IA esté deshabilitada.
 
+HAVONA Email Template Core es la capa transversal de composición y gobierno de correo. CRM, Henry,
+Automations y las interfaces producen borradores/versiones mediante este núcleo; el núcleo entrega
+mensajes renderizados a Communications Core y nunca depende de Resend ni de otro provider.
+
 HAVONA Automations Core es el motor corporativo transversal de workflows. CRM, Calendar, Meet y
 Communications publican eventos mediante un bus interno respaldado por transactional outbox;
 Automations Core decide enrollments, conditions, delays, approvals y actions allowlisted mediante

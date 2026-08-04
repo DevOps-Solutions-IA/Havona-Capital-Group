@@ -2,6 +2,9 @@
 
 > Fase 8 en construcción: Knowledge Core, RAG trazable, Training Core y memoria gobernada amplían el único Henry Core. El PR permanece Draft y no constituye release.
 
+> Pre-cierre Fase B en construcción: Email Template Core gobierna templates, versiones, variantes,
+> drafts y snapshots; Communications Core conserva la exclusividad del envío.
+
 Todas las fases adoptan **HAVONA CAPITAL GROUP** como nombre corporativo oficial. La Home aprobada
 en Fase 1 define el ADN visual que deben interpretar —sin copiar composiciones literalmente— CRM,
 Henry, Agenda, Havona Meet, administración, dashboards, portal cliente, academia, mobile y módulos
