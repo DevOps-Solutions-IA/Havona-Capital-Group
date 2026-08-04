@@ -1,5 +1,6 @@
 'use client';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import {
   Mail,
   MessageCircle,
@@ -192,6 +193,14 @@ export default function CommunicationsPage() {
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
+                    {selected.channel === 'EMAIL' && can('email_templates.preview') && (
+                      <Link
+                        href={`/comunicaciones/plantillas?threadId=${selected.id}${selected.prospect?.id ? `&prospectId=${selected.prospect.id}` : ''}`}
+                        className="rounded-full border px-3 py-2 text-xs font-semibold"
+                      >
+                        Responder con plantilla
+                      </Link>
+                    )}
                     {can('communications.takeover') && (
                       <>
                         <button

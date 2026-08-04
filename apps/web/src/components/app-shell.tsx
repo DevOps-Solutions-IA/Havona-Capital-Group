@@ -28,6 +28,7 @@ import {
   ChartNoAxesCombined,
   BookOpen,
   GraduationCap,
+  MailCheck,
   X,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
@@ -56,6 +57,12 @@ const links = [
     label: 'Comunicaciones',
     icon: MessagesSquare,
     permission: 'communications.read',
+  },
+  {
+    href: '/comunicaciones/plantillas',
+    label: 'Plantillas email',
+    icon: MailCheck,
+    permission: 'email_templates.read',
   },
   {
     href: '/automatizaciones',
