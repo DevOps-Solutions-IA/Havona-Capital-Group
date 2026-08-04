@@ -26,6 +26,8 @@ import {
   MessagesSquare,
   Workflow,
   ChartNoAxesCombined,
+  BookOpen,
+  GraduationCap,
   X,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
@@ -67,6 +69,8 @@ const links = [
     icon: ChartNoAxesCombined,
     permission: 'analytics.read',
   },
+  { href: '/conocimiento', label: 'Conocimiento', icon: BookOpen, permission: 'knowledge.read' },
+  { href: '/formacion', label: 'Formación', icon: GraduationCap, permission: 'training.read' },
   { href: '/crm/clientes', label: 'Clientes', icon: ContactRound, permission: 'crm.read_assigned' },
   { href: '/crm/empresas', label: 'Empresas', icon: Building2, permission: 'crm.read_all' },
   { href: '/crm/consultores', label: 'Consultores', icon: UserRound, permission: 'crm.assign' },
