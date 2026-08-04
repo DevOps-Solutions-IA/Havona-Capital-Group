@@ -75,8 +75,8 @@ export class AnalyticsService {
 
   async compareMetric(key: string, query: any, actor: AnalyticsActor) {
     const period = analyticsPeriod(query), previous = previousPeriod(period);
-    const current = await this.metric(key, { ...query, preset: 'custom', start: period.start.toISOString(), end: new Date(period.end.getTime() - 1).toISOString() }, actor);
-    const prior = await this.metric(key, { ...query, preset: 'custom', start: previous.start.toISOString(), end: new Date(previous.end.getTime() - 1).toISOString() }, actor);
+    const current = await this.metric(key, { ...query, preset: 'custom', start: period.start.toISOString(), end: period.end.toISOString() }, actor);
+    const prior = await this.metric(key, { ...query, preset: 'custom', start: previous.start.toISOString(), end: previous.end.toISOString() }, actor);
     const comparable = current.value !== null && prior.value !== null;
     const absolute = comparable ? current.value! - prior.value! : null;
     const percentage = comparable && prior.value !== 0 ? absolute! / prior.value! : null;
@@ -116,6 +116,30 @@ export class AnalyticsService {
     return [...pipeline.stalled.map((item: any) => ({ type: 'STALLED_OPPORTUNITY', severity: item.riskLevel, entityType: 'Opportunity', entityId: item.id, title: item.title, reason: item.components.map((c: any) => c.evidence).join('; '), evidence: item.components, suggestedAction: 'SCHEDULE_FOLLOW_UP', urgency: item.riskScore })), ...tasks.map((task) => ({ type: 'OVERDUE_TASK', severity: task.priority === 'URGENT' ? 'CRITICAL' : 'WARNING', entityType: 'Task', entityId: task.id, title: task.title, reason: `Vencida desde ${task.dueAt.toISOString()}`, evidence: [{ dueAt: task.dueAt, assignee: task.assignee }], suggestedAction: 'COMPLETE_OR_RESCHEDULE_TASK', urgency: 50 }))].sort((a, b) => b.urgency - a.urgency);
   }
 
+  async cohorts(query: any, actor: AnalyticsActor) {
+    const period = analyticsPeriod(query), scope = await this.scope(actor, query.consultantId);
+    const prospects = await this.db.prospect.findMany({
+      where: { ...this.prospectWhere(scope), createdAt: { gte: period.start, lt: period.end } },
+      select: { id: true, createdAt: true, opportunities: { select: { createdAt: true, status: true, closedAt: true } } },
+      orderBy: { createdAt: 'asc' },
+      take: 10_000,
+    });
+    const cohorts = new Map<string, { created: number; opportunitiesWithin30Days: number; wonWithin90Days: number; mature30: number; mature90: number }>();
+    const now = Date.now();
+    for (const prospect of prospects) {
+      const key = prospect.createdAt.toISOString().slice(0, 7);
+      const row = cohorts.get(key) ?? { created: 0, opportunitiesWithin30Days: 0, wonWithin90Days: 0, mature30: 0, mature90: 0 };
+      row.created += 1;
+      const ageDays = (now - prospect.createdAt.getTime()) / 86_400_000;
+      if (ageDays >= 30) row.mature30 += 1;
+      if (ageDays >= 90) row.mature90 += 1;
+      if (prospect.opportunities.some((item) => item.createdAt.getTime() - prospect.createdAt.getTime() <= 30 * 86_400_000)) row.opportunitiesWithin30Days += 1;
+      if (prospect.opportunities.some((item) => item.status === 'WON' && item.closedAt && item.closedAt.getTime() - prospect.createdAt.getTime() <= 90 * 86_400_000)) row.wonWithin90Days += 1;
+      cohorts.set(key, row);
+    }
+    return { period: this.periodResult(period), scope: scope.kind, cohortBasis: 'prospect.createdAt', rows: [...cohorts].map(([cohort, row]) => ({ cohort, ...row, opportunityConversion30Days: row.mature30 ? row.opportunitiesWithin30Days / row.mature30 : null, wonConversion90Days: row.mature90 ? row.wonWithin90Days / row.mature90 : null, maturity: row.mature90 === row.created ? 'MATURE_90' : row.mature30 === row.created ? 'MATURE_30' : 'INCOMPLETE' })), warning: 'Las cohortes inmaduras se identifican y no se comparan como si hubieran completado su ventana.' };
+  }
+
   async dataQuality(query: any, actor: AnalyticsActor) {
     const scope = await this.scope(actor, query.consultantId), opportunityWhere = this.opportunityWhere(scope), prospectWhere = this.prospectWhere(scope);
     const [prospects, opportunities, withoutOwner, openWithoutTask] = await Promise.all([this.db.prospect.count({ where: prospectWhere }), this.db.opportunity.count({ where: opportunityWhere }), this.db.opportunity.count({ where: { ...opportunityWhere, ownerId: null } }), this.db.opportunity.count({ where: { ...opportunityWhere, status: 'OPEN', tasks: { none: { status: { in: ['PENDING', 'IN_PROGRESS'] } } } } })]);
@@ -149,9 +173,21 @@ export class AnalyticsService {
     return { period: this.periodResult(period), conversations, escalations, executions, failures, resolutionWithoutEscalation: conversations ? Math.max(0, conversations - escalations) / conversations : null, usage: { inputTokens: usage._sum.inputTokens ?? 0, outputTokens: usage._sum.outputTokens ?? 0, costUsd: usage._sum.estimatedCostUsd?.toNumber() ?? null, costLabel: usage._sum.estimatedCostUsd == null ? 'notAvailable' : 'provider-reported-or-estimated-as-stored' } };
   }
 
-  async goals(query: any, actor: AnalyticsActor) { const scope = await this.scope(actor, query.consultantId); return this.db.analyticsGoal.findMany({ where: { ...(scope.userIds ? { OR: [{ scopeUserId: { in: scope.userIds } }, { scopeType: 'ORGANIZATION', ...(scope.kind === 'OWN' ? { scopeUserId: null } : {}) }] } : {}), status: query.status ?? 'ACTIVE' }, orderBy: { periodEnd: 'asc' } }); }
+  async goals(query: any, actor: AnalyticsActor) {
+    const scope = await this.scope(actor, query.consultantId);
+    const rows = await this.db.analyticsGoal.findMany({ where: { ...(scope.userIds ? { OR: [{ scopeUserId: { in: scope.userIds } }, { scopeType: 'ORGANIZATION', ...(scope.kind === 'OWN' ? { scopeUserId: null } : {}) }] } : {}), status: query.status ?? 'ACTIVE' }, orderBy: { periodEnd: 'asc' } });
+    return Promise.all(rows.map(async (row) => {
+      const effectiveEnd = new Date(Math.min(row.periodEnd.getTime(), Date.now()));
+      const result = effectiveEnd > row.periodStart ? await this.metric(row.metricKey, { preset: 'custom', start: row.periodStart.toISOString(), end: effectiveEnd.toISOString(), timezone: row.timezone, consultantId: row.scopeUserId ?? query.consultantId }, actor) : null;
+      const target = row.targetValue.toNumber(), actual = result?.value ?? null;
+      const elapsed = Math.max(0, Math.min(1, (effectiveEnd.getTime() - row.periodStart.getTime()) / (row.periodEnd.getTime() - row.periodStart.getTime())));
+      return { ...row, progress: { actual, target, attainment: actual === null ? null : actual / target, remaining: actual === null ? null : Math.max(0, target - actual), elapsedPeriod: elapsed, linearPaceExpected: target * elapsed, gapToPace: actual === null ? null : actual - target * elapsed, label: 'PACING_NOT_FORECAST' }, evidence: result };
+    }));
+  }
   async createGoal(input: any, actor: AnalyticsActor, request: any) {
     const definition = metricDefinition(input.metricKey); if (!definition || definition.unit === 'CURRENCY') throw new BadRequestException('Métrica no disponible para metas');
+    if (input.scopeType === 'ORGANIZATION' && !actor.permissions.includes('analytics.read_all')) throw new ForbiddenException('Sin permiso para crear metas organizacionales');
+    if (input.scopeType !== 'ORGANIZATION' && !input.scopeUserId) throw new BadRequestException('La meta de equipo o usuario requiere un ámbito explícito');
     if (input.scopeUserId) await this.scope(actor, input.scopeUserId);
     const row = await this.db.analyticsGoal.create({ data: { metricKey: input.metricKey, targetValue: new Prisma.Decimal(input.targetValue), unit: definition.unit, scopeType: input.scopeType, scopeUserId: input.scopeUserId, periodStart: new Date(input.periodStart), periodEnd: new Date(input.periodEnd), timezone: input.timezone ?? 'America/Bogota', createdById: actor.id } });
     await this.audit.record('ANALYTICS_GOAL_CREATED', 'AnalyticsGoal', row.id, { actorUserId: actor.id, ipAddress: request.ip, userAgent: request.headers?.['user-agent'] }, { metricKey: row.metricKey, scopeType: row.scopeType }); return row;

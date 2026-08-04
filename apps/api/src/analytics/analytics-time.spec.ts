@@ -13,5 +13,9 @@ describe('analytics time model', () => {
     expect(previous.end).toEqual(period.start);
     expect(previous.end.getTime() - previous.start.getTime()).toBe(period.end.getTime() - period.start.getTime());
   });
+  it('preserva límites exactos en rangos personalizados', () => {
+    const period = analyticsPeriod({ preset: 'custom', start: '2026-08-03T09:15:00-05:00', end: '2026-08-03T11:45:00-05:00', timezone: 'America/Bogota' });
+    expect(period.start.toISOString()).toBe('2026-08-03T14:15:00.000Z');
+    expect(period.end.toISOString()).toBe('2026-08-03T16:45:00.000Z');
+  });
 });
-

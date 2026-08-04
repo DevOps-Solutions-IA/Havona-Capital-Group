@@ -10,8 +10,8 @@ export function analyticsPeriod(input: { preset?: string; start?: string; end?: 
   let end: DateTime;
   const preset = input.preset ?? (input.start && input.end ? 'custom' : 'month');
   if (preset === 'custom') {
-    start = DateTime.fromISO(input.start ?? '', { zone: timezone }).startOf('day');
-    end = DateTime.fromISO(input.end ?? '', { zone: timezone }).plus({ days: 1 }).startOf('day');
+    start = DateTime.fromISO(input.start ?? '', { setZone: true }).setZone(timezone);
+    end = DateTime.fromISO(input.end ?? '', { setZone: true }).setZone(timezone);
   } else if (preset === 'today') {
     start = localNow.startOf('day'); end = start.plus({ days: 1 });
   } else if (preset === 'yesterday') {

@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import AnalyticsPage from './page';
 import { analyticsApi } from '@/lib/analytics';
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ user: { id: 'self' }, can: (permission: string) => ['analytics.read_team', 'analytics.export'].includes(permission) }) }));
@@ -9,4 +10,3 @@ describe('AnalyticsPage', () => {
   it('muestra hechos, comparación, prioridad y calidad sin datos decorativos', async () => { render(<AnalyticsPage />); expect(await screen.findByText('Command Center comercial')).toBeInTheDocument(); expect(screen.getByText('4')).toBeInTheDocument(); expect(screen.getByText('Seguimiento vencido')).toBeInTheDocument(); expect(screen.getByText(/2 observaciones incompletas/)).toBeInTheDocument(); });
   it('actualiza el periodo mediante consulta backend', async () => { render(<AnalyticsPage />); await screen.findByText('Command Center comercial'); fireEvent.change(screen.getByLabelText('Periodo'), { target: { value: 'week' } }); await waitFor(() => expect(analyticsApi.summary).toHaveBeenLastCalledWith({ preset: 'week' })); });
 });
-

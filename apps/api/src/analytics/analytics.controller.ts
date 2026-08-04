@@ -23,6 +23,7 @@ export class AnalyticsController {
   @Get('summary') @RequirePermissions('analytics.read') summary(@Query(new ZodPipe(querySchema)) query: any, @Req() req: any) { return this.analytics.summary(query, actor(req)); }
   @Get('metrics/:key') @RequirePermissions('analytics.read') metric(@Param('key') key: string, @Query(new ZodPipe(querySchema)) query: any, @Req() req: any) { return this.analytics.compareMetric(key, query, actor(req)); }
   @Get('funnel') @RequirePermissions('analytics.read') funnel(@Query(new ZodPipe(querySchema)) query: any, @Req() req: any) { return this.analytics.funnel(query, actor(req)); }
+  @Get('cohorts') @RequirePermissions('analytics.read') cohorts(@Query(new ZodPipe(querySchema)) query: any, @Req() req: any) { return this.analytics.cohorts(query, actor(req)); }
   @Get('pipeline') @RequirePermissions('analytics.read') pipeline(@Query(new ZodPipe(querySchema)) query: any, @Req() req: any) { return this.analytics.pipeline(query, actor(req)); }
   @Get('risks') @RequirePermissions('analytics.read') risks(@Query(new ZodPipe(querySchema)) query: any, @Req() req: any) { return this.analytics.pipeline(query, actor(req)); }
   @Get('priorities') @RequirePermissions('analytics.read') priorities(@Query(new ZodPipe(querySchema)) query: any, @Req() req: any) { return this.analytics.priorities(query, actor(req)); }
