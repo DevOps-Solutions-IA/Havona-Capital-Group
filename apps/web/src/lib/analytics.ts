@@ -7,7 +7,7 @@ export type AnalyticsSummary = {
   metrics: Array<{ current: MetricResult; previous: MetricResult; delta: { absolute: number | null; percentage: number | null; status: string } }>;
   funnel: { stages: Array<{ stage: { key: string; name: string }; entered: number; conversionToNext: number | null; averageDays: number | null; medianDays: number | null }> };
   pipeline: { active: number; monetaryValue: { availability: string; coverage: { warning?: string } }; stalled: Array<{ id: string; title: string; inactivityDays: number; riskScore: number }> };
-  priorities: Array<{ type: string; severity: string; entityId: string; title: string; reason: string; suggestedAction: string }>;
+  priorities: Array<{ type: string; severity: string; entityType: string; entityId: string; title: string; reason: string; suggestedAction: string }>;
   goals: Array<{ id: string; metricKey: string; targetValue: string; periodEnd: string }>;
   dataQuality: { status: string; issues: number };
 };
@@ -18,4 +18,3 @@ export const analyticsApi = {
   team: (query: AnalyticsPeriod = {}) => api<Array<{ user: { id: string; name: string }; prospects: number; opportunities: number; overdueTasks: number; winRate: number | null }>>(`/analytics/team?${params(query)}`),
   quality: (query: AnalyticsPeriod = {}) => api<{ summary: { status: string; issues: number }; checks: Array<{ key: string; missing: number; total: number; coveragePercentage: number | null; note?: string }> }>(`/analytics/data-quality?${params(query)}`),
 };
-
