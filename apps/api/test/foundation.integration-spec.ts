@@ -18,6 +18,7 @@ import {
   RagOrchestratorService,
   RETRIEVED_CONTENT_IS_DATA,
 } from '../src/knowledge/rag-orchestrator.service';
+import { EmailTemplateService } from '../src/email-templates/email-template.service';
 
 describe('Fase 0 (PostgreSQL + Redis)', () => {
   let app: INestApplication;
@@ -765,5 +766,116 @@ describe('Fase 0 (PostgreSQL + Redis)', () => {
     });
     await memory.forget(admin.id, saved.id);
     expect(await db.henryMemory.findUnique({ where: { id: saved.id } })).toBeNull();
+  });
+
+  it('compone email desde CRM, preserva snapshot y entrega a Communications sin provider', async () => {
+    const templates = app.get(EmailTemplateService);
+    const admin = await db.user.findUniqueOrThrow({
+      where: { email: process.env.INITIAL_SUPER_ADMIN_EMAIL },
+    });
+    const permissions = (
+      await db.rolePermission.findMany({
+        where: { role: { name: 'SUPER_ADMIN' } },
+        include: { permission: true },
+      })
+    ).map((row) => row.permission.key);
+    const actor = { id: admin.id, roles: ['SUPER_ADMIN'], permissions },
+      ctx = { actorUserId: admin.id };
+    const prospect = await db.prospect.findFirstOrThrow({
+      where: { normalizedEmail: { not: null } },
+    });
+    const master = await templates.create(
+      {
+        key: `meeting.thanks.${randomUUID()}`,
+        name: 'Agradecimiento controlado',
+        category: 'MEETINGS',
+        purpose: 'Agradecer reunión',
+        scope: 'CORPORATE',
+        locale: 'es-CO',
+        tags: ['reunion'],
+      },
+      actor,
+      ctx,
+    );
+    const version = await templates.createVersion(
+      master.id,
+      {
+        subject: 'Gracias, {{client.firstName}}',
+        messageClassification: 'RELATIONSHIP',
+        requiredVariables: ['client.firstName', 'client.email'],
+        blocks: [
+          {
+            id: 'body',
+            type: 'BODY',
+            mode: 'EDITABLE',
+            content: '<p>Gracias por la reunión, {{client.firstName}}.</p>',
+          },
+          { id: 'footer', type: 'FOOTER', mode: 'LOCKED', content: '<p>HAVONA CAPITAL GROUP</p>' },
+        ],
+      },
+      actor,
+      ctx,
+    );
+    await templates.approve(master.id, actor, ctx);
+    await templates.activate(master.id, actor, ctx);
+    const thread = await db.communicationThread.create({
+      data: {
+        channel: 'EMAIL',
+        provider: 'RESEND',
+        contactIdentity: prospect.normalizedEmail!,
+        assignedUserId: admin.id,
+        prospectId: prospect.id,
+        handlingMode: 'HUMAN',
+        consent: {
+          create: {
+            commercialStatus: 'OPTED_IN',
+            serviceStatus: 'OPTED_IN',
+            source: 'INTEGRATION_TEST',
+          },
+        },
+      },
+    });
+    const draft = await templates.createDraft(
+      {
+        templateId: master.id,
+        templateVersionId: version.id,
+        recipientProspectId: prospect.id,
+        communicationThreadId: thread.id,
+      },
+      actor,
+      ctx,
+    );
+    const preview = await templates.preview(draft.id, actor, ctx);
+    expect(preview).toEqual(
+      expect.objectContaining({
+        subject: expect.stringContaining(prospect.name.split(' ')[0]!),
+        missingVariables: [],
+        templateId: master.id,
+        templateVersionId: version.id,
+      }),
+    );
+    const handoff = await templates.handoff(draft.id, actor, ctx);
+    expect(handoff).toEqual(
+      expect.objectContaining({
+        providerDispatched: false,
+        communicationsPayload: expect.objectContaining({
+          recipient: prospect.normalizedEmail,
+          metadata: expect.objectContaining({
+            templateId: master.id,
+            templateVersionId: version.id,
+            draftId: draft.id,
+          }),
+        }),
+      }),
+    );
+    expect(await db.communicationMessage.count({ where: { threadId: thread.id } })).toBe(0);
+    expect(
+      (await db.emailTemplateUsage.findFirstOrThrow({ where: { draftId: draft.id } })).snapshot,
+    ).toEqual(expect.objectContaining({ subject: preview.subject }));
+    await db.communicationConsent.update({
+      where: { threadId: thread.id },
+      data: { commercialStatus: 'SUPPRESSED' },
+    });
+    await expect(templates.handoff(draft.id, actor, ctx)).rejects.toThrow('CONTACT_SUPPRESSED');
   });
 });

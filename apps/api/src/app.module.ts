@@ -79,6 +79,9 @@ import { HenryMemoryService } from './knowledge/memory.service';
 import { TrainingController } from './training/training.controller';
 import { TrainingService } from './training/training.service';
 import { HenryContextAssembler } from './henry/henry-context-assembler.service';
+import { EmailTemplateController } from './email-templates/email-template.controller';
+import { EmailTemplateService } from './email-templates/email-template.service';
+import { EmailTemplateRenderer } from './email-templates/email-template.renderer';
 
 @Module({
   imports: [
@@ -107,6 +110,7 @@ import { HenryContextAssembler } from './henry/henry-context-assembler.service';
     KnowledgeController,
     HenryMemoryController,
     TrainingController,
+    EmailTemplateController,
   ],
   providers: [
     PrismaService,
@@ -166,6 +170,8 @@ import { HenryContextAssembler } from './henry/henry-context-assembler.service';
     RagOrchestratorService,
     TrainingService,
     HenryContextAssembler,
+    EmailTemplateRenderer,
+    EmailTemplateService,
     HenryToolsService,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: AuthGuard },

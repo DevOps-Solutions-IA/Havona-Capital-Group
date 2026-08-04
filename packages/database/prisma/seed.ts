@@ -67,6 +67,12 @@ const permissions = [
   ['training.manage', 'Administrar programas y evaluaciones'],
   ['training.read_team', 'Consultar progreso formativo del equipo autorizado'],
   ['memory.manage_own', 'Consultar y gobernar memoria propia de Henry'],
+  ['email_templates.read', 'Consultar catálogo y plantillas de correo autorizadas'],
+  ['email_templates.create_personal', 'Crear variantes personales de plantillas corporativas'],
+  ['email_templates.edit_personal', 'Editar plantillas y variantes personales propias'],
+  ['email_templates.manage_corporate', 'Crear, versionar y activar plantillas corporativas'],
+  ['email_templates.approve', 'Aprobar versiones corporativas de correo'],
+  ['email_templates.preview', 'Crear, editar y previsualizar borradores autorizados'],
 ] as const;
 const grants: Record<string, string[]> = {
   SUPER_ADMIN: permissions.map(([key]) => key),
@@ -123,6 +129,10 @@ const grants: Record<string, string[]> = {
     'training.manage',
     'training.read_team',
     'memory.manage_own',
+    'email_templates.read',
+    'email_templates.create_personal',
+    'email_templates.edit_personal',
+    'email_templates.preview',
   ],
   CONSULTOR: [
     'settings.read',
@@ -152,6 +162,10 @@ const grants: Record<string, string[]> = {
     'knowledge.read',
     'training.read',
     'memory.manage_own',
+    'email_templates.read',
+    'email_templates.create_personal',
+    'email_templates.edit_personal',
+    'email_templates.preview',
   ],
 };
 async function main() {
