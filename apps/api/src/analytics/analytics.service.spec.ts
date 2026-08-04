@@ -38,7 +38,6 @@ describe('AnalyticsService', () => {
     db.opportunityStageHistory.findMany.mockResolvedValueOnce([{ opportunityId: 'opp', newStageId: 'new', createdAt: new Date('2026-08-01') }, { opportunityId: 'opp', newStageId: 'new', createdAt: new Date('2026-08-02') }, { opportunityId: 'opp', newStageId: 'contacted', createdAt: new Date('2026-08-03') }]).mockResolvedValueOnce([]);
     const result = await service.funnel({ preset: 'month' }, own);
     expect(result.stages.map((stage) => stage.entered)).toEqual([1, 1]);
-    expect(result.stages[0].conversionToNext).toBe(1);
+    expect(result.stages[0]!.conversionToNext).toBe(1);
   });
 });
-

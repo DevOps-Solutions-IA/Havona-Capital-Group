@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '@havona/database';
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../common/prisma.service';
 import { analyticsPeriod, previousPeriod } from './analytics-time';
@@ -8,7 +8,7 @@ import { AnalyticsActor, AnalyticsCoverage, AnalyticsPeriod, AnalyticsScope, Met
 
 const complete = (covered: number, total = covered): AnalyticsCoverage => ({ status: 'COMPLETE', covered, total, percentage: total ? Math.round((covered / total) * 10000) / 100 : 100 });
 const unavailable = (warning: string): AnalyticsCoverage => ({ status: 'NOT_AVAILABLE', covered: null, total: null, percentage: null, warning });
-const median = (values: number[]) => { if (!values.length) return null; const sorted = [...values].sort((a, b) => a - b); const middle = Math.floor(sorted.length / 2); return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2; };
+const median = (values: number[]) => { if (!values.length) return null; const sorted = [...values].sort((a, b) => a - b); const middle = Math.floor(sorted.length / 2); return sorted.length % 2 ? sorted[middle]! : (sorted[middle - 1]! + sorted[middle]!) / 2; };
 
 @Injectable()
 export class AnalyticsService {
@@ -19,7 +19,7 @@ export class AnalyticsService {
   async scope(actor: AnalyticsActor, requestedUserId?: string): Promise<AnalyticsScope> {
     if (actor.permissions.includes('analytics.read_all')) return requestedUserId ? { kind: 'GLOBAL', userIds: [requestedUserId] } : { kind: 'GLOBAL' };
     if (actor.permissions.includes('analytics.read_team')) {
-      const memberships = await this.db.calendarTeamMembership.findMany({ where: { managerId: actor.id, endedAt: null }, select: { memberId: true } });
+      const memberships = await this.db.calendarTeamMembership.findMany({ where: { managerId: actor.id }, select: { memberId: true } });
       const allowed = [actor.id, ...memberships.map((item) => item.memberId)];
       if (requestedUserId && !allowed.includes(requestedUserId)) throw new ForbiddenException('El usuario no pertenece al ámbito analítico autorizado');
       return { kind: 'TEAM', userIds: requestedUserId ? [requestedUserId] : allowed };
@@ -98,9 +98,9 @@ export class AnalyticsService {
     histories.forEach((item) => { const set = entered.get(item.newStageId) ?? new Set<string>(); set.add(item.opportunityId); entered.set(item.newStageId, set); });
     const durationRows = await this.db.opportunityStageHistory.findMany({ where: { opportunity: this.opportunityWhere(scope) }, orderBy: [{ opportunityId: 'asc' }, { createdAt: 'asc' }], select: { opportunityId: true, newStageId: true, createdAt: true } });
     const durations = new Map<string, number[]>();
-    for (let index = 0; index < durationRows.length - 1; index++) { const current = durationRows[index], next = durationRows[index + 1]; if (current.opportunityId !== next.opportunityId) continue; const list = durations.get(current.newStageId) ?? []; list.push((next.createdAt.getTime() - current.createdAt.getTime()) / 86_400_000); durations.set(current.newStageId, list); }
-    const rows = stages.map((stage, index) => { const count = entered.get(stage.id)?.size ?? 0; const nextCount = stages[index + 1] ? entered.get(stages[index + 1].id)?.size ?? 0 : null; const times = durations.get(stage.id) ?? []; return { stage: { id: stage.id, key: stage.key, name: stage.name, position: stage.position }, entered: count, conversionToNext: nextCount === null || count === 0 ? null : Math.min(1, nextCount / count), averageDays: times.length ? times.reduce((a, b) => a + b, 0) / times.length : null, medianDays: median(times), sampleSize: times.length }; });
-    return { period: this.periodResult(period), scope: scope.kind, semantics: 'Cada oportunidad cuenta una vez por etapa dentro del periodo aunque reingrese. Duración usa transiciones consecutivas históricas.', stages: rows, leakage: rows.slice(0, -1).map((row, i) => ({ from: row.stage.key, to: rows[i + 1].stage.key, count: Math.max(0, row.entered - rows[i + 1].entered) })) };
+    for (let index = 0; index < durationRows.length - 1; index++) { const current = durationRows[index]!, next = durationRows[index + 1]!; if (current.opportunityId !== next.opportunityId) continue; const list = durations.get(current.newStageId) ?? []; list.push((next.createdAt.getTime() - current.createdAt.getTime()) / 86_400_000); durations.set(current.newStageId, list); }
+    const rows = stages.map((stage, index) => { const count = entered.get(stage.id)?.size ?? 0; const nextStage = stages[index + 1]; const nextCount = nextStage ? entered.get(nextStage.id)?.size ?? 0 : null; const times = durations.get(stage.id) ?? []; return { stage: { id: stage.id, key: stage.key, name: stage.name, position: stage.position }, entered: count, conversionToNext: nextCount === null || count === 0 ? null : Math.min(1, nextCount / count), averageDays: times.length ? times.reduce((a, b) => a + b, 0) / times.length : null, medianDays: median(times), sampleSize: times.length }; });
+    return { period: this.periodResult(period), scope: scope.kind, semantics: 'Cada oportunidad cuenta una vez por etapa dentro del periodo aunque reingrese. Duración usa transiciones consecutivas históricas.', stages: rows, leakage: rows.slice(0, -1).map((row, i) => ({ from: row.stage.key, to: rows[i + 1]!.stage.key, count: Math.max(0, row.entered - rows[i + 1]!.entered) })) };
   }
 
   async pipeline(query: any, actor: AnalyticsActor) {
@@ -126,7 +126,14 @@ export class AnalyticsService {
 
   async communications(query: any, actor: AnalyticsActor) {
     const period = analyticsPeriod(query), scope = await this.scope(actor, query.consultantId), range = { gte: period.start, lt: period.end }, thread = scope.userIds ? { assignedUserId: { in: scope.userIds } } : undefined;
-    const [inbound, outbound, failed, delivered, unread, escalated] = await Promise.all(['INBOUND', 'OUTBOUND'].map((direction) => this.db.communicationMessage.count({ where: { direction: direction as any, createdAt: range, thread } })), this.db.communicationMessage.count({ where: { status: 'FAILED', createdAt: range, thread } }), this.db.communicationMessage.count({ where: { status: 'DELIVERED', createdAt: range, thread } }), this.db.communicationThread.count({ where: { ...(thread ?? {}), unreadCount: { gt: 0 } } }), this.db.communicationThread.count({ where: { ...(thread ?? {}), handlingMode: 'HUMAN', status: { in: ['OPEN', 'PENDING'] } } }));
+    const [inbound, outbound, failed, delivered, unread, escalated] = await Promise.all([
+      this.db.communicationMessage.count({ where: { direction: 'INBOUND', createdAt: range, thread } }),
+      this.db.communicationMessage.count({ where: { direction: 'OUTBOUND', createdAt: range, thread } }),
+      this.db.communicationMessage.count({ where: { status: 'FAILED', createdAt: range, thread } }),
+      this.db.communicationMessage.count({ where: { status: 'DELIVERED', createdAt: range, thread } }),
+      this.db.communicationThread.count({ where: { ...(thread ?? {}), unreadCount: { gt: 0 } } }),
+      this.db.communicationThread.count({ where: { ...(thread ?? {}), handlingMode: 'HUMAN', status: { in: ['OPEN', 'PENDING'] } } }),
+    ]);
     return { period: this.periodResult(period), inbound, outbound, failed, delivered, deliveryRate: outbound ? delivered / outbound : null, unreadThreads: unread, escalatedThreads: escalated, satisfaction: { value: null, availability: 'notAvailable' } };
   }
 
