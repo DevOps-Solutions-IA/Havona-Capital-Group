@@ -13,6 +13,10 @@ import type { HenryActor } from './henry-context.service';
 import { ModuleRef } from '@nestjs/core';
 import { AutomationService } from '../automations/automation.service';
 import { AnalyticsService } from '../analytics/analytics.service';
+import { KnowledgeService } from '../knowledge/knowledge.service';
+import { RagOrchestratorService } from '../knowledge/rag-orchestrator.service';
+import { HenryMemoryService } from '../knowledge/memory.service';
+import { TrainingService } from '../training/training.service';
 
 type ToolContext = {
   conversationId: string;
@@ -172,17 +176,64 @@ const schemas = {
     reason: z.string().min(3).max(160),
     confirmedByUser: z.literal(true),
   }),
-  get_commercial_summary: z.object({ preset: z.enum(['today', 'week', 'month', 'quarter', 'year']).default('month') }),
-  get_analytics_metric: z.object({ metricKey: z.string().min(3).max(120), preset: z.enum(['today', 'week', 'month', 'quarter', 'year']).default('month') }),
-  get_commercial_funnel: z.object({ preset: z.enum(['week', 'month', 'quarter', 'year']).default('month') }),
-  get_pipeline_health: z.object({ preset: z.enum(['week', 'month', 'quarter', 'year']).default('month') }),
+  get_commercial_summary: z.object({
+    preset: z.enum(['today', 'week', 'month', 'quarter', 'year']).default('month'),
+  }),
+  get_analytics_metric: z.object({
+    metricKey: z.string().min(3).max(120),
+    preset: z.enum(['today', 'week', 'month', 'quarter', 'year']).default('month'),
+  }),
+  get_commercial_funnel: z.object({
+    preset: z.enum(['week', 'month', 'quarter', 'year']).default('month'),
+  }),
+  get_pipeline_health: z.object({
+    preset: z.enum(['week', 'month', 'quarter', 'year']).default('month'),
+  }),
   get_priority_actions: z.object({ preset: z.enum(['today', 'week', 'month']).default('today') }),
-  get_team_scorecard: z.object({ preset: z.enum(['week', 'month', 'quarter', 'year']).default('month') }),
+  get_team_scorecard: z.object({
+    preset: z.enum(['week', 'month', 'quarter', 'year']).default('month'),
+  }),
   get_goal_progress: z.object({}),
   get_analytics_data_quality: z.object({}),
-  get_analytics_anomalies: z.object({ preset: z.enum(['week', 'month', 'quarter']).default('week') }),
-  get_communications_performance: z.object({ preset: z.enum(['week', 'month', 'quarter']).default('month') }),
-  get_automations_performance: z.object({ preset: z.enum(['week', 'month', 'quarter']).default('month') }),
+  get_analytics_anomalies: z.object({
+    preset: z.enum(['week', 'month', 'quarter']).default('week'),
+  }),
+  get_communications_performance: z.object({
+    preset: z.enum(['week', 'month', 'quarter']).default('month'),
+  }),
+  get_automations_performance: z.object({
+    preset: z.enum(['week', 'month', 'quarter']).default('month'),
+  }),
+  search_knowledge: z.object({
+    query: z.string().trim().min(2).max(500),
+    historicalAt: z.string().datetime({ offset: true }).optional(),
+  }),
+  get_knowledge_document: z.object({ documentId: z.string().uuid() }),
+  get_training_progress: z.object({}),
+  start_roleplay: z.object({
+    scenarioKey: z.enum(['objection_price', 'think_about_it', 'already_insured', 'no_budget']),
+  }),
+  evaluate_roleplay: z.object({
+    roleplayId: z.string().uuid(),
+    transcript: z
+      .array(
+        z.object({ role: z.enum(['CONSULTANT', 'CLIENT']), content: z.string().min(1).max(4000) }),
+      )
+      .min(2)
+      .max(100),
+  }),
+  get_memory: z.object({}),
+  save_memory: z.object({
+    key: z.string().min(2).max(120),
+    value: z.union([
+      z.string().max(1000),
+      z.array(z.string().max(160)).max(20),
+      z.record(z.string(), z.unknown()),
+    ]),
+    confirmedByUser: z.boolean().optional(),
+  }),
+  forget_memory: z.object({ memoryId: z.string().uuid(), confirmedByUser: z.literal(true) }),
+  get_knowledge_gaps: z.object({}),
 } as const;
 
 type ToolName = keyof typeof schemas;
@@ -527,17 +578,148 @@ export class HenryToolsService {
         ['entityType', 'entityId', 'reason', 'confirmedByUser'],
       ),
     },
-    { name: 'get_commercial_summary', description: 'Obtiene KPIs comerciales determinísticos, cobertura, comparación, riesgos y prioridades del ámbito autorizado.', parameters: objectSchema({ preset: { type: 'string', enum: ['today', 'week', 'month', 'quarter', 'year'] } }) },
-    { name: 'get_analytics_metric', description: 'Consulta una métrica del catálogo semántico con definición, periodo, cobertura y comparación.', parameters: objectSchema({ metricKey: { type: 'string' }, preset: { type: 'string', enum: ['today', 'week', 'month', 'quarter', 'year'] } }, ['metricKey']) },
-    { name: 'get_commercial_funnel', description: 'Consulta el embudo real, conversiones y tiempos por etapa.', parameters: objectSchema({ preset: { type: 'string', enum: ['week', 'month', 'quarter', 'year'] } }) },
-    { name: 'get_pipeline_health', description: 'Consulta salud, aging y factores explicables de riesgo del pipeline autorizado.', parameters: objectSchema({ preset: { type: 'string', enum: ['week', 'month', 'quarter', 'year'] } }) },
-    { name: 'get_priority_actions', description: 'Obtiene prioridades determinísticas sustentadas por evidencia operativa.', parameters: objectSchema({ preset: { type: 'string', enum: ['today', 'week', 'month'] } }) },
-    { name: 'get_team_scorecard', description: 'Consulta scorecard del equipo autorizado; no produce rankings opacos.', parameters: objectSchema({ preset: { type: 'string', enum: ['week', 'month', 'quarter', 'year'] } }) },
-    { name: 'get_goal_progress', description: 'Consulta metas reales visibles en el ámbito autorizado.', parameters: objectSchema({}) },
-    { name: 'get_analytics_data_quality', description: 'Expone cobertura y datos faltantes que afectan la confiabilidad.', parameters: objectSchema({}) },
-    { name: 'get_analytics_anomalies', description: 'Consulta anomalías explicables solo cuando existe muestra suficiente.', parameters: objectSchema({ preset: { type: 'string', enum: ['week', 'month', 'quarter'] } }) },
-    { name: 'get_communications_performance', description: 'Consulta hechos operativos de Communications Core sin inferir satisfacción.', parameters: objectSchema({ preset: { type: 'string', enum: ['week', 'month', 'quarter'] } }) },
-    { name: 'get_automations_performance', description: 'Consulta ejecuciones y fallos de Automations Core sin atribuir causalidad comercial.', parameters: objectSchema({ preset: { type: 'string', enum: ['week', 'month', 'quarter'] } }) },
+    {
+      name: 'get_commercial_summary',
+      description:
+        'Obtiene KPIs comerciales determinísticos, cobertura, comparación, riesgos y prioridades del ámbito autorizado.',
+      parameters: objectSchema({
+        preset: { type: 'string', enum: ['today', 'week', 'month', 'quarter', 'year'] },
+      }),
+    },
+    {
+      name: 'get_analytics_metric',
+      description:
+        'Consulta una métrica del catálogo semántico con definición, periodo, cobertura y comparación.',
+      parameters: objectSchema(
+        {
+          metricKey: { type: 'string' },
+          preset: { type: 'string', enum: ['today', 'week', 'month', 'quarter', 'year'] },
+        },
+        ['metricKey'],
+      ),
+    },
+    {
+      name: 'get_commercial_funnel',
+      description: 'Consulta el embudo real, conversiones y tiempos por etapa.',
+      parameters: objectSchema({
+        preset: { type: 'string', enum: ['week', 'month', 'quarter', 'year'] },
+      }),
+    },
+    {
+      name: 'get_pipeline_health',
+      description:
+        'Consulta salud, aging y factores explicables de riesgo del pipeline autorizado.',
+      parameters: objectSchema({
+        preset: { type: 'string', enum: ['week', 'month', 'quarter', 'year'] },
+      }),
+    },
+    {
+      name: 'get_priority_actions',
+      description: 'Obtiene prioridades determinísticas sustentadas por evidencia operativa.',
+      parameters: objectSchema({ preset: { type: 'string', enum: ['today', 'week', 'month'] } }),
+    },
+    {
+      name: 'get_team_scorecard',
+      description: 'Consulta scorecard del equipo autorizado; no produce rankings opacos.',
+      parameters: objectSchema({
+        preset: { type: 'string', enum: ['week', 'month', 'quarter', 'year'] },
+      }),
+    },
+    {
+      name: 'get_goal_progress',
+      description: 'Consulta metas reales visibles en el ámbito autorizado.',
+      parameters: objectSchema({}),
+    },
+    {
+      name: 'get_analytics_data_quality',
+      description: 'Expone cobertura y datos faltantes que afectan la confiabilidad.',
+      parameters: objectSchema({}),
+    },
+    {
+      name: 'get_analytics_anomalies',
+      description: 'Consulta anomalías explicables solo cuando existe muestra suficiente.',
+      parameters: objectSchema({ preset: { type: 'string', enum: ['week', 'month', 'quarter'] } }),
+    },
+    {
+      name: 'get_communications_performance',
+      description: 'Consulta hechos operativos de Communications Core sin inferir satisfacción.',
+      parameters: objectSchema({ preset: { type: 'string', enum: ['week', 'month', 'quarter'] } }),
+    },
+    {
+      name: 'get_automations_performance',
+      description:
+        'Consulta ejecuciones y fallos de Automations Core sin atribuir causalidad comercial.',
+      parameters: objectSchema({ preset: { type: 'string', enum: ['week', 'month', 'quarter'] } }),
+    },
+    {
+      name: 'search_knowledge',
+      description:
+        'Busca exclusivamente conocimiento corporativo publicado y autorizado; devuelve evidencia y citas.',
+      parameters: objectSchema({ query: { type: 'string' }, historicalAt: { type: 'string' } }, [
+        'query',
+      ]),
+    },
+    {
+      name: 'get_knowledge_document',
+      description: 'Consulta metadata y versiones de un documento autorizado.',
+      parameters: objectSchema({ documentId: { type: 'string' } }, ['documentId']),
+    },
+    {
+      name: 'get_training_progress',
+      description: 'Consulta programas y progreso formativo del usuario actual.',
+      parameters: objectSchema({}),
+    },
+    {
+      name: 'start_roleplay',
+      description: 'Inicia una simulación de entrenamiento separada de CRM.',
+      parameters: objectSchema(
+        {
+          scenarioKey: {
+            type: 'string',
+            enum: ['objection_price', 'think_about_it', 'already_insured', 'no_budget'],
+          },
+        },
+        ['scenarioKey'],
+      ),
+    },
+    {
+      name: 'evaluate_roleplay',
+      description: 'Evalúa una simulación mediante rúbrica explicable.',
+      parameters: objectSchema(
+        {
+          roleplayId: { type: 'string' },
+          transcript: { type: 'array', items: { type: 'object' } },
+        },
+        ['roleplayId', 'transcript'],
+      ),
+    },
+    {
+      name: 'get_memory',
+      description: 'Consulta memoria persistente autorizada del usuario actual.',
+      parameters: objectSchema({}),
+    },
+    {
+      name: 'save_memory',
+      description:
+        'Guarda una preferencia gobernada por MemoryPolicy; puede requerir confirmación.',
+      parameters: objectSchema(
+        { key: { type: 'string' }, value: {}, confirmedByUser: { type: 'boolean' } },
+        ['key', 'value'],
+      ),
+    },
+    {
+      name: 'forget_memory',
+      description: 'Elimina realmente una memoria propia después de confirmación explícita.',
+      parameters: objectSchema(
+        { memoryId: { type: 'string' }, confirmedByUser: { type: 'boolean', const: true } },
+        ['memoryId', 'confirmedByUser'],
+      ),
+    },
+    {
+      name: 'get_knowledge_gaps',
+      description: 'Consulta gaps agregados; solo administración autorizada.',
+      parameters: objectSchema({}),
+    },
   ];
 
   constructor(
@@ -548,6 +730,10 @@ export class HenryToolsService {
     private readonly meetings: MeetingService,
     private readonly communications: CommunicationsService,
     private readonly analytics: AnalyticsService,
+    private readonly knowledge: KnowledgeService,
+    private readonly rag: RagOrchestratorService,
+    private readonly memory: HenryMemoryService,
+    private readonly training: TrainingService,
     @Optional() private readonly moduleRef?: ModuleRef,
   ) {}
 
@@ -713,13 +899,26 @@ export class HenryToolsService {
           context.audit,
         )) as Record<string, unknown>;
       case 'get_commercial_summary':
-        return (await this.analytics.summary(input, this.requireActor(context))) as Record<string, unknown>;
+        return (await this.analytics.summary(input, this.requireActor(context))) as Record<
+          string,
+          unknown
+        >;
       case 'get_analytics_metric':
-        return (await this.analytics.compareMetric(input.metricKey, input, this.requireActor(context))) as unknown as Record<string, unknown>;
+        return (await this.analytics.compareMetric(
+          input.metricKey,
+          input,
+          this.requireActor(context),
+        )) as unknown as Record<string, unknown>;
       case 'get_commercial_funnel':
-        return (await this.analytics.funnel(input, this.requireActor(context))) as unknown as Record<string, unknown>;
+        return (await this.analytics.funnel(
+          input,
+          this.requireActor(context),
+        )) as unknown as Record<string, unknown>;
       case 'get_pipeline_health':
-        return (await this.analytics.pipeline(input, this.requireActor(context))) as unknown as Record<string, unknown>;
+        return (await this.analytics.pipeline(
+          input,
+          this.requireActor(context),
+        )) as unknown as Record<string, unknown>;
       case 'get_priority_actions':
         return { data: await this.analytics.priorities(input, this.requireActor(context)) };
       case 'get_team_scorecard':
@@ -727,19 +926,76 @@ export class HenryToolsService {
       case 'get_goal_progress':
         return { data: await this.analytics.goals(input, this.requireActor(context)) };
       case 'get_analytics_data_quality':
-        return (await this.analytics.dataQuality(input, this.requireActor(context))) as unknown as Record<string, unknown>;
+        return (await this.analytics.dataQuality(
+          input,
+          this.requireActor(context),
+        )) as unknown as Record<string, unknown>;
       case 'get_analytics_anomalies':
-        return (await this.analytics.anomalies(input, this.requireActor(context))) as unknown as Record<string, unknown>;
+        return (await this.analytics.anomalies(
+          input,
+          this.requireActor(context),
+        )) as unknown as Record<string, unknown>;
       case 'get_communications_performance':
-        return (await this.analytics.communications(input, this.requireActor(context))) as unknown as Record<string, unknown>;
+        return (await this.analytics.communications(
+          input,
+          this.requireActor(context),
+        )) as unknown as Record<string, unknown>;
       case 'get_automations_performance':
-        return (await this.analytics.automations(input, this.requireActor(context))) as unknown as Record<string, unknown>;
+        return (await this.analytics.automations(
+          input,
+          this.requireActor(context),
+        )) as unknown as Record<string, unknown>;
+      case 'search_knowledge':
+        return (await this.rag.retrieve(
+          input.query,
+          this.requireKnowledgeActor(context),
+          input,
+        )) as unknown as Record<string, unknown>;
+      case 'get_knowledge_document':
+        return (await this.knowledge.getDocument(
+          input.documentId,
+          this.requireKnowledgeActor(context),
+        )) as unknown as Record<string, unknown>;
+      case 'get_training_progress':
+        return { data: await this.training.listPrograms(this.requireActor(context).id, false) };
+      case 'start_roleplay':
+        return (await this.training.startRoleplay(
+          input.scenarioKey,
+          this.requireActor(context).id,
+        )) as unknown as Record<string, unknown>;
+      case 'evaluate_roleplay':
+        return (await this.training.evaluateRoleplay(
+          input.roleplayId,
+          input.transcript,
+          this.requireActor(context).id,
+        )) as unknown as Record<string, unknown>;
+      case 'get_memory':
+        return { data: await this.memory.list(this.requireActor(context).id) };
+      case 'save_memory':
+        return (await this.memory.save(this.requireActor(context).id, {
+          key: input.key,
+          value: input.value,
+          confirmed: input.confirmedByUser,
+          source: 'HENRY_TOOL',
+        })) as unknown as Record<string, unknown>;
+      case 'forget_memory':
+        return (await this.memory.forget(this.requireActor(context).id, input.memoryId)) as Record<
+          string,
+          unknown
+        >;
+      case 'get_knowledge_gaps':
+        return { data: await this.knowledge.gaps(this.requireKnowledgeActor(context)) };
     }
   }
 
   private automation() {
     if (!this.moduleRef) throw new BadRequestException('Automations Core no disponible');
     return this.moduleRef.get(AutomationService, { strict: false });
+  }
+
+  private requireKnowledgeActor(context: ToolContext) {
+    const actor = this.requireActor(context);
+    return { id: actor.id, roles: actor.roles ?? [], permissions: actor.permissions };
   }
 
   async escalate(reason: keyof typeof EscalationReason, summary: string, context: ToolContext) {

@@ -61,6 +61,14 @@ const CONSULTANT_TOOLS = [
   'get_analytics_anomalies',
   'get_communications_performance',
   'get_automations_performance',
+  'search_knowledge',
+  'get_knowledge_document',
+  'get_training_progress',
+  'start_roleplay',
+  'evaluate_roleplay',
+  'get_memory',
+  'save_memory',
+  'forget_memory',
 ];
 const MANAGER_TOOLS = [
   ...CONSULTANT_TOOLS,
@@ -71,6 +79,7 @@ const MANAGER_TOOLS = [
   'link_thread_to_crm',
   'close_communication_thread',
   'get_team_scorecard',
+  'get_knowledge_gaps',
 ];
 
 @Injectable()

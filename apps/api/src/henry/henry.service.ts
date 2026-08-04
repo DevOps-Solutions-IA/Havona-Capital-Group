@@ -22,6 +22,8 @@ import {
 } from './policies/henry-policy.types';
 import { HenryActor, HenryContextService } from './henry-context.service';
 import { HenryCorporateMemory, HenryExpertCopilotService } from './henry-expert-copilot.service';
+import { HenryContextAssembler } from './henry-context-assembler.service';
+import { HenryMemoryService } from '../knowledge/memory.service';
 
 type Actor = { id: string; permissions: string[] };
 
@@ -37,6 +39,8 @@ export class HenryService {
     private readonly policyEngine: HenryPolicyEngine,
     private readonly henryContext: HenryContextService,
     private readonly expertCopilot: HenryExpertCopilotService,
+    private readonly contextAssembler: HenryContextAssembler,
+    private readonly persistentMemory: HenryMemoryService,
   ) {}
 
   async reasonForAutomation(input: {
@@ -502,7 +506,33 @@ export class HenryService {
       pageContext: runtimeContext.page,
       expert,
     });
-    const systemPrompt = `${composed.prompt}\n\n${this.henryContext.prompt(runtimeContext)}\n\n${this.expertCopilot.prompt(expert, memory)}`;
+    const authorizedMemory = actor ? await this.persistentMemory.list(actor.id) : [];
+    const assembled = this.contextAssembler.assemble([
+      { kind: 'policies', content: composed.prompt, priority: 1 },
+      {
+        kind: 'authorization-and-page-context',
+        content: this.henryContext.prompt(runtimeContext),
+        priority: 2,
+      },
+      {
+        kind: 'conversation-working-memory',
+        content: this.expertCopilot.prompt(expert, memory),
+        priority: 3,
+      },
+      {
+        kind: 'approved-long-term-memory',
+        content: JSON.stringify(
+          authorizedMemory.map((item) => ({
+            key: item.key,
+            value: item.value,
+            source: item.source,
+            explicit: item.explicit,
+          })),
+        ),
+        priority: 4,
+      },
+    ]);
+    const systemPrompt = assembled.content;
     const execution = await this.db.aIExecution.create({
       data: {
         conversationId,
@@ -518,6 +548,11 @@ export class HenryService {
           entityContext: runtimeContext.entity
             ? { type: runtimeContext.entity.type, id: runtimeContext.entity.id }
             : undefined,
+          contextBudget: {
+            estimatedTokens: assembled.estimatedTokens,
+            included: assembled.included,
+            truncated: assembled.truncated,
+          },
           expert: expertAudit,
         },
       },

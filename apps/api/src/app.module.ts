@@ -62,6 +62,23 @@ import { AutomationProcessorService } from './automations/automation-processor.s
 import { AutomationEventBus } from './automations/automation-event-bus.service';
 import { AnalyticsController } from './analytics/analytics.controller';
 import { AnalyticsService } from './analytics/analytics.service';
+import { KnowledgeController } from './knowledge/knowledge.controller';
+import { HenryMemoryController } from './knowledge/memory.controller';
+import { KnowledgeService } from './knowledge/knowledge.service';
+import { RagOrchestratorService } from './knowledge/rag-orchestrator.service';
+import { KnowledgeQueueService } from './knowledge/knowledge-queue.service';
+import { KnowledgeProcessorService } from './knowledge/knowledge-processor.service';
+import {
+  ConfiguredEmbeddingProvider,
+  EMBEDDING_PROVIDER,
+  LocalKnowledgeStorage,
+  STORAGE_PROVIDER,
+} from './knowledge/knowledge.providers';
+import { MemoryPolicy } from './knowledge/memory-policy.service';
+import { HenryMemoryService } from './knowledge/memory.service';
+import { TrainingController } from './training/training.controller';
+import { TrainingService } from './training/training.service';
+import { HenryContextAssembler } from './henry/henry-context-assembler.service';
 
 @Module({
   imports: [
@@ -87,6 +104,9 @@ import { AnalyticsService } from './analytics/analytics.service';
     CommunicationsController,
     AutomationController,
     AnalyticsController,
+    KnowledgeController,
+    HenryMemoryController,
+    TrainingController,
   ],
   providers: [
     PrismaService,
@@ -134,6 +154,18 @@ import { AnalyticsService } from './analytics/analytics.service';
     AutomationService,
     AutomationProcessorService,
     AnalyticsService,
+    LocalKnowledgeStorage,
+    ConfiguredEmbeddingProvider,
+    { provide: STORAGE_PROVIDER, useExisting: LocalKnowledgeStorage },
+    { provide: EMBEDDING_PROVIDER, useExisting: ConfiguredEmbeddingProvider },
+    MemoryPolicy,
+    HenryMemoryService,
+    KnowledgeService,
+    KnowledgeQueueService,
+    KnowledgeProcessorService,
+    RagOrchestratorService,
+    TrainingService,
+    HenryContextAssembler,
     HenryToolsService,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: AuthGuard },
