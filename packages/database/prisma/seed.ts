@@ -58,6 +58,15 @@ const permissions = [
   ['analytics.goals.manage', 'Crear y actualizar objetivos comerciales'],
   ['analytics.export', 'Exportar datasets analíticos autorizados'],
   ['analytics.admin', 'Administrar HAVONA Analytics Core'],
+  ['knowledge.read', 'Consultar conocimiento corporativo autorizado'],
+  ['knowledge.upload', 'Crear documentos y versiones de conocimiento'],
+  ['knowledge.review', 'Revisar conocimiento procesado'],
+  ['knowledge.publish', 'Aprobar, publicar y deprecar conocimiento'],
+  ['knowledge.admin', 'Administrar colecciones y permisos de conocimiento'],
+  ['training.read', 'Consultar formación asignada'],
+  ['training.manage', 'Administrar programas y evaluaciones'],
+  ['training.read_team', 'Consultar progreso formativo del equipo autorizado'],
+  ['memory.manage_own', 'Consultar y gobernar memoria propia de Henry'],
 ] as const;
 const grants: Record<string, string[]> = {
   SUPER_ADMIN: permissions.map(([key]) => key),
@@ -107,6 +116,13 @@ const grants: Record<string, string[]> = {
     'analytics.read_team',
     'analytics.goals.manage',
     'analytics.export',
+    'knowledge.read',
+    'knowledge.upload',
+    'knowledge.review',
+    'training.read',
+    'training.manage',
+    'training.read_team',
+    'memory.manage_own',
   ],
   CONSULTOR: [
     'settings.read',
@@ -133,6 +149,9 @@ const grants: Record<string, string[]> = {
     'automations.manage_own',
     'automations.approve',
     'analytics.read',
+    'knowledge.read',
+    'training.read',
+    'memory.manage_own',
   ],
 };
 async function main() {

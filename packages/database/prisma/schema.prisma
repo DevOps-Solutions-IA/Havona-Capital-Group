@@ -51,8 +51,16 @@ model User {
   communicationMessagesCreated   CommunicationMessage[]    @relation("CommunicationMessageCreator")
   communicationAssignments       CommunicationAssignment[] @relation("CommunicationAssignmentAssignee")
   communicationAssignmentsMade   CommunicationAssignment[] @relation("CommunicationAssignmentActor")
-  analyticsGoalsCreated           AnalyticsGoal[]            @relation("AnalyticsGoalCreator")
-  analyticsGoalsScoped            AnalyticsGoal[]            @relation("AnalyticsGoalScopeUser")
+  analyticsGoalsCreated          AnalyticsGoal[]           @relation("AnalyticsGoalCreator")
+  analyticsGoalsScoped           AnalyticsGoal[]           @relation("AnalyticsGoalScopeUser")
+  knowledgeDocumentsOwned        KnowledgeDocument[]       @relation("KnowledgeDocumentOwner")
+  knowledgeVersionsCreated       KnowledgeVersion[]        @relation("KnowledgeVersionCreator")
+  knowledgeVersionsApproved      KnowledgeVersion[]        @relation("KnowledgeVersionApprover")
+  trainingProgramsCreated        TrainingProgram[]         @relation("TrainingProgramCreator")
+  trainingEnrollments            TrainingEnrollment[]
+  trainingAttempts               TrainingAttempt[]
+  trainingRoleplays              TrainingRoleplay[]
+  henryMemories                  HenryMemory[]
 
   @@map("users")
 }
@@ -1519,9 +1527,9 @@ model AutomationWorkflow {
   enrollments     AutomationEnrollment[]
   suppressions    AutomationSuppression[]
 
+  @@unique([name, version])
   @@index([status, updatedAt])
   @@index([ownerUserId, status])
-  @@unique([name, version])
   @@map("automation_workflows")
 }
 
@@ -1789,4 +1797,345 @@ model DomainOutboxEvent {
 
   @@index([status, availableAt])
   @@map("domain_outbox_events")
+}
+
+enum KnowledgeDocumentStatus {
+  DRAFT
+  PROCESSING
+  REVIEW
+  APPROVED
+  PUBLISHED
+  DEPRECATED
+  ARCHIVED
+  FAILED
+}
+
+enum KnowledgeClassification {
+  GENERAL
+  SALES
+  MANAGERS
+  ADMINISTRATION
+  COMPLIANCE
+  TRAINING
+  TECHNOLOGY
+}
+
+enum KnowledgeIngestionStatus {
+  UPLOAD
+  VALIDATION
+  EXTRACTION
+  NORMALIZATION
+  CHUNKING
+  EMBEDDING
+  INDEXING
+  REVIEW
+  COMPLETED
+  FAILED
+}
+
+enum TrainingEnrollmentStatus {
+  ASSIGNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum TrainingQuestionType {
+  MULTIPLE_CHOICE
+  TRUE_FALSE
+  SHORT_ANSWER
+  SCENARIO
+}
+
+enum MemoryCategory {
+  EPHEMERAL
+  WORKING
+  PERSISTENT_ALLOWED
+  PERSISTENT_REQUIRES_CONFIRMATION
+  PROHIBITED
+}
+
+model KnowledgeCollection {
+  id               String              @id @default(uuid()) @db.Uuid
+  key              String              @unique @db.VarChar(80)
+  name             String              @db.VarChar(160)
+  description      String?             @db.VarChar(600)
+  allowedRoles     Json                @map("allowed_roles")
+  isActive         Boolean             @default(true) @map("is_active")
+  createdAt        DateTime            @default(now()) @map("created_at")
+  updatedAt        DateTime            @updatedAt @map("updated_at")
+  documents        KnowledgeDocument[]
+  trainingPrograms TrainingProgram[]
+
+  @@map("knowledge_collections")
+}
+
+model KnowledgeDocument {
+  id             String                  @id @default(uuid()) @db.Uuid
+  collectionId   String                  @map("collection_id") @db.Uuid
+  title          String                  @db.VarChar(240)
+  description    String?                 @db.VarChar(1000)
+  type           String                  @db.VarChar(40)
+  language       String                  @default("es") @db.VarChar(10)
+  classification KnowledgeClassification
+  status         KnowledgeDocumentStatus @default(DRAFT)
+  ownerUserId    String                  @map("owner_user_id") @db.Uuid
+  currentVersion Int                     @default(1) @map("current_version")
+  tags           Json?
+  createdAt      DateTime                @default(now()) @map("created_at")
+  updatedAt      DateTime                @updatedAt @map("updated_at")
+  collection     KnowledgeCollection     @relation(fields: [collectionId], references: [id], onDelete: Restrict)
+  owner          User                    @relation("KnowledgeDocumentOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
+  versions       KnowledgeVersion[]
+  permissions    KnowledgePermission[]
+  lessons        TrainingLesson[]
+
+  @@index([collectionId, status, updatedAt])
+  @@index([classification, status])
+  @@map("knowledge_documents")
+}
+
+model KnowledgeVersion {
+  id             String                  @id @default(uuid()) @db.Uuid
+  documentId     String                  @map("document_id") @db.Uuid
+  version        Int
+  status         KnowledgeDocumentStatus @default(PROCESSING)
+  checksum       String                  @db.Char(64)
+  storageKey     String?                 @map("storage_key") @db.VarChar(500)
+  originalName   String                  @map("original_name") @db.VarChar(255)
+  mimeType       String                  @map("mime_type") @db.VarChar(120)
+  fileSize       Int                     @map("file_size")
+  effectiveFrom  DateTime?               @map("effective_from")
+  effectiveUntil DateTime?               @map("effective_until")
+  changeSummary  String?                 @map("change_summary") @db.VarChar(1000)
+  createdById    String                  @map("created_by_id") @db.Uuid
+  approvedById   String?                 @map("approved_by_id") @db.Uuid
+  approvedAt     DateTime?               @map("approved_at")
+  publishedAt    DateTime?               @map("published_at")
+  createdAt      DateTime                @default(now()) @map("created_at")
+  document       KnowledgeDocument       @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  createdBy      User                    @relation("KnowledgeVersionCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  approvedBy     User?                   @relation("KnowledgeVersionApprover", fields: [approvedById], references: [id], onDelete: Restrict)
+  chunks         KnowledgeChunk[]
+  ingestions     KnowledgeIngestion[]
+
+  @@unique([documentId, version])
+  @@unique([documentId, checksum])
+  @@index([status, effectiveFrom, effectiveUntil])
+  @@map("knowledge_versions")
+}
+
+model KnowledgeChunk {
+  id                 String           @id @default(uuid()) @db.Uuid
+  versionId          String           @map("version_id") @db.Uuid
+  position           Int
+  section            String?          @db.VarChar(300)
+  headingPath        Json?            @map("heading_path")
+  pageStart          Int?             @map("page_start")
+  pageEnd            Int?             @map("page_end")
+  content            String           @db.Text
+  textHash           String           @map("text_hash") @db.Char(64)
+  tokenEstimate      Int              @map("token_estimate")
+  embedding          Json?
+  embeddingModel     String?          @map("embedding_model") @db.VarChar(160)
+  embeddingDimension Int?             @map("embedding_dimension")
+  embeddedAt         DateTime?        @map("embedded_at")
+  createdAt          DateTime         @default(now()) @map("created_at")
+  version            KnowledgeVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@unique([versionId, position])
+  @@index([versionId, position])
+  @@map("knowledge_chunks")
+}
+
+model KnowledgeIngestion {
+  id           String                   @id @default(uuid()) @db.Uuid
+  versionId    String                   @map("version_id") @db.Uuid
+  status       KnowledgeIngestionStatus @default(UPLOAD)
+  attempts     Int                      @default(0)
+  stageLog     Json                     @map("stage_log")
+  errorCode    String?                  @map("error_code") @db.VarChar(100)
+  errorMessage String?                  @map("error_message") @db.VarChar(500)
+  startedAt    DateTime                 @default(now()) @map("started_at")
+  completedAt  DateTime?                @map("completed_at")
+  updatedAt    DateTime                 @updatedAt @map("updated_at")
+  version      KnowledgeVersion         @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@index([status, updatedAt])
+  @@map("knowledge_ingestions")
+}
+
+model KnowledgePermission {
+  id          String            @id @default(uuid()) @db.Uuid
+  documentId  String            @map("document_id") @db.Uuid
+  role        String?           @db.VarChar(40)
+  userId      String?           @map("user_id") @db.Uuid
+  teamId      String?           @map("team_id") @db.Uuid
+  canDownload Boolean           @default(false) @map("can_download")
+  createdAt   DateTime          @default(now()) @map("created_at")
+  document    KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId, role, userId, teamId])
+  @@map("knowledge_permissions")
+}
+
+model KnowledgeGap {
+  id              String   @id @default(uuid()) @db.Uuid
+  normalizedTopic String   @unique @map("normalized_topic") @db.VarChar(200)
+  count           Int      @default(1)
+  sampleQueries   Json     @map("sample_queries")
+  rolesAffected   Json     @map("roles_affected")
+  status          String   @default("OPEN") @db.VarChar(30)
+  lastSeenAt      DateTime @default(now()) @map("last_seen_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([status, count, lastSeenAt])
+  @@map("knowledge_gaps")
+}
+
+model TrainingProgram {
+  id           String               @id @default(uuid()) @db.Uuid
+  collectionId String?              @map("collection_id") @db.Uuid
+  title        String               @db.VarChar(200)
+  description  String?              @db.VarChar(1000)
+  status       String               @default("DRAFT") @db.VarChar(30)
+  createdById  String               @map("created_by_id") @db.Uuid
+  createdAt    DateTime             @default(now()) @map("created_at")
+  updatedAt    DateTime             @updatedAt @map("updated_at")
+  collection   KnowledgeCollection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  createdBy    User                 @relation("TrainingProgramCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  modules      TrainingModule[]
+  enrollments  TrainingEnrollment[]
+
+  @@index([status, updatedAt])
+  @@map("training_programs")
+}
+
+model TrainingModule {
+  id        String           @id @default(uuid()) @db.Uuid
+  programId String           @map("program_id") @db.Uuid
+  title     String           @db.VarChar(200)
+  position  Int
+  program   TrainingProgram  @relation(fields: [programId], references: [id], onDelete: Cascade)
+  lessons   TrainingLesson[]
+
+  @@unique([programId, position])
+  @@map("training_modules")
+}
+
+model TrainingLesson {
+  id                  String               @id @default(uuid()) @db.Uuid
+  moduleId            String               @map("module_id") @db.Uuid
+  knowledgeDocumentId String?              @map("knowledge_document_id") @db.Uuid
+  title               String               @db.VarChar(200)
+  objective           String               @db.VarChar(1000)
+  content             String?              @db.Text
+  estimatedMinutes    Int                  @default(15) @map("estimated_minutes")
+  position            Int
+  module              TrainingModule       @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  knowledgeDocument   KnowledgeDocument?   @relation(fields: [knowledgeDocumentId], references: [id], onDelete: SetNull)
+  assessments         TrainingAssessment[]
+
+  @@unique([moduleId, position])
+  @@map("training_lessons")
+}
+
+model TrainingEnrollment {
+  id                 String                   @id @default(uuid()) @db.Uuid
+  programId          String                   @map("program_id") @db.Uuid
+  userId             String                   @map("user_id") @db.Uuid
+  status             TrainingEnrollmentStatus @default(ASSIGNED)
+  progress           Int                      @default(0)
+  completedLessonIds Json                     @map("completed_lesson_ids")
+  assignedAt         DateTime                 @default(now()) @map("assigned_at")
+  completedAt        DateTime?                @map("completed_at")
+  program            TrainingProgram          @relation(fields: [programId], references: [id], onDelete: Cascade)
+  user               User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([programId, userId])
+  @@index([userId, status])
+  @@map("training_enrollments")
+}
+
+model TrainingAssessment {
+  id           String             @id @default(uuid()) @db.Uuid
+  lessonId     String             @map("lesson_id") @db.Uuid
+  title        String             @db.VarChar(200)
+  passingScore Int                @default(70) @map("passing_score")
+  rubric       Json?
+  lesson       TrainingLesson     @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  questions    TrainingQuestion[]
+  attempts     TrainingAttempt[]
+
+  @@map("training_assessments")
+}
+
+model TrainingQuestion {
+  id           String               @id @default(uuid()) @db.Uuid
+  assessmentId String               @map("assessment_id") @db.Uuid
+  type         TrainingQuestionType
+  prompt       String               @db.Text
+  options      Json?
+  answerKey    Json                 @map("answer_key")
+  rubric       Json?
+  points       Int                  @default(1)
+  position     Int
+  assessment   TrainingAssessment   @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+
+  @@unique([assessmentId, position])
+  @@map("training_questions")
+}
+
+model TrainingAttempt {
+  id           String             @id @default(uuid()) @db.Uuid
+  assessmentId String             @map("assessment_id") @db.Uuid
+  userId       String             @map("user_id") @db.Uuid
+  answers      Json
+  score        Decimal            @db.Decimal(5, 2)
+  feedback     Json
+  evidence     Json
+  createdAt    DateTime           @default(now()) @map("created_at")
+  assessment   TrainingAssessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("training_attempts")
+}
+
+model TrainingRoleplay {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  scenarioKey String    @map("scenario_key") @db.VarChar(100)
+  difficulty  String    @db.VarChar(30)
+  objective   String    @db.VarChar(500)
+  transcript  Json
+  rubric      Json
+  score       Decimal?  @db.Decimal(5, 2)
+  feedback    Json?
+  status      String    @default("ACTIVE") @db.VarChar(30)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  completedAt DateTime? @map("completed_at")
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status, createdAt])
+  @@map("training_roleplays")
+}
+
+model HenryMemory {
+  id                 String         @id @default(uuid()) @db.Uuid
+  userId             String         @map("user_id") @db.Uuid
+  key                String         @db.VarChar(120)
+  value              Json
+  category           MemoryCategory
+  source             String         @db.VarChar(80)
+  explicit           Boolean        @default(true)
+  inferredConfidence Decimal?       @map("inferred_confidence") @db.Decimal(5, 4)
+  retentionUntil     DateTime?      @map("retention_until")
+  createdAt          DateTime       @default(now()) @map("created_at")
+  updatedAt          DateTime       @updatedAt @map("updated_at")
+  user               User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@index([userId, category, retentionUntil])
+  @@map("henry_memories")
 }
