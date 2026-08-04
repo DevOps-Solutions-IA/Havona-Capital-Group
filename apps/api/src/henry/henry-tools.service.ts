@@ -17,6 +17,7 @@ import { KnowledgeService } from '../knowledge/knowledge.service';
 import { RagOrchestratorService } from '../knowledge/rag-orchestrator.service';
 import { HenryMemoryService } from '../knowledge/memory.service';
 import { TrainingService } from '../training/training.service';
+import { EmailTemplateService } from '../email-templates/email-template.service';
 
 type ToolContext = {
   conversationId: string;
@@ -234,6 +235,26 @@ const schemas = {
   }),
   forget_memory: z.object({ memoryId: z.string().uuid(), confirmedByUser: z.literal(true) }),
   get_knowledge_gaps: z.object({}),
+  list_email_templates: z.object({
+    search: z.string().max(120).optional(),
+    category: z.string().max(60).optional(),
+  }),
+  get_email_template: z.object({ templateId: z.string().uuid() }),
+  create_email_draft: z.object({
+    templateId: z.string().uuid(),
+    recipientProspectId: z.string().uuid(),
+    companyId: z.string().uuid().optional(),
+    opportunityId: z.string().uuid().optional(),
+    communicationThreadId: z.string().uuid().optional(),
+    calendarEventId: z.string().uuid().optional(),
+    meetingId: z.string().uuid().optional(),
+  }),
+  personalize_email_draft: z.object({
+    draftId: z.string().uuid(),
+    subjectOverride: z.string().max(300).optional(),
+    editableBlockOverrides: z.record(z.string().max(20000)).optional(),
+  }),
+  preview_email_draft: z.object({ draftId: z.string().uuid() }),
 } as const;
 
 type ToolName = keyof typeof schemas;
@@ -720,6 +741,49 @@ export class HenryToolsService {
       description: 'Consulta gaps agregados; solo administración autorizada.',
       parameters: objectSchema({}),
     },
+    {
+      name: 'list_email_templates',
+      description: 'Encuentra plantillas autorizadas por intención, categoría y propósito.',
+      parameters: objectSchema({ search: { type: 'string' }, category: { type: 'string' } }),
+    },
+    {
+      name: 'get_email_template',
+      description: 'Consulta una plantilla corporativa o personal autorizada.',
+      parameters: objectSchema({ templateId: { type: 'string' } }, ['templateId']),
+    },
+    {
+      name: 'create_email_draft',
+      description: 'Crea un borrador persistente sin enviarlo y resuelve el contacto server-side.',
+      parameters: objectSchema(
+        {
+          templateId: { type: 'string' },
+          recipientProspectId: { type: 'string' },
+          companyId: { type: 'string' },
+          opportunityId: { type: 'string' },
+          communicationThreadId: { type: 'string' },
+          calendarEventId: { type: 'string' },
+          meetingId: { type: 'string' },
+        },
+        ['templateId', 'recipientProspectId'],
+      ),
+    },
+    {
+      name: 'personalize_email_draft',
+      description: 'Personaliza exclusivamente secciones editables de un borrador propio.',
+      parameters: objectSchema(
+        {
+          draftId: { type: 'string' },
+          subjectOverride: { type: 'string' },
+          editableBlockOverrides: { type: 'object' },
+        },
+        ['draftId'],
+      ),
+    },
+    {
+      name: 'preview_email_draft',
+      description: 'Renderiza preview determinista, informa faltantes y nunca envía.',
+      parameters: objectSchema({ draftId: { type: 'string' } }, ['draftId']),
+    },
   ];
 
   constructor(
@@ -734,6 +798,7 @@ export class HenryToolsService {
     private readonly rag: RagOrchestratorService,
     private readonly memory: HenryMemoryService,
     private readonly training: TrainingService,
+    private readonly emailTemplates: EmailTemplateService,
     @Optional() private readonly moduleRef?: ModuleRef,
   ) {}
 
@@ -985,6 +1050,31 @@ export class HenryToolsService {
         >;
       case 'get_knowledge_gaps':
         return { data: await this.knowledge.gaps(this.requireKnowledgeActor(context)) };
+      case 'list_email_templates':
+        return { data: await this.emailTemplates.list(this.requireActor(context), input) };
+      case 'get_email_template':
+        return (await this.emailTemplates.get(
+          input.templateId,
+          this.requireActor(context),
+        )) as unknown as Record<string, unknown>;
+      case 'create_email_draft':
+        return (await this.emailTemplates.createDraft(
+          { ...input, generatedByHenry: true },
+          this.requireActor(context),
+          context.audit,
+        )) as unknown as Record<string, unknown>;
+      case 'personalize_email_draft':
+        return (await this.emailTemplates.updateDraft(
+          input.draftId,
+          input,
+          this.requireActor(context),
+        )) as unknown as Record<string, unknown>;
+      case 'preview_email_draft':
+        return (await this.emailTemplates.preview(
+          input.draftId,
+          this.requireActor(context),
+          context.audit,
+        )) as unknown as Record<string, unknown>;
     }
   }
 

@@ -69,6 +69,11 @@ const CONSULTANT_TOOLS = [
   'get_memory',
   'save_memory',
   'forget_memory',
+  'list_email_templates',
+  'get_email_template',
+  'create_email_draft',
+  'personalize_email_draft',
+  'preview_email_draft',
 ];
 const MANAGER_TOOLS = [
   ...CONSULTANT_TOOLS,
