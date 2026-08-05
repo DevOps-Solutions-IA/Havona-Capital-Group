@@ -907,6 +907,19 @@ describe('Fase 0 (PostgreSQL + Redis)', () => {
       { prospectId: prospect.id, templateId: template.id },
       ctx,
     );
+    const preparedDraft = await db.emailTemplateDraft.findUniqueOrThrow({
+      where: { id: prepared.draftId },
+      select: { communicationThreadId: true },
+    });
+    await db.communicationConsent.upsert({
+      where: { threadId: preparedDraft.communicationThreadId! },
+      create: {
+        threadId: preparedDraft.communicationThreadId!,
+        commercialStatus: 'OPTED_IN',
+        serviceStatus: 'OPTED_IN',
+      },
+      update: { commercialStatus: 'OPTED_IN', serviceStatus: 'OPTED_IN' },
+    });
     const pending = await operator.requestConfirmation(
       actor,
       conversation.id,
