@@ -12,6 +12,7 @@ import { CalendarAccessService } from '../calendar/calendar-access.service';
 import { PrismaService } from '../common/prisma.service';
 import { CommunicationsService } from '../communications/communications.service';
 import { CrmService } from '../crm/crm.service';
+import { EmailTemplateService } from '../email-templates/email-template.service';
 import { HenryService } from '../henry/henry.service';
 import { AutomationQueueService } from './automation-queue.service';
 import { AutomationEventBus } from './automation-event-bus.service';
@@ -39,6 +40,7 @@ export class AutomationService {
     private access: CalendarAccessService,
     private crm: CrmService,
     private communications: CommunicationsService,
+    private emailTemplates: EmailTemplateService,
     @Inject(forwardRef(() => HenryService)) private henry: HenryService,
     private eventBus: AutomationEventBus,
   ) {
@@ -698,6 +700,12 @@ export class AutomationService {
           (execution.entityType === 'CommunicationThread' ? execution.entityId : ''),
       );
       if (!threadId) throw new AutomationError('AUTOMATION_INVALID_ACTION', 'Falta threadId');
+      if (action.type === 'SEND_EMAIL' && action.definition.templateKey) {
+        await this.emailTemplates.assertAutomationDispatch(String(action.definition.templateKey), {
+          evidence: Array.isArray(context.evidence) ? context.evidence.map(String) : [],
+          approvalMode: action.approvalMode,
+        });
+      }
       const message = await this.communications.send(
         actor,
         threadId,

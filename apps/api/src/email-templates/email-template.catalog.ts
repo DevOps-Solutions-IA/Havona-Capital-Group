@@ -1,37 +1,8 @@
-export const EMAIL_TEMPLATE_CATALOG = [
-  ['prospecting.introduction', 'PROSPECTING'],
-  ['prospecting.referral', 'PROSPECTING'],
-  ['prospecting.inbound', 'PROSPECTING'],
-  ['prospecting.corporate', 'PROSPECTING'],
-  ['prospecting.reactivation', 'PROSPECTING'],
-  ['meeting.confirmation', 'MEETINGS'],
-  ['meeting.reminder', 'MEETINGS'],
-  ['meeting.reschedule', 'MEETINGS'],
-  ['meeting.cancellation', 'MEETINGS'],
-  ['meeting.no_show_followup', 'MEETINGS'],
-  ['proposal.thank_you', 'PROPOSAL'],
-  ['proposal.information_request', 'PROPOSAL'],
-  ['proposal.delivery', 'PROPOSAL'],
-  ['proposal.followup', 'PROPOSAL'],
-  ['proposal.thinking', 'PROPOSAL'],
-  ['proposal.decision_pending', 'PROPOSAL'],
-  ['onboarding.documents_request', 'ONBOARDING_ISSUANCE'],
-  ['onboarding.missing_documents', 'ONBOARDING_ISSUANCE'],
-  ['onboarding.application_received', 'ONBOARDING_ISSUANCE'],
-  ['onboarding.status_update', 'ONBOARDING_ISSUANCE'],
-  ['onboarding.policy_issued', 'ONBOARDING_ISSUANCE'],
-  ['onboarding.welcome', 'ONBOARDING_ISSUANCE'],
-  ['service.periodic_review', 'SERVICE_RETENTION'],
-  ['service.data_update', 'SERVICE_RETENTION'],
-  ['service.coverage_review', 'SERVICE_RETENTION'],
-  ['service.anniversary', 'SERVICE_RETENTION'],
-  ['service.post_sale', 'SERVICE_RETENTION'],
-  ['payment.pending', 'PAYMENT_CONTINUITY'],
-  ['payment.failed', 'PAYMENT_CONTINUITY'],
-  ['payment.continuity_reminder', 'PAYMENT_CONTINUITY'],
-  ['cancellation.retention', 'CANCELLATION_RECOVERY'],
-  ['cancellation.confirmation', 'CANCELLATION_RECOVERY'],
-] as const;
+import { CORPORATE_EMAIL_LIBRARY } from '@havona/contracts';
+
+export const EMAIL_TEMPLATE_CATALOG = CORPORATE_EMAIL_LIBRARY.map(
+  ({ key, category }) => [key, category] as const,
+);
 
 export const EMAIL_VARIABLES = [
   ['client.firstName', 'CLIENT', true, 'CRM Prospect.name'],

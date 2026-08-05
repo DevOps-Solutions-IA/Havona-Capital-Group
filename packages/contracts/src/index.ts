@@ -1,4 +1,5 @@
 import { z } from 'zod';
+export * from './email-library';
 
 export const passwordSchema = z
   .string()

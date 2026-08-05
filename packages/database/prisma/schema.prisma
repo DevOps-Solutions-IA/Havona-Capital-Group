@@ -2205,6 +2205,10 @@ model EmailTemplate {
   isDefault       Boolean                @default(false) @map("is_default")
   activeVersionId String?                @map("active_version_id") @db.Uuid
   tags            String[]
+  governance      Json?
+  contentOwner    String?                @map("content_owner") @db.VarChar(80)
+  lastReviewedAt  DateTime?              @map("last_reviewed_at")
+  nextReviewAt    DateTime?              @map("next_review_at")
   createdById     String                 @map("created_by_id") @db.Uuid
   updatedById     String                 @map("updated_by_id") @db.Uuid
   createdAt       DateTime               @default(now()) @map("created_at")
@@ -2234,6 +2238,9 @@ model EmailTemplateVersion {
   blocks                Json
   variableContract      Json                       @map("variable_contract")
   messageClassification EmailMessageClassification @map("message_classification")
+  subjectAlternatives   Json?                      @map("subject_alternatives")
+  contentPolicy         Json?                      @map("content_policy")
+  legalStatus           String                     @default("LEGAL_REVIEW_REQUIRED") @map("legal_status") @db.VarChar(60)
   checksum              String                     @db.Char(64)
   createdById           String                     @map("created_by_id") @db.Uuid
   approvedById          String?                    @map("approved_by_id") @db.Uuid

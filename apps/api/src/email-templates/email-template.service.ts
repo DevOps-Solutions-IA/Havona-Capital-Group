@@ -6,12 +6,14 @@ import {
 } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { Prisma } from '@havona/database';
+import { CORPORATE_EMAIL_LIBRARY, CORPORATE_EMAIL_LIBRARY_BY_KEY } from '@havona/contracts';
 import { AuditContext, AuditService } from '../audit/audit.service';
 import { CalendarAccessService, CalendarActor } from '../calendar/calendar-access.service';
 import { PrismaService } from '../common/prisma.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
-import { EMAIL_TEMPLATE_CATALOG, variableRegistry } from './email-template.catalog';
+import { variableRegistry } from './email-template.catalog';
 import { EmailBlock, EmailTemplateRenderer } from './email-template.renderer';
+import { LEGAL_CONTENT_REGISTRY } from './legal-content.registry';
 
 type Actor = CalendarActor;
 const isAdmin = (actor: Actor) =>
@@ -29,14 +31,14 @@ export class EmailTemplateService {
   ) {}
 
   catalog() {
-    return EMAIL_TEMPLATE_CATALOG.map(([key, category]) => ({
-      key,
-      category,
-      status: 'STRUCTURAL_ONLY',
-    }));
+    return CORPORATE_EMAIL_LIBRARY.map((definition) => ({ ...definition, body: undefined }));
   }
   variables() {
     return variableRegistry;
+  }
+  legalRegistry(actor: Actor) {
+    this.assert(actor, 'email_templates.read');
+    return LEGAL_CONTENT_REGISTRY;
   }
   private assert(actor: Actor, permission: string) {
     if (!actor.permissions.includes(permission))
@@ -114,22 +116,28 @@ export class EmailTemplateService {
       actor,
       corporate ? 'email_templates.manage_corporate' : 'email_templates.create_personal',
     );
+    const definition = corporate ? CORPORATE_EMAIL_LIBRARY_BY_KEY.get(input.key) : undefined;
+    if (corporate && !definition) throw new BadRequestException('EMAIL_TEMPLATE_KEY_NOT_GOVERNED');
     const ownerId = corporate ? null : actor.id;
     const row = await this.db.emailTemplate.create({
       data: {
         key: input.key,
-        name: input.name,
-        description: input.description,
-        category: input.category,
-        purpose: input.purpose,
-        lifecycleStage: input.lifecycleStage,
+        name: definition?.name ?? input.name,
+        description: definition?.description ?? input.description,
+        category: definition?.category ?? input.category,
+        purpose: definition?.purpose ?? input.purpose,
+        lifecycleStage: definition?.lifecycleStage ?? input.lifecycleStage,
         scope: input.scope,
         ownerId,
         locale: input.locale,
         isCorporate: corporate,
         isDefault: false,
         status: 'DRAFT',
-        tags: input.tags ?? [],
+        tags: definition
+          ? [definition.category.toLowerCase(), definition.lifecycleStage.toLowerCase()]
+          : (input.tags ?? []),
+        governance: definition ?? undefined,
+        contentOwner: definition?.contentOwner,
         createdById: actor.id,
         updatedById: actor.id,
       },
@@ -157,6 +165,17 @@ export class EmailTemplateService {
     )
       throw new BadRequestException('EMAIL_TEMPLATE_UNSUBSCRIBE_REQUIRED');
     const variables = this.renderer.variables(input.subject, input.preheader, blocks);
+    const definition = CORPORATE_EMAIL_LIBRARY_BY_KEY.get(template.key);
+    const requiredVariables = input.requiredVariables ?? definition?.requiredVariables ?? variables;
+    const lint = this.renderer.lint({
+      subject: input.subject,
+      blocks,
+      requiredVariables,
+      classification: input.messageClassification,
+      ctaRequired: Boolean(definition),
+    });
+    if (!lint.valid)
+      throw new BadRequestException({ code: 'EMAIL_TEMPLATE_CONTENT_INVALID', ...lint });
     const latest = template.versions[0]?.version ?? 0;
     const checksum = createHash('sha256')
       .update(
@@ -178,8 +197,11 @@ export class EmailTemplateService {
         subject: input.subject,
         preheader: input.preheader,
         blocks,
-        variableContract: { required: input.requiredVariables ?? variables, allowed: variables },
+        variableContract: { required: requiredVariables, allowed: variables },
         messageClassification: input.messageClassification,
+        subjectAlternatives: input.subjectAlternatives ?? definition?.subjectAlternatives ?? [],
+        contentPolicy: definition ?? input.contentPolicy ?? {},
+        legalStatus: 'LEGAL_REVIEW_REQUIRED',
         checksum,
         createdById: actor.id,
       },
@@ -227,6 +249,8 @@ export class EmailTemplateService {
     const version = template.versions.find((item) => item.status === 'APPROVED');
     if (!template.isCorporate || !version)
       throw new BadRequestException('EMAIL_TEMPLATE_NOT_APPROVED');
+    if (version.legalStatus !== 'LEGAL_APPROVED')
+      throw new BadRequestException('EMAIL_TEMPLATE_LEGAL_REVIEW_REQUIRED');
     await this.db.$transaction([
       this.db.emailTemplateVersion.updateMany({
         where: { templateId: id, status: 'ACTIVE' },
@@ -251,6 +275,142 @@ export class EmailTemplateService {
     return { id, version: version.version, status: 'ACTIVE' };
   }
 
+  async recordLegalReview(
+    versionId: string,
+    input: { reference: string; nextReviewAt?: string },
+    actor: Actor,
+    ctx: AuditContext,
+  ) {
+    this.assert(actor, 'email_templates.legal_approve');
+    const version = await this.db.emailTemplateVersion.findUnique({
+      where: { id: versionId },
+      include: { template: true },
+    });
+    if (!version?.template.isCorporate)
+      throw new NotFoundException('EMAIL_TEMPLATE_VERSION_NOT_FOUND');
+    const reviewedAt = new Date();
+    const row = await this.db.$transaction(async (tx) => {
+      const updated = await tx.emailTemplateVersion.update({
+        where: { id: versionId },
+        data: {
+          legalStatus: 'LEGAL_APPROVED',
+          contentPolicy: {
+            ...((version.contentPolicy as Record<string, unknown> | null) ?? {}),
+            legalReviewReference: input.reference,
+            legalReviewedById: actor.id,
+            legalReviewedAt: reviewedAt.toISOString(),
+          },
+        },
+      });
+      await tx.emailTemplate.update({
+        where: { id: version.templateId },
+        data: {
+          lastReviewedAt: reviewedAt,
+          nextReviewAt: input.nextReviewAt ? new Date(input.nextReviewAt) : null,
+          updatedById: actor.id,
+        },
+      });
+      return updated;
+    });
+    await this.audit.record(
+      'EMAIL_TEMPLATE_LEGAL_REVIEW_RECORDED',
+      'EmailTemplateVersion',
+      versionId,
+      ctx,
+      {
+        reference: input.reference,
+        nextReviewAt: input.nextReviewAt ?? null,
+      },
+    );
+    return { id: row.id, legalStatus: row.legalStatus };
+  }
+
+  async recommend(
+    actor: Actor,
+    input: {
+      lifecycleStage?: string;
+      triggerEvent?: string;
+      evidence?: string[];
+      automation?: boolean;
+    },
+  ) {
+    this.assert(actor, 'email_templates.read');
+    const evidence = new Set(input.evidence ?? []);
+    const candidates = CORPORATE_EMAIL_LIBRARY.filter((definition) => {
+      if (input.lifecycleStage && definition.lifecycleStage !== input.lifecycleStage) return false;
+      if (input.triggerEvent && !definition.triggerEvents.includes(input.triggerEvent))
+        return false;
+      if (!definition.allowedRoles.some((role) => actor.roles?.includes(role))) return false;
+      if (input.automation && !definition.automationEligible) return false;
+      return definition.requiredEvidence.every((requirement) => evidence.has(requirement));
+    });
+    const active = await this.db.emailTemplate.findMany({
+      where: {
+        key: { in: candidates.map((candidate) => candidate.key) },
+        locale: 'es-CO',
+        isCorporate: true,
+        status: 'ACTIVE',
+      },
+      include: {
+        versions: { where: { status: 'ACTIVE', legalStatus: 'LEGAL_APPROVED' }, take: 1 },
+      },
+    });
+    return active
+      .filter((template) => template.versions.length)
+      .map((template) => ({
+        templateId: template.id,
+        key: template.key,
+        name: template.name,
+        purpose: template.purpose,
+        policy: CORPORATE_EMAIL_LIBRARY_BY_KEY.get(template.key),
+        evidenceUsed: input.evidence ?? [],
+      }));
+  }
+
+  async assertAutomationDispatch(
+    templateKey: string,
+    input: { evidence?: string[]; approvalMode?: string },
+  ) {
+    const definition = CORPORATE_EMAIL_LIBRARY_BY_KEY.get(templateKey);
+    if (!definition) throw new BadRequestException('EMAIL_TEMPLATE_KEY_NOT_GOVERNED');
+    if (!definition.automationEligible)
+      throw new BadRequestException('EMAIL_TEMPLATE_AUTOMATION_NOT_ALLOWED');
+    if (definition.automationPolicy === 'AUTOMATION_WITH_APPROVAL' && input.approvalMode === 'AUTO')
+      throw new BadRequestException('EMAIL_TEMPLATE_AUTOMATION_APPROVAL_REQUIRED');
+    if (
+      definition.automationPolicy !== 'AUTOMATION_ALLOWED' &&
+      definition.automationPolicy !== 'AUTOMATION_WITH_APPROVAL'
+    )
+      throw new BadRequestException('EMAIL_TEMPLATE_AUTOMATION_NOT_ALLOWED');
+    const evidence = new Set(input.evidence ?? []);
+    const missingEvidence = definition.requiredEvidence.filter((item) => !evidence.has(item));
+    if (missingEvidence.length)
+      throw new BadRequestException({
+        code: 'EMAIL_TEMPLATE_EVIDENCE_REQUIRED',
+        missingEvidence,
+      });
+    const template = await this.db.emailTemplate.findFirst({
+      where: { key: templateKey, isCorporate: true, status: 'ACTIVE' },
+      include: {
+        versions: {
+          where: { status: 'ACTIVE', legalStatus: 'LEGAL_APPROVED' },
+          take: 1,
+        },
+      },
+    });
+    if (!template?.versions.length) throw new BadRequestException('EMAIL_TEMPLATE_NOT_OPERATIONAL');
+    return { template, version: template.versions[0], definition };
+  }
+
+  async reviewDue(actor: Actor) {
+    this.assert(actor, 'email_templates.manage_corporate');
+    return this.db.emailTemplate.findMany({
+      where: { isCorporate: true, nextReviewAt: { lte: new Date() }, status: { not: 'ARCHIVED' } },
+      select: { id: true, key: true, name: true, nextReviewAt: true, status: true },
+      orderBy: { nextReviewAt: 'asc' },
+    });
+  }
+
   async createVariant(templateId: string, input: any, actor: Actor, ctx: AuditContext) {
     this.assert(actor, 'email_templates.create_personal');
     const template = await this.templateForActor(templateId, actor);
@@ -259,7 +419,7 @@ export class EmailTemplateService {
     const version = template.versions.find((item) => item.id === template.activeVersionId)!;
     const blocks = version.blocks as unknown as EmailBlock[];
     const locked = new Set(
-      blocks.filter((block) => block.mode !== 'EDITABLE').map((block) => block.id),
+      blocks.filter((block) => !this.renderer.isEditable(block)).map((block) => block.id),
     );
     if (Object.keys(input.overrides ?? {}).some((key) => locked.has(key))) {
       await this.audit.record(
@@ -426,10 +586,9 @@ export class EmailTemplateService {
     const draftOverrides = (draft.editableBlockOverrides ?? {}) as Record<string, string>;
     const blocks = base.map((block) => ({
       ...block,
-      content:
-        block.mode === 'EDITABLE'
-          ? (draftOverrides[block.id] ?? variantOverrides[block.id] ?? block.content)
-          : block.content,
+      content: this.renderer.isEditable(block)
+        ? (draftOverrides[block.id] ?? variantOverrides[block.id] ?? block.content)
+        : block.content,
     }));
     this.renderer.validateBlocks(blocks, draft.template.isCorporate);
     const variables = await this.resolveVariables(draft, actor);

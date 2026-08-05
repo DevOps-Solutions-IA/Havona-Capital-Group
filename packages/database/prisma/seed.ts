@@ -1,4 +1,6 @@
 import { PrismaClient } from '@prisma/client';
+import { CORPORATE_EMAIL_LIBRARY } from '../../contracts/src/email-library';
+import { createHash } from 'node:crypto';
 import * as argon2 from 'argon2';
 const db = new PrismaClient();
 const permissions = [
@@ -72,6 +74,10 @@ const permissions = [
   ['email_templates.edit_personal', 'Editar plantillas y variantes personales propias'],
   ['email_templates.manage_corporate', 'Crear, versionar y activar plantillas corporativas'],
   ['email_templates.approve', 'Aprobar versiones corporativas de correo'],
+  [
+    'email_templates.legal_approve',
+    'Registrar revisión jurídica humana de plantillas corporativas',
+  ],
   ['email_templates.preview', 'Crear, editar y previsualizar borradores autorizados'],
 ] as const;
 const grants: Record<string, string[]> = {
@@ -279,6 +285,125 @@ async function main() {
     update: {},
     create: { userId: user.id, roleId: role.id },
   });
+  for (const definition of CORPORATE_EMAIL_LIBRARY) {
+    let emailTemplate = await db.emailTemplate.findFirst({
+      where: { key: definition.key, locale: definition.locale, isCorporate: true },
+      include: { versions: { where: { version: definition.version }, take: 1 } },
+    });
+    const governance = {
+      allowedRoles: definition.allowedRoles,
+      automationPolicy: definition.automationPolicy,
+      automationEligible: definition.automationEligible,
+      autoSendPolicy: definition.autoSendPolicy,
+      approvalPolicy: definition.approvalPolicy,
+      requiredEvidence: definition.requiredEvidence,
+      triggerEvents: definition.triggerEvents,
+      stopEvents: definition.stopEvents,
+      followUpAction: definition.followUpAction,
+      cta: definition.cta,
+      allowedAttachments: definition.allowedAttachments,
+      attachmentRequired: definition.attachmentRequired,
+      calendarAware: definition.calendarAware,
+      meetingAware: definition.meetingAware,
+      knowledgeAware: definition.knowledgeAware,
+      editableSections: definition.editableSections,
+      lockedSections: definition.lockedSections,
+      legalPolicyReference: definition.legalPolicyReference,
+      consentPolicyReference: definition.consentPolicyReference,
+    };
+    if (!emailTemplate)
+      emailTemplate = await db.emailTemplate.create({
+        data: {
+          key: definition.key,
+          name: definition.name,
+          description: definition.description,
+          category: definition.category,
+          purpose: definition.purpose,
+          lifecycleStage: definition.lifecycleStage,
+          scope: 'CORPORATE',
+          locale: definition.locale,
+          status: 'REVIEW',
+          isCorporate: true,
+          tags: [definition.lifecycleStage.toLowerCase(), definition.cta.type.toLowerCase()],
+          governance,
+          contentOwner: definition.contentOwner,
+          createdById: user.id,
+          updatedById: user.id,
+        },
+        include: { versions: { where: { version: definition.version }, take: 1 } },
+      });
+    else
+      await db.emailTemplate.update({
+        where: { id: emailTemplate.id },
+        data: {
+          name: definition.name,
+          description: definition.description,
+          category: definition.category,
+          purpose: definition.purpose,
+          lifecycleStage: definition.lifecycleStage,
+          governance,
+          contentOwner: definition.contentOwner,
+          updatedById: user.id,
+        },
+      });
+    if (!emailTemplate.versions.length) {
+      const blocks = [
+        {
+          id: 'introduction',
+          type: 'INTRODUCTION',
+          mode: 'STRUCTURED_EDITABLE',
+          content: definition.introduction,
+        },
+        { id: 'body', type: 'BODY', mode: 'LOCKED', content: definition.body },
+        { id: 'personal-note', type: 'BODY', mode: 'FREE_EDITABLE', content: '<p></p>' },
+        {
+          id: 'cta',
+          type: 'CTA',
+          mode: 'STRUCTURED_EDITABLE',
+          content: `<p>${definition.cta.label}</p>`,
+        },
+        {
+          id: 'identity',
+          type: 'FOOTER',
+          mode: 'LOCKED',
+          content: '<p>HAVONA CAPITAL GROUP<br>{{consultant.fullName}}</p>',
+        },
+        ...(definition.classification === 'COMMERCIAL' || definition.classification === 'MARKETING'
+          ? [
+              {
+                id: 'unsubscribe',
+                type: 'UNSUBSCRIBE',
+                mode: 'LOCKED',
+                content: '<p>LEGAL_REVIEW_REQUIRED: commercial.unsubscribe</p>',
+              },
+            ]
+          : []),
+      ];
+      await db.emailTemplateVersion.create({
+        data: {
+          templateId: emailTemplate.id,
+          version: definition.version,
+          locale: definition.locale,
+          status: 'REVIEW',
+          subject: definition.subject,
+          preheader: definition.preheader,
+          blocks,
+          variableContract: {
+            required: definition.requiredVariables,
+            optional: definition.optionalVariables,
+          },
+          messageClassification: definition.classification,
+          subjectAlternatives: definition.subjectAlternatives,
+          contentPolicy: governance,
+          legalStatus: definition.legalStatus,
+          checksum: createHash('sha256')
+            .update(JSON.stringify({ definition, blocks }))
+            .digest('hex'),
+          createdById: user.id,
+        },
+      });
+    }
+  }
   const templates = [
     ['Seguimiento prospecto nuevo', 'PROSPECT_CREATED', 'Prospect'],
     ['Recordatorio de cita', 'CALENDAR_EVENT_SCHEDULED', 'CalendarEventLink'],

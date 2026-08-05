@@ -29,7 +29,7 @@ const block = z
       'UNSUBSCRIBE',
       'FOOTER',
     ]),
-    mode: z.enum(['EDITABLE', 'LOCKED', 'REQUIRED']),
+    mode: z.enum(['EDITABLE', 'STRUCTURED_EDITABLE', 'FREE_EDITABLE', 'LOCKED', 'REQUIRED']),
     content: z.string().min(1).max(20000),
   })
   .strict();
@@ -62,6 +62,9 @@ const createVersion = z
       'COMMERCIAL',
       'MARKETING',
     ]),
+    subjectAlternatives: z.array(z.string().min(1).max(300)).max(3).optional(),
+    contentPolicy: z.record(z.unknown()).optional(),
+    legalStatus: z.literal('LEGAL_REVIEW_REQUIRED').default('LEGAL_REVIEW_REQUIRED'),
   })
   .strict();
 const draft = z
@@ -97,11 +100,39 @@ export class EmailTemplateController {
   @Get('email-templates/variables') @RequirePermissions('email_templates.read') variables() {
     return this.templates.variables();
   }
+  @Get('email-templates/legal-content') @RequirePermissions('email_templates.read') legalContent(
+    @Req() req: any,
+  ) {
+    return this.templates.legalRegistry(req.auth.user);
+  }
   @Get('email-templates') @RequirePermissions('email_templates.read') list(
     @Req() req: any,
     @Query() query: any,
   ) {
     return this.templates.list(req.auth.user, query);
+  }
+  @Post('email-templates/recommendations') @RequirePermissions('email_templates.read') recommend(
+    @Body(
+      new ZodPipe(
+        z
+          .object({
+            lifecycleStage: z.string().max(80).optional(),
+            triggerEvent: z.string().max(120).optional(),
+            evidence: z.array(z.string().max(120)).max(30).default([]),
+            automation: z.boolean().default(false),
+          })
+          .strict(),
+      ),
+    )
+    body: any,
+    @Req() req: any,
+  ) {
+    return this.templates.recommend(req.auth.user, body);
+  }
+  @Get('email-templates/review-due')
+  @RequirePermissions('email_templates.manage_corporate')
+  reviewDue(@Req() req: any) {
+    return this.templates.reviewDue(req.auth.user);
   }
   @Get('email-templates/:id') @RequirePermissions('email_templates.read') get(
     @Param('id') id: string,
@@ -121,6 +152,25 @@ export class EmailTemplateController {
     @Req() req: any,
   ) {
     return this.templates.createVersion(uuid.parse(id), body, req.auth.user, audit(req));
+  }
+  @Post('email-template-versions/:id/legal-review')
+  @RequirePermissions('email_templates.legal_approve')
+  legalReview(
+    @Param('id') id: string,
+    @Body(
+      new ZodPipe(
+        z
+          .object({
+            reference: z.string().trim().min(8).max(500),
+            nextReviewAt: z.string().datetime().optional(),
+          })
+          .strict(),
+      ),
+    )
+    body: any,
+    @Req() req: any,
+  ) {
+    return this.templates.recordLegalReview(uuid.parse(id), body, req.auth.user, audit(req));
   }
   @Post('email-templates/:id/approve') @RequirePermissions('email_templates.approve') approve(
     @Param('id') id: string,
