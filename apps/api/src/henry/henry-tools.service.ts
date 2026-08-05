@@ -239,6 +239,11 @@ const schemas = {
     search: z.string().max(120).optional(),
     category: z.string().max(60).optional(),
   }),
+  recommend_email_templates: z.object({
+    lifecycleStage: z.string().max(80).optional(),
+    triggerEvent: z.string().max(100).optional(),
+    evidence: z.array(z.string().max(120)).max(20).optional(),
+  }),
   get_email_template: z.object({ templateId: z.string().uuid() }),
   create_email_draft: z.object({
     templateId: z.string().uuid(),
@@ -747,6 +752,16 @@ export class HenryToolsService {
       parameters: objectSchema({ search: { type: 'string' }, category: { type: 'string' } }),
     },
     {
+      name: 'recommend_email_templates',
+      description:
+        'Recomienda masters activos mediante reglas corporativas, contexto y evidencia; no inventa claves ni envía.',
+      parameters: objectSchema({
+        lifecycleStage: { type: 'string' },
+        triggerEvent: { type: 'string' },
+        evidence: { type: 'array', items: { type: 'string' } },
+      }),
+    },
+    {
       name: 'get_email_template',
       description: 'Consulta una plantilla corporativa o personal autorizada.',
       parameters: objectSchema({ templateId: { type: 'string' } }, ['templateId']),
@@ -1052,6 +1067,10 @@ export class HenryToolsService {
         return { data: await this.knowledge.gaps(this.requireKnowledgeActor(context)) };
       case 'list_email_templates':
         return { data: await this.emailTemplates.list(this.requireActor(context), input) };
+      case 'recommend_email_templates':
+        return {
+          data: await this.emailTemplates.recommend(this.requireActor(context), input),
+        };
       case 'get_email_template':
         return (await this.emailTemplates.get(
           input.templateId,

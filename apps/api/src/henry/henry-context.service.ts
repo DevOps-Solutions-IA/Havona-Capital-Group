@@ -70,6 +70,7 @@ const CONSULTANT_TOOLS = [
   'save_memory',
   'forget_memory',
   'list_email_templates',
+  'recommend_email_templates',
   'get_email_template',
   'create_email_draft',
   'personalize_email_draft',

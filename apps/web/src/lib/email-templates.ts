@@ -5,11 +5,20 @@ export type EmailTemplate = {
   name: string;
   category: string;
   purpose: string;
+  lifecycleStage?: string | null;
   locale: string;
   status: string;
   isCorporate: boolean;
   ownerId?: string | null;
   activeVersionId?: string | null;
+  nextReviewAt?: string | null;
+  governance?: {
+    automationPolicy?: string;
+    requiredEvidence?: string[];
+    triggerEvents?: string[];
+    stopEvents?: string[];
+    cta?: { type: string; label: string };
+  } | null;
   versions: Array<{
     id: string;
     version: number;
@@ -17,6 +26,8 @@ export type EmailTemplate = {
     subject: string;
     blocks: unknown;
     messageClassification: string;
+    legalStatus?: string;
+    contentPolicy?: Record<string, unknown>;
   }>;
 };
 export type EmailDraft = {
@@ -41,8 +52,7 @@ export const emailTemplatesApi = {
     api<EmailTemplate[]>(
       `/email-templates${search ? `?search=${encodeURIComponent(search)}` : ''}`,
     ),
-  catalog: () =>
-    api<Array<{ key: string; category: string; status: string }>>('/email-templates/catalog'),
+  catalog: () => api<CorporateEmailCatalogItem[]>('/email-templates/catalog'),
   variables: () =>
     api<Array<{ key: string; type: string; dataSource: string; requiredByDefault: boolean }>>(
       '/email-templates/variables',
@@ -62,4 +72,21 @@ export const emailTemplatesApi = {
   createDraft: (input: Record<string, unknown>) =>
     api<EmailDraft>('/email-drafts', { method: 'POST', body: JSON.stringify(input) }),
   preview: (id: string) => api<EmailPreview>(`/email-drafts/${id}/preview`, { method: 'POST' }),
+};
+
+export type CorporateEmailCatalogItem = {
+  key: string;
+  name: string;
+  category: string;
+  purpose: string;
+  lifecycleStage: string;
+  classification: string;
+  automationPolicy: string;
+  approvalPolicy: string;
+  legalStatus: string;
+  triggerEvents: string[];
+  stopEvents: string[];
+  requiredEvidence: string[];
+  requiredVariables: string[];
+  cta: { type: string; label: string };
 };

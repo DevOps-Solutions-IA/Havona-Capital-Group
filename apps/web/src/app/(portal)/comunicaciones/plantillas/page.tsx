@@ -3,7 +3,13 @@ import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Alert, EmptyState, Skeleton } from '@havona/ui';
 import { PageHeader } from '@/components/page';
-import { emailTemplatesApi, EmailDraft, EmailPreview, EmailTemplate } from '@/lib/email-templates';
+import {
+  CorporateEmailCatalogItem,
+  emailTemplatesApi,
+  EmailDraft,
+  EmailPreview,
+  EmailTemplate,
+} from '@/lib/email-templates';
 import { messageOf } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 
@@ -12,7 +18,7 @@ export default function EmailTemplatesPage() {
     { can } = useAuth();
   const [templates, setTemplates] = useState<EmailTemplate[]>([]),
     [drafts, setDrafts] = useState<EmailDraft[]>([]),
-    [catalog, setCatalog] = useState<Array<{ key: string; category: string }>>([]);
+    [catalog, setCatalog] = useState<CorporateEmailCatalogItem[]>([]);
   const [search, setSearch] = useState(''),
     [error, setError] = useState(''),
     [loading, setLoading] = useState(true),
@@ -126,13 +132,13 @@ export default function EmailTemplatesPage() {
                 placeholder="Propósito, categoría o nombre"
               />
               <span className="self-center text-xs font-semibold text-slate-500">
-                {templates.length} publicadas/personales · {catalog.length} keys estructurales
+                {templates.length} masters/variantes · {catalog.length} contratos gobernados
               </span>
             </div>
             {templates.length === 0 ? (
               <EmptyState
-                title="Sin copy publicado"
-                description="El catálogo estructural de 32 keys está listo, pero no se activa contenido comercial ficticio."
+                title="Biblioteca sin masters operativas"
+                description="Los 35 contratos corporativos permanecen inactivos hasta completar revisión editorial y legal humana."
               />
             ) : (
               <div className="divide-y border-y">
@@ -147,6 +153,28 @@ export default function EmailTemplatesPage() {
                         <p className="text-sm text-slate-500">
                           {t.key} · {t.isCorporate ? 'Corporativa' : 'Personal'} · {t.status}
                         </p>
+                        <p className="mt-2 max-w-2xl text-sm text-slate-700">{t.purpose}</p>
+                        {t.versions[0] && (
+                          <div className="mt-2 space-y-1 text-xs text-slate-500">
+                            <p>
+                              {t.versions[0].messageClassification} · v{t.versions[0].version} ·{' '}
+                              {t.versions[0].legalStatus ?? 'LEGAL_REVIEW_REQUIRED'}
+                            </p>
+                            <p>Asunto: {t.versions[0].subject}</p>
+                            {t.governance?.automationPolicy && (
+                              <p>
+                                {t.governance.automationPolicy} · CTA{' '}
+                                {t.governance.cta?.type ?? '—'}
+                              </p>
+                            )}
+                            {t.nextReviewAt && (
+                              <p>
+                                Próxima revisión:{' '}
+                                {new Date(t.nextReviewAt).toLocaleDateString('es-CO')}
+                              </p>
+                            )}
+                          </div>
+                        )}
                       </div>
                       <div className="flex gap-2">
                         {can('email_templates.approve') && t.status === 'REVIEW' && (
@@ -172,12 +200,18 @@ export default function EmailTemplatesPage() {
               </div>
             )}
             <div>
-              <h2 className="font-display text-2xl">Catálogo starter</h2>
+              <h2 className="font-display text-2xl">Matriz corporativa</h2>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 {catalog.map((item) => (
                   <div key={item.key} className="border-l-2 border-brand-200 py-2 pl-3">
                     <p className="text-sm font-semibold">{item.key}</p>
-                    <p className="text-xs text-slate-500">{item.category} · Sin copy activo</p>
+                    <p className="text-xs text-slate-500">
+                      {item.category} · {item.classification} · {item.automationPolicy}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-600">{item.purpose}</p>
+                    <p className="mt-1 text-[11px] font-semibold text-amber-700">
+                      {item.legalStatus}
+                    </p>
                   </div>
                 ))}
               </div>
