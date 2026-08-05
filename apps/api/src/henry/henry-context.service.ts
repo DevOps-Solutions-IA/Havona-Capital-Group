@@ -75,6 +75,15 @@ const CONSULTANT_TOOLS = [
   'create_email_draft',
   'personalize_email_draft',
   'preview_email_draft',
+  'update_email_draft',
+  'attach_to_email_draft',
+  'request_email_confirmation',
+  'send_email_draft',
+  'schedule_email_draft',
+  'cancel_scheduled_email',
+  'reply_to_email_thread',
+  'get_email_send_status',
+  'prepare_email_batch',
 ];
 const MANAGER_TOOLS = [
   ...CONSULTANT_TOOLS,

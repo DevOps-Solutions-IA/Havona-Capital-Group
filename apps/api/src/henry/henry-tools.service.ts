@@ -18,6 +18,7 @@ import { RagOrchestratorService } from '../knowledge/rag-orchestrator.service';
 import { HenryMemoryService } from '../knowledge/memory.service';
 import { TrainingService } from '../training/training.service';
 import { EmailTemplateService } from '../email-templates/email-template.service';
+import { HenryMessagingOperatorService } from './henry-messaging-operator.service';
 
 type ToolContext = {
   conversationId: string;
@@ -246,8 +247,12 @@ const schemas = {
   }),
   get_email_template: z.object({ templateId: z.string().uuid() }),
   create_email_draft: z.object({
-    templateId: z.string().uuid(),
-    recipientProspectId: z.string().uuid(),
+    templateId: z.string().uuid().optional(),
+    recipientProspectId: z.string().uuid().optional(),
+    recipientName: z.string().min(2).max(120).optional(),
+    lifecycleStage: z.string().max(80).optional(),
+    triggerEvent: z.string().max(120).optional(),
+    evidence: z.array(z.string().max(120)).max(20).optional(),
     companyId: z.string().uuid().optional(),
     opportunityId: z.string().uuid().optional(),
     communicationThreadId: z.string().uuid().optional(),
@@ -260,6 +265,49 @@ const schemas = {
     editableBlockOverrides: z.record(z.string().max(20000)).optional(),
   }),
   preview_email_draft: z.object({ draftId: z.string().uuid() }),
+  update_email_draft: z.object({
+    draftId: z.string().uuid().optional(),
+    subjectOverride: z.string().max(300).optional(),
+    editableBlockOverrides: z.record(z.string().max(20000)).optional(),
+  }),
+  attach_to_email_draft: z.object({
+    draftId: z.string().uuid().optional(),
+    references: z
+      .array(
+        z.object({
+          type: z.enum(['KNOWLEDGE_DOCUMENT', 'COMMUNICATION_ATTACHMENT']),
+          id: z.string().uuid(),
+        }),
+      )
+      .min(1)
+      .max(10),
+  }),
+  request_email_confirmation: z.object({
+    draftId: z.string().uuid().optional(),
+    intent: z.enum(['EMAIL_SEND', 'EMAIL_SCHEDULE']).default('EMAIL_SEND'),
+    scheduledAt: z.string().datetime({ offset: true }).optional(),
+    timezone: z.string().min(1).max(80).optional(),
+  }),
+  send_email_draft: z.object({ operationId: z.string().uuid(), confirmedByUser: z.literal(true) }),
+  schedule_email_draft: z.object({
+    operationId: z.string().uuid(),
+    confirmedByUser: z.literal(true),
+  }),
+  cancel_scheduled_email: z.object({
+    operationId: z.string().uuid(),
+    confirmedByUser: z.literal(true),
+  }),
+  reply_to_email_thread: z.object({
+    threadId: z.string().uuid(),
+    templateId: z.string().uuid().optional(),
+    subject: z.string().max(300).optional(),
+    body: z.string().max(20000).optional(),
+  }),
+  get_email_send_status: z.object({ operationId: z.string().uuid() }),
+  prepare_email_batch: z.object({
+    prospectIds: z.array(z.string().uuid()).min(1).max(10),
+    templateId: z.string().uuid(),
+  }),
 } as const;
 
 type ToolName = keyof typeof schemas;
@@ -773,13 +821,17 @@ export class HenryToolsService {
         {
           templateId: { type: 'string' },
           recipientProspectId: { type: 'string' },
+          recipientName: { type: 'string' },
+          lifecycleStage: { type: 'string' },
+          triggerEvent: { type: 'string' },
+          evidence: { type: 'array', items: { type: 'string' } },
           companyId: { type: 'string' },
           opportunityId: { type: 'string' },
           communicationThreadId: { type: 'string' },
           calendarEventId: { type: 'string' },
           meetingId: { type: 'string' },
         },
-        ['templateId', 'recipientProspectId'],
+        [],
       ),
     },
     {
@@ -799,6 +851,94 @@ export class HenryToolsService {
       description: 'Renderiza preview determinista, informa faltantes y nunca envía.',
       parameters: objectSchema({ draftId: { type: 'string' } }, ['draftId']),
     },
+    {
+      name: 'update_email_draft',
+      description:
+        'Edita por patch el borrador activo o indicado; nunca modifica bloques protegidos.',
+      parameters: objectSchema({
+        draftId: { type: 'string' },
+        subjectOverride: { type: 'string' },
+        editableBlockOverrides: { type: 'object' },
+      }),
+    },
+    {
+      name: 'attach_to_email_draft',
+      description:
+        'Adjunta referencias autorizadas después de validar archivo, versión, RBAC y relación.',
+      parameters: objectSchema(
+        { draftId: { type: 'string' }, references: { type: 'array', items: { type: 'object' } } },
+        ['references'],
+      ),
+    },
+    {
+      name: 'request_email_confirmation',
+      description:
+        'Crea una confirmación expirable ligada al preview exacto; todavía no envía ni programa.',
+      parameters: objectSchema({
+        draftId: { type: 'string' },
+        intent: { type: 'string', enum: ['EMAIL_SEND', 'EMAIL_SCHEDULE'] },
+        scheduledAt: { type: 'string' },
+        timezone: { type: 'string' },
+      }),
+    },
+    {
+      name: 'send_email_draft',
+      description:
+        'Envía el preview exacto por Communications Core únicamente tras confirmación explícita.',
+      parameters: objectSchema(
+        { operationId: { type: 'string' }, confirmedByUser: { type: 'boolean', const: true } },
+        ['operationId', 'confirmedByUser'],
+      ),
+    },
+    {
+      name: 'schedule_email_draft',
+      description:
+        'Programa el preview exacto mediante Automations Core con fecha, timezone y confirmación explícita.',
+      parameters: objectSchema(
+        { operationId: { type: 'string' }, confirmedByUser: { type: 'boolean', const: true } },
+        ['operationId', 'confirmedByUser'],
+      ),
+    },
+    {
+      name: 'cancel_scheduled_email',
+      description: 'Cancela realmente una operación programada propia que todavía no se ejecutó.',
+      parameters: objectSchema(
+        { operationId: { type: 'string' }, confirmedByUser: { type: 'boolean', const: true } },
+        ['operationId', 'confirmedByUser'],
+      ),
+    },
+    {
+      name: 'reply_to_email_thread',
+      description:
+        'Prepara respuesta en un hilo email autorizado preservando continuidad; no envía.',
+      parameters: objectSchema(
+        {
+          threadId: { type: 'string' },
+          templateId: { type: 'string' },
+          subject: { type: 'string' },
+          body: { type: 'string' },
+        },
+        ['threadId'],
+      ),
+    },
+    {
+      name: 'get_email_send_status',
+      description:
+        'Consulta estados persistidos QUEUED/SENT/DELIVERED/FAILED sin inventar entrega.',
+      parameters: objectSchema({ operationId: { type: 'string' } }, ['operationId']),
+    },
+    {
+      name: 'prepare_email_batch',
+      description:
+        'Prepara borradores individuales para hasta diez destinatarios; nunca realiza envío masivo.',
+      parameters: objectSchema(
+        {
+          prospectIds: { type: 'array', items: { type: 'string' } },
+          templateId: { type: 'string' },
+        },
+        ['prospectIds', 'templateId'],
+      ),
+    },
   ];
 
   constructor(
@@ -814,6 +954,7 @@ export class HenryToolsService {
     private readonly memory: HenryMemoryService,
     private readonly training: TrainingService,
     private readonly emailTemplates: EmailTemplateService,
+    private readonly messagingOperator: HenryMessagingOperatorService,
     @Optional() private readonly moduleRef?: ModuleRef,
   ) {}
 
@@ -1077,9 +1218,10 @@ export class HenryToolsService {
           this.requireActor(context),
         )) as unknown as Record<string, unknown>;
       case 'create_email_draft':
-        return (await this.emailTemplates.createDraft(
-          { ...input, generatedByHenry: true },
+        return (await this.messagingOperator.prepare(
           this.requireActor(context),
+          context.conversationId,
+          input,
           context.audit,
         )) as unknown as Record<string, unknown>;
       case 'personalize_email_draft':
@@ -1092,6 +1234,71 @@ export class HenryToolsService {
         return (await this.emailTemplates.preview(
           input.draftId,
           this.requireActor(context),
+          context.audit,
+        )) as unknown as Record<string, unknown>;
+      case 'update_email_draft':
+        return (await this.messagingOperator.update(
+          this.requireActor(context),
+          context.conversationId,
+          input,
+          context.audit,
+        )) as unknown as Record<string, unknown>;
+      case 'attach_to_email_draft':
+        return (await this.messagingOperator.attach(
+          this.requireActor(context),
+          context.conversationId,
+          input,
+          context.audit,
+        )) as unknown as Record<string, unknown>;
+      case 'request_email_confirmation':
+        return (await this.messagingOperator.requestConfirmation(
+          this.requireActor(context),
+          context.conversationId,
+          input,
+          context.audit,
+        )) as unknown as Record<string, unknown>;
+      case 'send_email_draft': {
+        return (await this.messagingOperator.confirm(
+          this.requireActor(context),
+          input.operationId,
+          context.audit,
+        )) as unknown as Record<string, unknown>;
+      }
+      case 'schedule_email_draft': {
+        return (await this.messagingOperator.confirm(
+          this.requireActor(context),
+          input.operationId,
+          context.audit,
+        )) as unknown as Record<string, unknown>;
+      }
+      case 'cancel_scheduled_email':
+        return (await this.messagingOperator.cancel(
+          this.requireActor(context),
+          input.operationId,
+          context.audit,
+        )) as unknown as Record<string, unknown>;
+      case 'reply_to_email_thread':
+        return (await this.messagingOperator.prepare(
+          this.requireActor(context),
+          context.conversationId,
+          {
+            threadId: input.threadId,
+            templateId: input.templateId,
+            subject: input.subject,
+            body: input.body,
+          },
+          context.audit,
+        )) as unknown as Record<string, unknown>;
+      case 'get_email_send_status':
+        return (await this.messagingOperator.status(
+          this.requireActor(context),
+          input.operationId,
+        )) as unknown as Record<string, unknown>;
+      case 'prepare_email_batch':
+        return (await this.messagingOperator.batchPrepare(
+          this.requireActor(context),
+          context.conversationId,
+          input,
           context.audit,
         )) as unknown as Record<string, unknown>;
     }

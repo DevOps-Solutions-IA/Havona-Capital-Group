@@ -90,6 +90,31 @@ export class AutomationQueueService implements OnModuleInit, OnApplicationShutdo
         await job.remove();
     }
   }
+  async scheduleMessagingOperation(operationId: string, runAt: Date) {
+    const jobId = toBullMqJobId(`henry-email-${operationId}`);
+    await this.activeQueue.add(
+      'automation.messaging-send',
+      { operationId },
+      {
+        jobId,
+        delay: Math.max(0, runAt.getTime() - Date.now()),
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 1500 },
+        removeOnComplete: 2000,
+        removeOnFail: 5000,
+      },
+    );
+    return jobId;
+  }
+  async cancelMessagingOperation(operationId: string) {
+    const jobId = toBullMqJobId(`henry-email-${operationId}`);
+    const job = await this.activeQueue.getJob(jobId);
+    if (!job) return false;
+    const state = await job.getState();
+    if (!['delayed', 'waiting', 'paused'].includes(state)) return false;
+    await job.remove();
+    return true;
+  }
   async onApplicationShutdown() {
     await this.queue?.close();
     if (this.connection?.status !== 'end') await this.connection?.quit();

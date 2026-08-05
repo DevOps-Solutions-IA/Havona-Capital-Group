@@ -82,6 +82,7 @@ import { HenryContextAssembler } from './henry/henry-context-assembler.service';
 import { EmailTemplateController } from './email-templates/email-template.controller';
 import { EmailTemplateService } from './email-templates/email-template.service';
 import { EmailTemplateRenderer } from './email-templates/email-template.renderer';
+import { HenryMessagingOperatorService } from './henry/henry-messaging-operator.service';
 
 @Module({
   imports: [
@@ -172,6 +173,7 @@ import { EmailTemplateRenderer } from './email-templates/email-template.renderer
     HenryContextAssembler,
     EmailTemplateRenderer,
     EmailTemplateService,
+    HenryMessagingOperatorService,
     HenryToolsService,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: AuthGuard },

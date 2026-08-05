@@ -19,6 +19,11 @@ type Actor = CalendarActor;
 const isAdmin = (actor: Actor) =>
   Boolean(actor.roles?.some((role) => role === 'ADMIN' || role === 'SUPER_ADMIN'));
 const firstName = (name: string) => name.trim().split(/\s+/)[0] ?? name;
+const escapeAdHoc = (value: string) =>
+  value.replace(
+    /[&<>"']/g,
+    (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!,
+  );
 
 @Injectable()
 export class EmailTemplateService {
@@ -508,6 +513,45 @@ export class EmailTemplateService {
     return row;
   }
 
+  async createAdHocDraft(input: any, actor: Actor, ctx: AuditContext) {
+    this.assert(actor, 'email_templates.preview');
+    if (!['TRANSACTIONAL', 'RELATIONSHIP', 'SERVICE'].includes(input.messageClassification))
+      throw new BadRequestException('EMAIL_AD_HOC_CLASSIFICATION_FORBIDDEN');
+    await this.access.authorizeRelations(actor, { prospectId: input.recipientProspectId });
+    const blocks: EmailBlock[] = [
+      {
+        id: 'body',
+        type: 'BODY',
+        mode: 'FREE_EDITABLE',
+        content: `<p>${escapeAdHoc(input.body).replace(/\n/g, '<br>')}</p>`,
+      },
+      { id: 'identity', type: 'FOOTER', mode: 'LOCKED', content: '<p>HAVONA CAPITAL GROUP</p>' },
+    ];
+    this.renderer.validateBlocks(blocks, true);
+    const row = await this.db.emailTemplateDraft.create({
+      data: {
+        ownerId: actor.id,
+        createdById: actor.id,
+        recipientProspectId: input.recipientProspectId,
+        communicationThreadId: input.communicationThreadId,
+        subjectOverride: input.subject,
+        editableBlockOverrides: { body: blocks[0]!.content },
+        generatedByHenry: Boolean(input.generatedByHenry),
+        status: 'DRAFT',
+        renderedSnapshot: {
+          adHoc: true,
+          blocks,
+          messageClassification: input.messageClassification,
+        },
+      },
+    });
+    await this.audit.record('EMAIL_AD_HOC_DRAFT_CREATED', 'EmailTemplateDraft', row.id, ctx, {
+      messageClassification: input.messageClassification,
+      generatedByHenry: row.generatedByHenry,
+    });
+    return row;
+  }
+
   private async validateAttachments(references: Array<{ type: string; id: string }>, actor: Actor) {
     for (const reference of references) {
       if (reference.type === 'KNOWLEDGE_DOCUMENT') {
@@ -578,8 +622,57 @@ export class EmailTemplateService {
   async preview(id: string, actor: Actor, ctx?: AuditContext) {
     this.assert(actor, 'email_templates.preview');
     const draft = await this.draft(id, actor);
-    if (!draft.templateVersion || !draft.template)
-      throw new BadRequestException('EMAIL_DRAFT_TEMPLATE_REQUIRED');
+    if (!draft.templateVersion || !draft.template) {
+      const stored = draft.renderedSnapshot as Record<string, any> | null;
+      if (!stored?.adHoc) throw new BadRequestException('EMAIL_DRAFT_TEMPLATE_REQUIRED');
+      const client = await this.db.prospect.findUnique({
+        where: { id: draft.recipientProspectId! },
+        select: { name: true, normalizedEmail: true },
+      });
+      if (!client?.normalizedEmail) throw new BadRequestException('EMAIL_RECIPIENT_REQUIRED');
+      const base = stored.blocks as EmailBlock[];
+      const overrides = (draft.editableBlockOverrides ?? {}) as Record<string, string>;
+      const blocks = base.map((item) =>
+        this.renderer.isEditable(item) && overrides[item.id] !== undefined
+          ? { ...item, content: overrides[item.id]! }
+          : item,
+      );
+      this.renderer.validateBlocks(blocks, true);
+      const rendered = this.renderer.render({
+        subject: draft.subjectOverride ?? '',
+        blocks,
+        variables: {},
+        required: [],
+      });
+      const snapshot = {
+        ...rendered,
+        adHoc: true,
+        blocks: rendered.renderedBlocks,
+        templateId: null,
+        templateVersionId: null,
+        templateVersion: null,
+        variantId: null,
+        draftId: draft.id,
+        messageClassification: stored.messageClassification,
+        locale: 'es-CO',
+        variablesResolved: {
+          'client.fullName': client.name,
+          'client.email': client.normalizedEmail,
+        },
+        attachmentReferences: draft.attachmentReferences,
+        renderedAt: new Date().toISOString(),
+      };
+      await this.db.emailTemplateDraft.update({
+        where: { id },
+        data: { status: 'READY', renderedSnapshot: snapshot },
+      });
+      if (ctx)
+        await this.audit.record('EMAIL_DRAFT_PREVIEWED', 'EmailTemplateDraft', id, ctx, {
+          missingVariableCount: 0,
+          adHoc: true,
+        });
+      return snapshot;
+    }
     const version = draft.templateVersion;
     const base = version.blocks as unknown as EmailBlock[];
     const variantOverrides = (draft.variant?.overrides ?? {}) as Record<string, string>;

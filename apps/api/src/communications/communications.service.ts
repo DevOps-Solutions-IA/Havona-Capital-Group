@@ -138,6 +138,21 @@ export class CommunicationsService {
         'El contacto solicitó no recibir comunicaciones',
         409,
       );
+    if (
+      ['COMMERCIAL', 'MARKETING'].includes(input.messageClassification) &&
+      thread.consent?.commercialStatus !== 'OPTED_IN'
+    )
+      throw new CommunicationError(
+        'COMMUNICATION_CONSENT_REQUIRED',
+        'La comunicación comercial requiere consentimiento vigente',
+        409,
+      );
+    if (input.generatedByHenry && ['PAUSED', 'CLOSED'].includes(thread.handlingMode))
+      throw new CommunicationError(
+        'COMMUNICATION_FORBIDDEN',
+        'Henry no puede enviar en un hilo pausado o cerrado',
+        409,
+      );
     const config =
       thread.channel === 'WHATSAPP' ? this.config.status().whatsapp : this.config.status().email;
     if (!config.configured)
@@ -190,13 +205,20 @@ export class CommunicationsService {
         status: 'QUEUED',
         createdById: actor.id,
         generatedByHenry: Boolean(input.generatedByHenry),
-        metadata: input.templateName
-          ? {
-              templateName: input.templateName,
-              templateLanguage: input.templateLanguage ?? 'es',
-              templateParameters: input.templateParameters ?? [],
-            }
-          : undefined,
+        metadata: {
+          ...(input.templateName
+            ? {
+                templateName: input.templateName,
+                templateLanguage: input.templateLanguage ?? 'es',
+                templateParameters: input.templateParameters ?? [],
+              }
+            : {}),
+          ...(input.subject ? { subject: input.subject } : {}),
+          ...(input.messageClassification
+            ? { messageClassification: input.messageClassification }
+            : {}),
+          ...(input.templateMetadata ?? {}),
+        },
       },
     });
     await this.queue.enqueueSend(message.id, idempotencyKey);
@@ -208,6 +230,45 @@ export class CommunicationsService {
       { threadId, channel: thread.channel, generatedByHenry: message.generatedByHenry },
     );
     return message;
+  }
+
+  async resolveEmailThread(actor: Actor, prospectId: string, ctx: AuditContext) {
+    await this.access.authorizeRelations(actor, { prospectId });
+    const prospect = await this.db.prospect.findUnique({
+      where: { id: prospectId },
+      select: { id: true, name: true, normalizedEmail: true },
+    });
+    if (!prospect?.normalizedEmail) throw new BadRequestException('EMAIL_RECIPIENT_REQUIRED');
+    const identity = this.normalizeIdentity('EMAIL', prospect.normalizedEmail);
+    const current = await this.db.communicationThread.findFirst({
+      where: { channel: 'EMAIL', contactIdentity: identity, prospectId },
+      orderBy: { updatedAt: 'desc' },
+    });
+    if (current) {
+      if (current.assignedUserId) await this.access.assertUserScope(actor, current.assignedUserId);
+      return current;
+    }
+    const thread = await this.db.communicationThread.create({
+      data: {
+        channel: 'EMAIL',
+        provider: 'RESEND',
+        contactIdentity: identity,
+        contactDisplayName: prospect.name,
+        prospectId,
+        assignedUserId: actor.id,
+        handlingMode: 'HUMAN',
+      },
+    });
+    await this.audit.record(
+      'COMMUNICATION_EMAIL_THREAD_CREATED',
+      'CommunicationThread',
+      thread.id,
+      ctx,
+      {
+        prospectId,
+      },
+    );
+    return thread;
   }
   async assign(actor: Actor, threadId: string, assigneeId: string, ctx: AuditContext) {
     await this.get(actor, threadId);

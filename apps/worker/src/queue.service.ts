@@ -217,6 +217,10 @@ export class QueueService implements OnModuleInit, OnApplicationShutdown {
       from = process.env.RESEND_FROM_EMAIL;
     if (process.env.RESEND_ENABLED !== 'true' || !key || !from)
       throw new Error('CHANNEL_NOT_CONFIGURED');
+    const metadata = (message.metadata ?? {}) as Record<string, unknown>;
+    const subject =
+      typeof metadata.subject === 'string' ? metadata.subject : message.thread.subject;
+    if (!subject) throw new Error('EMAIL_SUBJECT_REQUIRED');
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
@@ -227,7 +231,7 @@ export class QueueService implements OnModuleInit, OnApplicationShutdown {
       body: JSON.stringify({
         from: `${process.env.RESEND_FROM_NAME ?? 'HAVONA CAPITAL GROUP'} <${from}>`,
         to: [message.recipientIdentity],
-        subject: message.thread.subject ?? 'Mensaje de HAVONA CAPITAL GROUP',
+        subject,
         text: message.bodyText,
         html: message.bodyHtml ?? undefined,
         reply_to: process.env.RESEND_REPLY_TO || undefined,

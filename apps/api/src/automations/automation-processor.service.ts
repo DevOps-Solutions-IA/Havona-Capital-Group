@@ -1,15 +1,20 @@
 import { Injectable, Logger, OnApplicationShutdown, OnModuleInit } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { Job, Worker } from 'bullmq';
 import Redis from 'ioredis';
 import { z } from 'zod';
 import { AutomationService } from './automation.service';
+import { HenryMessagingOperatorService } from '../henry/henry-messaging-operator.service';
 
 @Injectable()
 export class AutomationProcessorService implements OnModuleInit, OnApplicationShutdown {
   private logger = new Logger(AutomationProcessorService.name);
   private connection?: Redis;
   private worker?: Worker;
-  constructor(private automations: AutomationService) {}
+  constructor(
+    private automations: AutomationService,
+    private moduleRef: ModuleRef,
+  ) {}
   async onModuleInit() {
     // Integration tests drive outbox dispatch and execution deterministically.
     // Starting a competing background worker in the same Jest process introduces
@@ -45,6 +50,10 @@ export class AutomationProcessorService implements OnModuleInit, OnApplicationSh
       return this.automations.execute(z.string().uuid().parse(job.data?.executionId));
     if (job.name === 'automation.schedule')
       return this.automations.fireSchedule(z.string().uuid().parse(job.data?.scheduleId));
+    if (job.name === 'automation.messaging-send')
+      return this.moduleRef
+        .get(HenryMessagingOperatorService, { strict: false })
+        .executeScheduled(z.string().uuid().parse(job.data?.operationId));
     throw new Error('AUTOMATION_INVALID_TRIGGER');
   }
   async onApplicationShutdown() {

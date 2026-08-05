@@ -71,6 +71,7 @@ model User {
   emailDraftsCreated             EmailTemplateDraft[]      @relation("EmailDraftCreator")
   emailSignatures                EmailSignature[]
   emailTemplateUsages            EmailTemplateUsage[]
+  henryMessagingOperations       HenryMessagingOperation[]
 
   @@map("users")
 }
@@ -544,6 +545,7 @@ model Conversation {
   calendarEvents       CalendarEventLink[]
   meetings             Meeting[]
   communicationThreads CommunicationThread[]
+  messagingOperations  HenryMessagingOperation[]
 
   @@index([status, lastMessageAt])
   @@index([prospectId, createdAt])
@@ -640,6 +642,68 @@ model ConversationState {
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@map("henry_conversation_states")
+}
+
+enum HenryMessagingIntent {
+  EMAIL_DRAFT
+  EMAIL_EDIT
+  EMAIL_PREVIEW
+  EMAIL_SEND
+  EMAIL_SCHEDULE
+  EMAIL_REPLY
+  EMAIL_ATTACH
+  EMAIL_CANCEL_SCHEDULED
+  EMAIL_BATCH_PREPARE
+}
+
+enum HenryMessagingOperationStatus {
+  PREVIEW_READY
+  AWAITING_CONFIRMATION
+  CONFIRMED
+  SCHEDULED
+  QUEUED
+  SENT
+  PARTIAL_FAILED
+  FAILED
+  CANCELLED
+  EXPIRED
+}
+
+model HenryMessagingOperation {
+  id                     String                        @id @default(uuid()) @db.Uuid
+  conversationId         String                        @map("conversation_id") @db.Uuid
+  actorId                String                        @map("actor_id") @db.Uuid
+  intent                 HenryMessagingIntent
+  status                 HenryMessagingOperationStatus @default(PREVIEW_READY)
+  draftId                String                        @map("draft_id") @db.Uuid
+  communicationThreadId  String?                       @map("communication_thread_id") @db.Uuid
+  communicationMessageId String?                       @map("communication_message_id") @db.Uuid
+  templateVersionId      String?                       @map("template_version_id") @db.Uuid
+  recipientIdentity      String                        @map("recipient_identity") @db.VarChar(254)
+  renderChecksum         String                        @map("render_checksum") @db.Char(64)
+  attachmentChecksum     String                        @map("attachment_checksum") @db.Char(64)
+  idempotencyKey         String                        @unique @map("idempotency_key") @db.VarChar(160)
+  confirmationLevel      String                        @default("ALWAYS_CONFIRM") @map("confirmation_level") @db.VarChar(40)
+  confirmationExpiresAt  DateTime?                     @map("confirmation_expires_at")
+  confirmedAt            DateTime?                     @map("confirmed_at")
+  scheduledAt            DateTime?                     @map("scheduled_at")
+  timezone               String?                       @db.VarChar(80)
+  bullJobId              String?                       @unique @map("bull_job_id") @db.VarChar(255)
+  plan                   Json?
+  result                 Json?
+  cancelledAt            DateTime?                     @map("cancelled_at")
+  completedAt            DateTime?                     @map("completed_at")
+  createdAt              DateTime                      @default(now()) @map("created_at")
+  updatedAt              DateTime                      @updatedAt @map("updated_at")
+  actor                  User                          @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  conversation           Conversation                  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  draft                  EmailTemplateDraft            @relation(fields: [draftId], references: [id], onDelete: Restrict)
+  communicationMessage   CommunicationMessage?         @relation(fields: [communicationMessageId], references: [id], onDelete: SetNull)
+
+  @@index([conversationId, createdAt])
+  @@index([actorId, status, createdAt])
+  @@index([scheduledAt, status])
+  @@map("henry_messaging_operations")
 }
 
 model AIExecution {
@@ -1322,36 +1386,37 @@ model CommunicationParticipant {
 }
 
 model CommunicationMessage {
-  id                  String                     @id @default(uuid()) @db.Uuid
-  threadId            String                     @map("thread_id") @db.Uuid
-  providerMessageId   String?                    @map("provider_message_id") @db.VarChar(255)
-  idempotencyKey      String                     @unique @map("idempotency_key") @db.VarChar(160)
-  direction           CommunicationDirection
-  senderType          CommunicationSenderType    @map("sender_type")
-  senderIdentity      String                     @map("sender_identity") @db.VarChar(320)
-  recipientIdentity   String                     @map("recipient_identity") @db.VarChar(320)
-  bodyText            String?                    @map("body_text") @db.Text
-  bodyHtml            String?                    @map("body_html") @db.Text
-  contentType         CommunicationContentType   @default(TEXT) @map("content_type")
-  status              CommunicationMessageStatus @default(RECEIVED)
-  replyToId           String?                    @map("reply_to_id") @db.Uuid
-  metadata            Json?
-  errorCode           String?                    @map("error_code") @db.VarChar(100)
-  createdById         String?                    @map("created_by_id") @db.Uuid
-  generatedByHenry    Boolean                    @default(false) @map("generated_by_henry")
-  providerCreatedAt   DateTime?                  @map("provider_created_at")
-  sentAt              DateTime?                  @map("sent_at")
-  deliveredAt         DateTime?                  @map("delivered_at")
-  readAt              DateTime?                  @map("read_at")
-  createdAt           DateTime                   @default(now()) @map("created_at")
-  updatedAt           DateTime                   @updatedAt @map("updated_at")
-  thread              CommunicationThread        @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  replyTo             CommunicationMessage?      @relation("CommunicationReplies", fields: [replyToId], references: [id], onDelete: SetNull)
-  replies             CommunicationMessage[]     @relation("CommunicationReplies")
-  createdBy           User?                      @relation("CommunicationMessageCreator", fields: [createdById], references: [id], onDelete: SetNull)
-  attachments         CommunicationAttachment[]
-  deliveryEvents      MessageDeliveryEvent[]
-  emailTemplateUsages EmailTemplateUsage[]
+  id                       String                     @id @default(uuid()) @db.Uuid
+  threadId                 String                     @map("thread_id") @db.Uuid
+  providerMessageId        String?                    @map("provider_message_id") @db.VarChar(255)
+  idempotencyKey           String                     @unique @map("idempotency_key") @db.VarChar(160)
+  direction                CommunicationDirection
+  senderType               CommunicationSenderType    @map("sender_type")
+  senderIdentity           String                     @map("sender_identity") @db.VarChar(320)
+  recipientIdentity        String                     @map("recipient_identity") @db.VarChar(320)
+  bodyText                 String?                    @map("body_text") @db.Text
+  bodyHtml                 String?                    @map("body_html") @db.Text
+  contentType              CommunicationContentType   @default(TEXT) @map("content_type")
+  status                   CommunicationMessageStatus @default(RECEIVED)
+  replyToId                String?                    @map("reply_to_id") @db.Uuid
+  metadata                 Json?
+  errorCode                String?                    @map("error_code") @db.VarChar(100)
+  createdById              String?                    @map("created_by_id") @db.Uuid
+  generatedByHenry         Boolean                    @default(false) @map("generated_by_henry")
+  providerCreatedAt        DateTime?                  @map("provider_created_at")
+  sentAt                   DateTime?                  @map("sent_at")
+  deliveredAt              DateTime?                  @map("delivered_at")
+  readAt                   DateTime?                  @map("read_at")
+  createdAt                DateTime                   @default(now()) @map("created_at")
+  updatedAt                DateTime                   @updatedAt @map("updated_at")
+  thread                   CommunicationThread        @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  replyTo                  CommunicationMessage?      @relation("CommunicationReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies                  CommunicationMessage[]     @relation("CommunicationReplies")
+  createdBy                User?                      @relation("CommunicationMessageCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  attachments              CommunicationAttachment[]
+  deliveryEvents           MessageDeliveryEvent[]
+  emailTemplateUsages      EmailTemplateUsage[]
+  henryMessagingOperations HenryMessagingOperation[]
 
   @@unique([providerMessageId])
   @@index([threadId, createdAt])
@@ -2281,38 +2346,39 @@ model EmailTemplateVariant {
 }
 
 model EmailTemplateDraft {
-  id                     String                @id @default(uuid()) @db.Uuid
-  ownerId                String                @map("owner_id") @db.Uuid
-  createdById            String                @map("created_by_id") @db.Uuid
-  templateId             String?               @map("template_id") @db.Uuid
-  templateVersionId      String?               @map("template_version_id") @db.Uuid
-  variantId              String?               @map("variant_id") @db.Uuid
-  status                 EmailDraftStatus      @default(DRAFT)
-  recipientProspectId    String?               @map("recipient_prospect_id") @db.Uuid
-  companyId              String?               @map("company_id") @db.Uuid
-  opportunityId          String?               @map("opportunity_id") @db.Uuid
-  communicationThreadId  String?               @map("communication_thread_id") @db.Uuid
-  calendarEventId        String?               @map("calendar_event_id") @db.Uuid
-  meetingId              String?               @map("meeting_id") @db.Uuid
-  subjectOverride        String?               @map("subject_override") @db.VarChar(300)
-  editableBlockOverrides Json?                 @map("editable_block_overrides")
-  attachmentReferences   Json?                 @map("attachment_references")
-  generatedByHenry       Boolean               @default(false) @map("generated_by_henry")
-  renderedSnapshot       Json?                 @map("rendered_snapshot")
-  createdAt              DateTime              @default(now()) @map("created_at")
-  updatedAt              DateTime              @updatedAt @map("updated_at")
-  owner                  User                  @relation("EmailDraftOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  createdBy              User                  @relation("EmailDraftCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  template               EmailTemplate?        @relation(fields: [templateId], references: [id], onDelete: SetNull)
-  templateVersion        EmailTemplateVersion? @relation(fields: [templateVersionId], references: [id], onDelete: SetNull)
-  variant                EmailTemplateVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
-  recipientProspect      Prospect?             @relation(fields: [recipientProspectId], references: [id], onDelete: SetNull)
-  company                Company?              @relation(fields: [companyId], references: [id], onDelete: SetNull)
-  opportunity            Opportunity?          @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
-  communicationThread    CommunicationThread?  @relation(fields: [communicationThreadId], references: [id], onDelete: SetNull)
-  calendarEvent          CalendarEventLink?    @relation(fields: [calendarEventId], references: [id], onDelete: SetNull)
-  meeting                Meeting?              @relation(fields: [meetingId], references: [id], onDelete: SetNull)
-  usages                 EmailTemplateUsage[]
+  id                       String                    @id @default(uuid()) @db.Uuid
+  ownerId                  String                    @map("owner_id") @db.Uuid
+  createdById              String                    @map("created_by_id") @db.Uuid
+  templateId               String?                   @map("template_id") @db.Uuid
+  templateVersionId        String?                   @map("template_version_id") @db.Uuid
+  variantId                String?                   @map("variant_id") @db.Uuid
+  status                   EmailDraftStatus          @default(DRAFT)
+  recipientProspectId      String?                   @map("recipient_prospect_id") @db.Uuid
+  companyId                String?                   @map("company_id") @db.Uuid
+  opportunityId            String?                   @map("opportunity_id") @db.Uuid
+  communicationThreadId    String?                   @map("communication_thread_id") @db.Uuid
+  calendarEventId          String?                   @map("calendar_event_id") @db.Uuid
+  meetingId                String?                   @map("meeting_id") @db.Uuid
+  subjectOverride          String?                   @map("subject_override") @db.VarChar(300)
+  editableBlockOverrides   Json?                     @map("editable_block_overrides")
+  attachmentReferences     Json?                     @map("attachment_references")
+  generatedByHenry         Boolean                   @default(false) @map("generated_by_henry")
+  renderedSnapshot         Json?                     @map("rendered_snapshot")
+  createdAt                DateTime                  @default(now()) @map("created_at")
+  updatedAt                DateTime                  @updatedAt @map("updated_at")
+  owner                    User                      @relation("EmailDraftOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  createdBy                User                      @relation("EmailDraftCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  template                 EmailTemplate?            @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  templateVersion          EmailTemplateVersion?     @relation(fields: [templateVersionId], references: [id], onDelete: SetNull)
+  variant                  EmailTemplateVariant?     @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  recipientProspect        Prospect?                 @relation(fields: [recipientProspectId], references: [id], onDelete: SetNull)
+  company                  Company?                  @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  opportunity              Opportunity?              @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  communicationThread      CommunicationThread?      @relation(fields: [communicationThreadId], references: [id], onDelete: SetNull)
+  calendarEvent            CalendarEventLink?        @relation(fields: [calendarEventId], references: [id], onDelete: SetNull)
+  meeting                  Meeting?                  @relation(fields: [meetingId], references: [id], onDelete: SetNull)
+  usages                   EmailTemplateUsage[]
+  henryMessagingOperations HenryMessagingOperation[]
 
   @@index([ownerId, status, updatedAt])
   @@index([recipientProspectId, updatedAt])
