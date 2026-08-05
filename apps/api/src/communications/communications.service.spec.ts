@@ -83,6 +83,44 @@ describe('HAVONA Communications Core', () => {
     ).rejects.toMatchObject({ code: 'CONTACT_SUPPRESSED' });
     expect(queue.enqueueSend).not.toHaveBeenCalled();
   });
+  it('exige opt-in para clasificación comercial', async () => {
+    db.communicationThread.findFirst.mockResolvedValue({
+      id: 'thread',
+      channel: 'EMAIL',
+      status: 'OPEN',
+      handlingMode: 'HUMAN',
+      contactIdentity: 'person@example.com',
+      consent: { commercialStatus: 'UNKNOWN' },
+      messages: [],
+    });
+    await expect(
+      service.send(
+        { id: 'self', permissions: [] },
+        'thread',
+        { text: 'hola', messageClassification: 'COMMERCIAL' },
+        {},
+      ),
+    ).rejects.toMatchObject({ code: 'COMMUNICATION_CONSENT_REQUIRED' });
+  });
+  it('impide que Henry envíe en un hilo pausado', async () => {
+    db.communicationThread.findFirst.mockResolvedValue({
+      id: 'thread',
+      channel: 'EMAIL',
+      status: 'OPEN',
+      handlingMode: 'PAUSED',
+      contactIdentity: 'person@example.com',
+      consent: { commercialStatus: 'OPTED_IN' },
+      messages: [],
+    });
+    await expect(
+      service.send(
+        { id: 'self', permissions: [] },
+        'thread',
+        { text: 'hola', generatedByHenry: true },
+        {},
+      ),
+    ).rejects.toMatchObject({ code: 'COMMUNICATION_FORBIDDEN' });
+  });
   it('exige plantilla fuera de ventana WhatsApp', async () => {
     db.communicationThread.findFirst.mockResolvedValue({
       id: 'thread',

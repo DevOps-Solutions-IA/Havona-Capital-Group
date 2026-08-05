@@ -19,6 +19,7 @@ import {
   RETRIEVED_CONTENT_IS_DATA,
 } from '../src/knowledge/rag-orchestrator.service';
 import { EmailTemplateService } from '../src/email-templates/email-template.service';
+import { HenryMessagingOperatorService } from '../src/henry/henry-messaging-operator.service';
 
 describe('Fase 0 (PostgreSQL + Redis)', () => {
   let app: INestApplication;
@@ -27,6 +28,9 @@ describe('Fase 0 (PostgreSQL + Redis)', () => {
   const fakeProvider = new FakeAIProvider();
 
   beforeAll(async () => {
+    process.env.RESEND_ENABLED = 'true';
+    process.env.RESEND_API_KEY = 'integration-not-a-real-provider-key';
+    process.env.RESEND_FROM_EMAIL = 'integration@example.com';
     const module = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(AI_PROVIDER)
       .useValue(fakeProvider)
@@ -866,5 +870,85 @@ describe('Fase 0 (PostgreSQL + Redis)', () => {
       data: { commercialStatus: 'SUPPRESSED' },
     });
     await expect(templates.handoff(draft.id, actor, ctx)).rejects.toThrow('CONTACT_SUPPRESSED');
+  });
+
+  it('opera draft confirmado exactamente una vez y programa/cancela mediante Automations', async () => {
+    const operator = app.get(HenryMessagingOperatorService);
+    const admin = await db.user.findUniqueOrThrow({
+      where: { email: process.env.INITIAL_SUPER_ADMIN_EMAIL },
+    });
+    const permissions = (
+      await db.rolePermission.findMany({
+        where: { role: { name: 'SUPER_ADMIN' } },
+        include: { permission: true },
+      })
+    ).map((row) => row.permission.key);
+    const actor = { id: admin.id, roles: ['SUPER_ADMIN'], permissions },
+      ctx = { actorUserId: admin.id };
+    const prospect = await db.prospect.findFirstOrThrow({
+      where: { normalizedEmail: { not: null } },
+    });
+    const template = await db.emailTemplate.findFirstOrThrow({
+      where: { key: 'meeting.post_meeting_summary', status: 'ACTIVE' },
+    });
+    const conversation = await db.conversation.create({
+      data: {
+        accessTokenHash: 'a'.repeat(64),
+        consentAcceptedAt: new Date(),
+        privacyVersion: 'integration-v1',
+        prospectId: prospect.id,
+        participants: { create: { type: 'USER', userId: admin.id, displayName: admin.name } },
+        state: { create: { state: { stage: 'DISCOVERY', roleContext: 'ADMIN' } } },
+      },
+    });
+    const prepared = await operator.prepare(
+      actor,
+      conversation.id,
+      { prospectId: prospect.id, templateId: template.id },
+      ctx,
+    );
+    const pending = await operator.requestConfirmation(
+      actor,
+      conversation.id,
+      { draftId: prepared.draftId, intent: 'EMAIL_SEND' },
+      ctx,
+    );
+    const sent = await operator.confirm(actor, pending.operationId, ctx);
+    expect(sent).toEqual(
+      expect.objectContaining({ status: 'QUEUED', messageId: expect.any(String) }),
+    );
+    const replay = await operator.confirm(actor, pending.operationId, ctx);
+    expect(replay).toEqual(
+      expect.objectContaining({
+        message: expect.objectContaining({ id: sent.messageId, status: 'QUEUED' }),
+      }),
+    );
+    expect(await db.communicationMessage.count({ where: { id: sent.messageId } })).toBe(1);
+    expect(
+      await db.emailTemplateUsage.findFirstOrThrow({ where: { draftId: prepared.draftId } }),
+    ).toEqual(expect.objectContaining({ communicationMessageId: sent.messageId }));
+
+    const scheduledDraft = await operator.prepare(
+      actor,
+      conversation.id,
+      { prospectId: prospect.id, templateId: template.id },
+      ctx,
+    );
+    const scheduledPending = await operator.requestConfirmation(
+      actor,
+      conversation.id,
+      {
+        draftId: scheduledDraft.draftId,
+        intent: 'EMAIL_SCHEDULE',
+        scheduledAt: new Date(Date.now() + 3_600_000).toISOString(),
+        timezone: 'America/Bogota',
+      },
+      ctx,
+    );
+    const scheduled = await operator.confirm(actor, scheduledPending.operationId, ctx);
+    expect(scheduled.status).toBe('SCHEDULED');
+    await expect(operator.cancel(actor, scheduled.operationId, ctx)).resolves.toEqual(
+      expect.objectContaining({ status: 'CANCELLED' }),
+    );
   });
 });
