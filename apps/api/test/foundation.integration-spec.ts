@@ -784,35 +784,24 @@ describe('Fase 0 (PostgreSQL + Redis)', () => {
     const prospect = await db.prospect.findFirstOrThrow({
       where: { normalizedEmail: { not: null } },
     });
-    const master = await templates.create(
-      {
-        key: `meeting.thanks.${randomUUID()}`,
-        name: 'Agradecimiento controlado',
-        category: 'MEETINGS',
-        purpose: 'Agradecer reunión',
-        scope: 'CORPORATE',
-        locale: 'es-CO',
-        tags: ['reunion'],
-      },
-      actor,
-      ctx,
-    );
-    const version = await templates.createVersion(
-      master.id,
-      {
-        subject: 'Gracias, {{client.firstName}}',
-        messageClassification: 'RELATIONSHIP',
-        requiredVariables: ['client.firstName', 'client.email'],
-        blocks: [
-          {
-            id: 'body',
-            type: 'BODY',
-            mode: 'EDITABLE',
-            content: '<p>Gracias por la reunión, {{client.firstName}}.</p>',
-          },
-          { id: 'footer', type: 'FOOTER', mode: 'LOCKED', content: '<p>HAVONA CAPITAL GROUP</p>' },
-        ],
-      },
+    const master = await db.emailTemplate.findFirstOrThrow({
+      where: { key: 'meeting.post_meeting_summary', isCorporate: true },
+      include: { versions: { where: { version: 1 } } },
+    });
+    const version = master.versions[0]!;
+    await db.$transaction([
+      db.emailTemplate.update({
+        where: { id: master.id },
+        data: { status: 'REVIEW', activeVersionId: null },
+      }),
+      db.emailTemplateVersion.update({
+        where: { id: version.id },
+        data: { status: 'REVIEW', legalStatus: 'LEGAL_REVIEW_REQUIRED' },
+      }),
+    ]);
+    await templates.recordLegalReview(
+      version.id,
+      { reference: 'INTEGRATION_TEST_HUMAN_LEGAL_REVIEW' },
       actor,
       ctx,
     );
@@ -848,7 +837,7 @@ describe('Fase 0 (PostgreSQL + Redis)', () => {
     const preview = await templates.preview(draft.id, actor, ctx);
     expect(preview).toEqual(
       expect.objectContaining({
-        subject: expect.stringContaining(prospect.name.split(' ')[0]!),
+        subject: 'Resumen de nuestra reunión',
         missingVariables: [],
         templateId: master.id,
         templateVersionId: version.id,

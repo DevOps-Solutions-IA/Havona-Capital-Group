@@ -49,7 +49,22 @@ describe('EmailTemplatesPage', () => {
       },
     ]);
     vi.mocked(emailTemplatesApi.catalog).mockResolvedValue([
-      { key: 'meeting.confirmation', category: 'MEETINGS', status: 'STRUCTURAL_ONLY' },
+      {
+        key: 'meeting.confirmation',
+        name: 'Confirmación',
+        category: 'MEETINGS',
+        purpose: 'Confirmar una cita real',
+        lifecycleStage: 'APPOINTMENT_SCHEDULED',
+        classification: 'TRANSACTIONAL',
+        automationPolicy: 'AUTOMATION_WITH_APPROVAL',
+        approvalPolicy: 'HUMAN_REQUIRED',
+        legalStatus: 'LEGAL_REVIEW_REQUIRED',
+        triggerEvents: ['MEETING_SCHEDULED'],
+        stopEvents: ['MEETING_CANCELLED'],
+        requiredEvidence: ['CALENDAR_EVENT_EXISTS'],
+        requiredVariables: ['client.firstName'],
+        cta: { type: 'CONFIRM', label: 'Confirmar asistencia' },
+      },
     ]);
     vi.mocked(emailTemplatesApi.drafts).mockResolvedValue([]);
     vi.mocked(emailTemplatesApi.createDraft).mockResolvedValue({

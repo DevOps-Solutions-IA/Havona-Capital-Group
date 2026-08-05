@@ -5,8 +5,9 @@ import { EmailTemplateService } from './email-template.service';
 describe('EmailTemplateService RBAC', () => {
   const db: any = {
     emailTemplate: { findFirst: jest.fn(), create: jest.fn(), findMany: jest.fn() },
-    emailTemplateVersion: { create: jest.fn() },
+    emailTemplateVersion: { create: jest.fn(), findUnique: jest.fn() },
     emailTemplateVariant: { create: jest.fn() },
+    $transaction: jest.fn(),
   };
   const audit: any = { record: jest.fn() },
     access: any = { teamMembers: jest.fn() };
@@ -120,5 +121,54 @@ describe('EmailTemplateService RBAC', () => {
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(db.emailTemplateVersion.create).not.toHaveBeenCalled();
+  });
+
+  it('no activa una master editorialmente aprobada sin revisión legal humana', async () => {
+    db.emailTemplate.findFirst.mockResolvedValue({
+      id: 'master',
+      isCorporate: true,
+      versions: [{ id: 'version', status: 'APPROVED', legalStatus: 'LEGAL_REVIEW_REQUIRED' }],
+    });
+    await expect(
+      service.activate(
+        'master',
+        {
+          id: 'admin',
+          roles: ['ADMIN'],
+          permissions: ['email_templates.manage_corporate'],
+        },
+        {},
+      ),
+    ).rejects.toThrow('EMAIL_TEMPLATE_LEGAL_REVIEW_REQUIRED');
+    expect(db.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('impide que un consultor conceda aprobación legal corporativa', async () => {
+    await expect(
+      service.recordLegalReview('version', { reference: 'LEGAL-1' }, consultant, {}),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(db.emailTemplateVersion.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('bloquea despacho automático para templates manuales o Henry-draft-only', async () => {
+    await expect(
+      service.assertAutomationDispatch('payment.failed', {
+        evidence: ['AUTHORITATIVE_PAYMENT_FAILURE'],
+        approvalMode: 'REQUIRES_CONFIRMATION',
+      }),
+    ).rejects.toThrow('EMAIL_TEMPLATE_AUTOMATION_NOT_ALLOWED');
+    expect(db.emailTemplate.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('no recomienda no-show sin evidencia explícita o del proveedor', async () => {
+    db.emailTemplate.findMany.mockResolvedValue([]);
+    const result = await service.recommend(consultant, {
+      triggerEvent: 'MEETING_NO_SHOW_EVIDENCE',
+      evidence: [],
+    });
+    expect(result).toEqual([]);
+    expect(db.emailTemplate.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ key: { in: [] } }) }),
+    );
   });
 });

@@ -19,9 +19,9 @@ describe('EmailTemplateRenderer', () => {
       content: '<p>HAVONA CAPITAL GROUP</p>',
     },
   ];
-  it('mantiene el catálogo estructural exacto de 32 keys sin copy activo', () => {
-    expect(EMAIL_TEMPLATE_CATALOG).toHaveLength(32);
-    expect(new Set(EMAIL_TEMPLATE_CATALOG.map(([key]) => key)).size).toBe(32);
+  it('mantiene el catálogo corporativo final de 35 keys únicas', () => {
+    expect(EMAIL_TEMPLATE_CATALOG).toHaveLength(35);
+    expect(new Set(EMAIL_TEMPLATE_CATALOG.map(([key]) => key)).size).toBe(35);
   });
   it('renderiza de forma determinista, escapa variables y conserva bloques protegidos', () => {
     renderer.validateBlocks(blocks, true);

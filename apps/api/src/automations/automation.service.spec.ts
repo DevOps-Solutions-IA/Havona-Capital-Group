@@ -14,6 +14,7 @@ describe('HAVONA Automations Core', () => {
   const access: any = { assertUserScope: jest.fn(), teamMembers: jest.fn() },
     crm: any = { createTask: jest.fn(), assign: jest.fn(), moveOpportunity: jest.fn() };
   const communications: any = { send: jest.fn(), setMode: jest.fn() },
+    emailTemplates: any = { assertAutomationDispatch: jest.fn() },
     henry: any = { reasonForAutomation: jest.fn() };
   const eventBus: any = { publish: jest.fn() };
   const service = new AutomationService(
@@ -23,6 +24,7 @@ describe('HAVONA Automations Core', () => {
     access,
     crm,
     communications,
+    emailTemplates,
     henry,
     eventBus,
   );
@@ -94,20 +96,18 @@ describe('HAVONA Automations Core', () => {
   });
   it('detiene una ejecución cuando existe suppression', async () => {
     db.automationExecution = {
-      findUnique: jest
-        .fn()
-        .mockResolvedValue({
-          id: 'e',
-          workflowId: 'w',
-          workflowVersion: 1,
-          entityType: 'Prospect',
-          entityId: 'p',
-          status: 'QUEUED',
-          currentStep: 0,
-          context: {},
-          workflow: { status: 'ACTIVE', maxSteps: 25, actions: [] },
-          approvals: [],
-        }),
+      findUnique: jest.fn().mockResolvedValue({
+        id: 'e',
+        workflowId: 'w',
+        workflowVersion: 1,
+        entityType: 'Prospect',
+        entityId: 'p',
+        status: 'QUEUED',
+        currentStep: 0,
+        context: {},
+        workflow: { status: 'ACTIVE', maxSteps: 25, actions: [] },
+        approvals: [],
+      }),
       update: jest.fn().mockImplementation(({ data }: any) => ({ id: 'e', ...data })),
     };
     db.automationSuppression = { findFirst: jest.fn().mockResolvedValue({ id: 's' }) };
@@ -169,20 +169,18 @@ describe('HAVONA Automations Core', () => {
   });
   it('ejecuta acciones corporativas mediante CRM y Communications Core', async () => {
     db.user = {
-      findUnique: jest
-        .fn()
-        .mockResolvedValue({
-          id: '00000000-0000-4000-8000-000000000002',
-          isActive: true,
-          roles: [
-            {
-              role: {
-                name: 'ADMIN',
-                permissions: [{ permission: { key: 'communications.takeover' } }],
-              },
+      findUnique: jest.fn().mockResolvedValue({
+        id: '00000000-0000-4000-8000-000000000002',
+        isActive: true,
+        roles: [
+          {
+            role: {
+              name: 'ADMIN',
+              permissions: [{ permission: { key: 'communications.takeover' } }],
             },
-          ],
-        }),
+          },
+        ],
+      }),
     };
     const execution: any = {
       id: 'e',
