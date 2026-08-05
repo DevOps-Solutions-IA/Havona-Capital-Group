@@ -914,6 +914,9 @@ describe('Fase 0 (PostgreSQL + Redis)', () => {
       ctx,
     );
     const sent = await operator.confirm(actor, pending.operationId, ctx);
+    if (!('messageId' in sent)) {
+      throw new Error('Expected confirmed send to return a communication message');
+    }
     expect(sent).toEqual(
       expect.objectContaining({ status: 'QUEUED', messageId: expect.any(String) }),
     );
@@ -946,6 +949,9 @@ describe('Fase 0 (PostgreSQL + Redis)', () => {
       ctx,
     );
     const scheduled = await operator.confirm(actor, scheduledPending.operationId, ctx);
+    if (!('status' in scheduled)) {
+      throw new Error('Expected confirmed schedule to return its scheduled status');
+    }
     expect(scheduled.status).toBe('SCHEDULED');
     await expect(operator.cancel(actor, scheduled.operationId, ctx)).resolves.toEqual(
       expect.objectContaining({ status: 'CANCELLED' }),
