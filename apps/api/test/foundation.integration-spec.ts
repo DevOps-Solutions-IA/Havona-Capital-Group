@@ -837,7 +837,7 @@ describe('Fase 0 (PostgreSQL + Redis)', () => {
     const preview = await templates.preview(draft.id, actor, ctx);
     expect(preview).toEqual(
       expect.objectContaining({
-        subject: 'Resumen de nuestra reunión',
+        subject: 'Resumen y próximos pasos de nuestra reunión',
         missingVariables: [],
         templateId: master.id,
         templateVersionId: version.id,
