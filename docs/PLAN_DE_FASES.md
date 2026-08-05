@@ -5,6 +5,9 @@
 > Pre-cierre Fase B en construcción: Email Template Core gobierna templates, versiones, variantes,
 > drafts y snapshots; Communications Core conserva la exclusividad del envío.
 
+> Pre-cierre Fase D en construcción: Henry opera drafts y envíos gobernados con confirmación,
+> idempotencia y scheduling corporativo; Communications y Automations conservan la ejecución.
+
 Todas las fases adoptan **HAVONA CAPITAL GROUP** como nombre corporativo oficial. La Home aprobada
 en Fase 1 define el ADN visual que deben interpretar —sin copiar composiciones literalmente— CRM,
 Henry, Agenda, Havona Meet, administración, dashboards, portal cliente, academia, mobile y módulos

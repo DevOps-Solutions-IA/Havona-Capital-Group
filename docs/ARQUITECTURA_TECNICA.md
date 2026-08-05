@@ -23,6 +23,11 @@ HAVONA Email Template Core es la capa transversal de composición y gobierno de 
 Automations y las interfaces producen borradores/versiones mediante este núcleo; el núcleo entrega
 mensajes renderizados a Communications Core y nunca depende de Resend ni de otro provider.
 
+HAVONA Henry Messaging Operator es una capa de orquestación dentro del único Henry Core. Resuelve
+intención y contexto, conserva el draft activo, exige confirmación ligada al snapshot y delega el
+dispatch a Communications Core y la programación a Automations Core. No contiene provider ni crea
+un agente de email independiente.
+
 HAVONA Automations Core es el motor corporativo transversal de workflows. CRM, Calendar, Meet y
 Communications publican eventos mediante un bus interno respaldado por transactional outbox;
 Automations Core decide enrollments, conditions, delays, approvals y actions allowlisted mediante
