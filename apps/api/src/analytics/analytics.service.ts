@@ -71,8 +71,13 @@ export class AnalyticsService {
       ? { assignments: { some: { assigneeId: { in: scope.userIds }, endedAt: null } } }
       : {};
   }
-  private opportunityWhere(scope: AnalyticsScope): Prisma.OpportunityWhereInput {
-    return scope.userIds ? { ownerId: { in: scope.userIds } } : {};
+  private opportunityWhere(scope: AnalyticsScope, query: any = {}): Prisma.OpportunityWhereInput {
+    return {
+      ...(scope.userIds ? { ownerId: { in: scope.userIds } } : {}),
+      ...(query.customerNeedKey ? { customerNeed: { key: query.customerNeedKey } } : {}),
+      ...(query.authorizedProductId ? { authorizedProductId: query.authorizedProductId } : {}),
+      ...(query.authorizedSolutionId ? { authorizedSolutionId: query.authorizedSolutionId } : {}),
+    };
   }
   private periodResult(period: AnalyticsPeriod) {
     return {
@@ -94,7 +99,7 @@ export class AnalyticsService {
     let coverage = complete(0);
     if (key === 'sales.pipeline_value' || key === 'sales.weighted_pipeline') {
       const rows = await this.db.opportunity.findMany({
-        where: { ...this.opportunityWhere(scope), status: 'OPEN' },
+        where: { ...this.opportunityWhere(scope, query), status: 'OPEN' },
         select: { amount: true, currency: true, probability: true },
       });
       const eligible = rows.filter((row) =>
@@ -117,7 +122,10 @@ export class AnalyticsService {
         total: rows.length,
         percentage: rows.length ? Math.round((eligible.length / rows.length) * 10000) / 100 : 100,
         ...(eligible.length < rows.length
-          ? { warning: 'Las oportunidades sin monto/moneda/probabilidad se excluyen; no equivalen a cero.' }
+          ? {
+              warning:
+                'Las oportunidades sin monto/moneda/probabilidad se excluyen; no equivalen a cero.',
+            }
           : {}),
       };
       return {
@@ -134,12 +142,23 @@ export class AnalyticsService {
       };
     }
     if (
-      ['sales.won_value', 'sales.lost_potential_value', 'sales.average_deal_value', 'sales.median_deal_value', 'sales.commit_forecast'].includes(key)
+      [
+        'sales.won_value',
+        'sales.lost_potential_value',
+        'sales.average_deal_value',
+        'sales.median_deal_value',
+        'sales.commit_forecast',
+      ].includes(key)
     ) {
-      const status = key === 'sales.lost_potential_value' ? 'LOST' : key === 'sales.commit_forecast' ? 'OPEN' : 'WON';
+      const status =
+        key === 'sales.lost_potential_value'
+          ? 'LOST'
+          : key === 'sales.commit_forecast'
+            ? 'OPEN'
+            : 'WON';
       const rows = await this.db.opportunity.findMany({
         where: {
-          ...this.opportunityWhere(scope),
+          ...this.opportunityWhere(scope, query),
           status,
           ...(status === 'OPEN'
             ? { forecastCategory: 'COMMIT', expectedCloseDate: range }
@@ -154,19 +173,22 @@ export class AnalyticsService {
         values.push(row.amount!);
         grouped.set(row.currency!, values);
       }
-      const money = [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([currency, values]) => {
-        const ordered = [...values].sort((a, b) => a.comparedTo(b));
-        const total = values.reduce((sum, amount) => sum.add(amount), new Prisma.Decimal(0));
-        const middle = Math.floor(ordered.length / 2);
-        const amount = key === 'sales.average_deal_value'
-          ? total.div(values.length)
-          : key === 'sales.median_deal_value'
-            ? ordered.length % 2
-              ? ordered[middle]!
-              : ordered[middle - 1]!.add(ordered[middle]!).div(2)
-            : total;
-        return { currency, amount: amount.toFixed(2) };
-      });
+      const money = [...grouped.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([currency, values]) => {
+          const ordered = [...values].sort((a, b) => a.comparedTo(b));
+          const total = values.reduce((sum, amount) => sum.add(amount), new Prisma.Decimal(0));
+          const middle = Math.floor(ordered.length / 2);
+          const amount =
+            key === 'sales.average_deal_value'
+              ? total.div(values.length)
+              : key === 'sales.median_deal_value'
+                ? ordered.length % 2
+                  ? ordered[middle]!
+                  : ordered[middle - 1]!.add(ordered[middle]!).div(2)
+                : total;
+          return { currency, amount: amount.toFixed(2) };
+        });
       return {
         metric: key,
         version: definition.version,
@@ -180,7 +202,9 @@ export class AnalyticsService {
           covered: eligible.length,
           total: rows.length,
           percentage: rows.length ? Math.round((eligible.length / rows.length) * 10000) / 100 : 100,
-          ...(eligible.length < rows.length ? { warning: 'Registros sin monto/moneda se excluyen y reducen cobertura.' } : {}),
+          ...(eligible.length < rows.length
+            ? { warning: 'Registros sin monto/moneda se excluyen y reducen cobertura.' }
+            : {}),
         },
         source: definition.source,
         generatedAt: new Date().toISOString(),
@@ -188,15 +212,31 @@ export class AnalyticsService {
     }
     if (key === 'sales.financial_coverage') {
       const [total, covered] = await Promise.all([
-        this.db.opportunity.count({ where: { ...this.opportunityWhere(scope), status: 'OPEN' } }),
-        this.db.opportunity.count({ where: { ...this.opportunityWhere(scope), status: 'OPEN', amount: { not: null }, currency: { not: null } } }),
+        this.db.opportunity.count({
+          where: { ...this.opportunityWhere(scope, query), status: 'OPEN' },
+        }),
+        this.db.opportunity.count({
+          where: {
+            ...this.opportunityWhere(scope, query),
+            status: 'OPEN',
+            amount: { not: null },
+            currency: { not: null },
+          },
+        }),
       ]);
       value = total ? covered / total : null;
       numerator = covered;
       denominator = total;
-      coverage = total ? complete(covered, total) : { status: 'INSUFFICIENT_DATA', covered: 0, total: 0, percentage: null, warning: 'No existen oportunidades abiertas.' };
-    }
-    else if (key === 'crm.prospects.created')
+      coverage = total
+        ? complete(covered, total)
+        : {
+            status: 'INSUFFICIENT_DATA',
+            covered: 0,
+            total: 0,
+            percentage: null,
+            warning: 'No existen oportunidades abiertas.',
+          };
+    } else if (key === 'crm.prospects.created')
       value = await this.db.prospect.count({
         where: { ...this.prospectWhere(scope), createdAt: range },
       });
@@ -209,12 +249,12 @@ export class AnalyticsService {
       });
     else if (key === 'crm.opportunities.created')
       value = await this.db.opportunity.count({
-        where: { ...this.opportunityWhere(scope), createdAt: range },
+        where: { ...this.opportunityWhere(scope, query), createdAt: range },
       });
     else if (key === 'crm.opportunities.won' || key === 'crm.opportunities.lost')
       value = await this.db.opportunity.count({
         where: {
-          ...this.opportunityWhere(scope),
+          ...this.opportunityWhere(scope, query),
           status: key.endsWith('won') ? 'WON' : 'LOST',
           closedAt: range,
         },
@@ -222,11 +262,11 @@ export class AnalyticsService {
     else if (key === 'sales.win_rate') {
       [numerator, denominator] = await Promise.all([
         this.db.opportunity.count({
-          where: { ...this.opportunityWhere(scope), status: 'WON', closedAt: range },
+          where: { ...this.opportunityWhere(scope, query), status: 'WON', closedAt: range },
         }),
         this.db.opportunity.count({
           where: {
-            ...this.opportunityWhere(scope),
+            ...this.opportunityWhere(scope, query),
             status: { in: ['WON', 'LOST'] },
             closedAt: range,
           },
@@ -245,7 +285,7 @@ export class AnalyticsService {
     } else if (key === 'sales.average_cycle_days') {
       const rows = await this.db.opportunity.findMany({
         where: {
-          ...this.opportunityWhere(scope),
+          ...this.opportunityWhere(scope, query),
           status: { in: ['WON', 'LOST'] },
           closedAt: range,
         },
@@ -441,7 +481,7 @@ export class AnalyticsService {
       orderBy: { position: 'asc' },
     });
     const histories = await this.db.opportunityStageHistory.findMany({
-      where: { createdAt: range, opportunity: this.opportunityWhere(scope) },
+      where: { createdAt: range, opportunity: this.opportunityWhere(scope, query) },
       select: { opportunityId: true, newStageId: true, createdAt: true },
     });
     const entered = new Map<string, Set<string>>();
@@ -451,7 +491,7 @@ export class AnalyticsService {
       entered.set(item.newStageId, set);
     });
     const durationRows = await this.db.opportunityStageHistory.findMany({
-      where: { opportunity: this.opportunityWhere(scope) },
+      where: { opportunity: this.opportunityWhere(scope, query) },
       orderBy: [{ opportunityId: 'asc' }, { createdAt: 'asc' }],
       select: { opportunityId: true, newStageId: true, createdAt: true },
     });
@@ -484,13 +524,11 @@ export class AnalyticsService {
       semantics:
         'Cada oportunidad cuenta una vez por etapa dentro del periodo aunque reingrese. Duración usa transiciones consecutivas históricas.',
       stages: rows,
-      leakage: rows
-        .slice(0, -1)
-        .map((row, i) => ({
-          from: row.stage.key,
-          to: rows[i + 1]!.stage.key,
-          count: Math.max(0, row.entered - rows[i + 1]!.entered),
-        })),
+      leakage: rows.slice(0, -1).map((row, i) => ({
+        from: row.stage.key,
+        to: rows[i + 1]!.stage.key,
+        count: Math.max(0, row.entered - rows[i + 1]!.entered),
+      })),
     };
   }
 
@@ -499,11 +537,14 @@ export class AnalyticsService {
       scope = await this.scope(actor, query.consultantId),
       now = new Date();
     const rows = await this.db.opportunity.findMany({
-      where: { ...this.opportunityWhere(scope), status: 'OPEN' },
+      where: { ...this.opportunityWhere(scope, query), status: 'OPEN' },
       include: {
         stage: true,
         owner: { select: { id: true, name: true } },
         prospect: { select: { id: true, name: true } },
+        customerNeed: { select: { key: true, name: true } },
+        authorizedSolution: { select: { id: true, key: true, name: true } },
+        authorizedProduct: { select: { id: true, key: true, name: true, carrier: true } },
         tasks: {
           where: { status: { in: ['PENDING', 'IN_PROGRESS'] } },
           orderBy: { dueAt: 'asc' },
@@ -543,12 +584,18 @@ export class AnalyticsService {
         stage: row.stage,
         owner: row.owner,
         prospect: row.prospect,
+        customerNeed: row.customerNeed,
+        authorizedSolution: row.authorizedSolution,
+        authorizedProduct: row.authorizedProduct,
         inactivityDays,
         riskScore,
         riskLevel: riskScore >= 45 ? 'CRITICAL' : riskScore >= 20 ? 'WARNING' : 'INFO',
         components,
         nextAction: row.tasks[0] ?? null,
-        money: row.amount && row.currency ? { amount: row.amount.toFixed(2), currency: row.currency } : null,
+        money:
+          row.amount && row.currency
+            ? { amount: row.amount.toFixed(2), currency: row.currency }
+            : null,
         probability: row.probability?.toFixed(2) ?? null,
         expectedCloseDate: row.expectedCloseDate?.toISOString().slice(0, 10) ?? null,
         forecastCategory: row.forecastCategory,
@@ -576,7 +623,8 @@ export class AnalyticsService {
           money: [] as Array<{ currency: string; amount: Prisma.Decimal }>,
         };
         current.count += 1;
-        if (row.amount && row.currency) current.money.push({ currency: row.currency, amount: row.amount });
+        if (row.amount && row.currency)
+          current.money.push({ currency: row.currency, amount: row.amount });
         groups.set(row.stage.id, current);
         return groups;
       }, new Map<string, { stageId: string; stageName: string; count: number; money: Array<{ currency: string; amount: Prisma.Decimal }> }>()),
@@ -632,8 +680,12 @@ export class AnalyticsService {
           status: withAmount.length === rows.length ? 'COMPLETE' : 'PARTIAL',
           covered: withAmount.length,
           total: rows.length,
-          percentage: rows.length ? Math.round((withAmount.length / rows.length) * 10000) / 100 : 100,
-          ...(withAmount.length < rows.length ? { warning: 'Monto desconocido no se convierte en cero.' } : {}),
+          percentage: rows.length
+            ? Math.round((withAmount.length / rows.length) * 10000) / 100
+            : 100,
+          ...(withAmount.length < rows.length
+            ? { warning: 'Monto desconocido no se convierte en cero.' }
+            : {}),
         },
       },
       weightedPipeline: {
@@ -643,10 +695,16 @@ export class AnalyticsService {
           covered: weighted.length,
           total: rows.length,
           percentage: rows.length ? Math.round((weighted.length / rows.length) * 10000) / 100 : 100,
-          ...(weighted.length < rows.length ? { warning: 'Probability desconocida se excluye, no se pondera como cero.' } : {}),
+          ...(weighted.length < rows.length
+            ? { warning: 'Probability desconocida se excluye, no se pondera como cero.' }
+            : {}),
         },
       },
-      forecast: { period: this.periodResult(period), categories: forecast, label: 'DETERMINISTIC_NOT_GUARANTEED' },
+      forecast: {
+        period: this.periodResult(period),
+        categories: forecast,
+        label: 'DETERMINISTIC_NOT_GUARANTEED',
+      },
       stageValue,
       agingByValue: agingRanges,
       aging: items,
@@ -690,7 +748,10 @@ export class AnalyticsService {
         businessImpact: item.money ? 'VALUE_RECORDED' : 'UNKNOWN_VALUE',
       })),
       ...pipeline.aging
-        .filter((item: any) => item.expectedCloseDate && item.expectedCloseDate < now.toISOString().slice(0, 10))
+        .filter(
+          (item: any) =>
+            item.expectedCloseDate && item.expectedCloseDate < now.toISOString().slice(0, 10),
+        )
         .map((item: any) => ({
           type: 'EXPECTED_CLOSE_OVERDUE',
           severity: item.money ? 'CRITICAL' : 'WARNING',
@@ -795,9 +856,19 @@ export class AnalyticsService {
 
   async dataQuality(query: any, actor: AnalyticsActor) {
     const scope = await this.scope(actor, query.consultantId),
-      opportunityWhere = this.opportunityWhere(scope),
+      opportunityWhere = this.opportunityWhere(scope, query),
       prospectWhere = this.prospectWhere(scope);
-    const [prospects, opportunities, openOpportunities, withoutOwner, openWithoutTask, missingAmount, missingClose, missingProbability, commitWithoutAmount] = await Promise.all([
+    const [
+      prospects,
+      opportunities,
+      openOpportunities,
+      withoutOwner,
+      openWithoutTask,
+      missingAmount,
+      missingClose,
+      missingProbability,
+      commitWithoutAmount,
+    ] = await Promise.all([
       this.db.prospect.count({ where: prospectWhere }),
       this.db.opportunity.count({ where: opportunityWhere }),
       this.db.opportunity.count({ where: { ...opportunityWhere, status: 'OPEN' } }),
@@ -809,10 +880,23 @@ export class AnalyticsService {
           tasks: { none: { status: { in: ['PENDING', 'IN_PROGRESS'] } } },
         },
       }),
-      this.db.opportunity.count({ where: { ...opportunityWhere, status: 'OPEN', OR: [{ amount: null }, { currency: null }] } }),
-      this.db.opportunity.count({ where: { ...opportunityWhere, status: 'OPEN', expectedCloseDate: null } }),
-      this.db.opportunity.count({ where: { ...opportunityWhere, status: 'OPEN', probability: null } }),
-      this.db.opportunity.count({ where: { ...opportunityWhere, status: 'OPEN', forecastCategory: 'COMMIT', OR: [{ amount: null }, { currency: null }, { expectedCloseDate: null }] } }),
+      this.db.opportunity.count({
+        where: { ...opportunityWhere, status: 'OPEN', OR: [{ amount: null }, { currency: null }] },
+      }),
+      this.db.opportunity.count({
+        where: { ...opportunityWhere, status: 'OPEN', expectedCloseDate: null },
+      }),
+      this.db.opportunity.count({
+        where: { ...opportunityWhere, status: 'OPEN', probability: null },
+      }),
+      this.db.opportunity.count({
+        where: {
+          ...opportunityWhere,
+          status: 'OPEN',
+          forecastCategory: 'COMMIT',
+          OR: [{ amount: null }, { currency: null }, { expectedCloseDate: null }],
+        },
+      }),
     ]);
     const missingSource = 0;
     const checks = [
@@ -836,8 +920,18 @@ export class AnalyticsService {
         total: openOpportunities,
         note: 'Fecha de negocio explícita; no se infiere.',
       },
-      { key: 'opportunity.probability', missing: missingProbability, total: openOpportunities, note: 'Sin política por etapa: probability permanece null salvo captura manual.' },
-      { key: 'opportunity.commit_completeness', missing: commitWithoutAmount, total: openOpportunities, note: 'COMMIT requiere monto, moneda y fecha para forecast.' },
+      {
+        key: 'opportunity.probability',
+        missing: missingProbability,
+        total: openOpportunities,
+        note: 'Sin política por etapa: probability permanece null salvo captura manual.',
+      },
+      {
+        key: 'opportunity.commit_completeness',
+        missing: commitWithoutAmount,
+        total: openOpportunities,
+        note: 'COMMIT requiere monto, moneda y fecha para forecast.',
+      },
     ].map((item) => ({
       ...item,
       coveragePercentage: item.total
@@ -1005,7 +1099,7 @@ export class AnalyticsService {
             : null;
         const target = row.targetValue,
           actualMoney = row.currency
-            ? result?.money?.find((item) => item.currency === row.currency)?.amount ?? null
+            ? (result?.money?.find((item) => item.currency === row.currency)?.amount ?? null)
             : null,
           actual = row.currency
             ? actualMoney
@@ -1029,10 +1123,16 @@ export class AnalyticsService {
             target: target.toFixed(row.currency ? 2 : 4),
             currency: row.currency,
             attainment: actual === null || target.isZero() ? null : actual.div(target).toNumber(),
-            remaining: actual === null ? null : Prisma.Decimal.max(0, target.sub(actual)).toFixed(row.currency ? 2 : 4),
+            remaining:
+              actual === null
+                ? null
+                : Prisma.Decimal.max(0, target.sub(actual)).toFixed(row.currency ? 2 : 4),
             elapsedPeriod: elapsed,
             linearPaceExpected: target.mul(elapsed).toFixed(row.currency ? 2 : 4),
-            gapToPace: actual === null ? null : actual.sub(target.mul(elapsed)).toFixed(row.currency ? 2 : 4),
+            gapToPace:
+              actual === null
+                ? null
+                : actual.sub(target.mul(elapsed)).toFixed(row.currency ? 2 : 4),
             label: 'PACING_NOT_FORECAST',
           },
           evidence: result,
@@ -1080,7 +1180,11 @@ export class AnalyticsService {
   async updateGoal(id: string, input: any, actor: AnalyticsActor, request: any) {
     const existing = await this.db.analyticsGoal.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Meta no encontrada');
-    if (existing.currency && input.targetValue !== undefined && typeof input.targetValue !== 'string')
+    if (
+      existing.currency &&
+      input.targetValue !== undefined &&
+      typeof input.targetValue !== 'string'
+    )
       throw new BadRequestException('La meta monetaria debe enviarse como string decimal');
     if (existing.scopeUserId) await this.scope(actor, existing.scopeUserId);
     const row = await this.db.analyticsGoal.update({
@@ -1146,10 +1250,18 @@ export class AnalyticsService {
             await this.metric('crm.prospects.created', { ...query, consultantId: user.id }, actor)
           ).value,
           opportunities: (
-            await this.metric('crm.opportunities.created', { ...query, consultantId: user.id }, actor)
+            await this.metric(
+              'crm.opportunities.created',
+              { ...query, consultantId: user.id },
+              actor,
+            )
           ).value,
           overdueTasks: (
-            await this.metric('activities.tasks_overdue', { ...query, consultantId: user.id }, actor)
+            await this.metric(
+              'activities.tasks_overdue',
+              { ...query, consultantId: user.id },
+              actor,
+            )
           ).value,
           winRate: (await this.metric('sales.win_rate', { ...query, consultantId: user.id }, actor))
             .value,

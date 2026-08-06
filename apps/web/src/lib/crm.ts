@@ -11,6 +11,9 @@ export type Opportunity = {
   expectedCloseDate?: string | null;
   probability?: string | null;
   forecastCategory?: 'PIPELINE' | 'LIKELY' | 'COMMIT' | 'UPSIDE' | null;
+  customerNeed?: { key: string; name: string } | null;
+  authorizedSolution?: { id: string; key: string; name: string } | null;
+  authorizedProduct?: { id: string; key: string; name: string; carrier?: string } | null;
   stage: Stage;
   owner?: Owner;
   prospect: { id: string; name: string; interest: string; city: string };

@@ -326,6 +326,23 @@ const schemas = {
   resume_cadence: z.object({ enrollmentId: z.string().uuid(), confirmedByUser: z.literal(true) }),
   stop_cadence: z.object({ enrollmentId: z.string().uuid(), confirmedByUser: z.literal(true) }),
   explain_cadence: z.object({ cadenceId: z.string().uuid() }),
+  list_authorized_products: z.object({
+    customerNeedKey: z
+      .enum([
+        'FAMILY_PROTECTION',
+        'INCOME_PROTECTION',
+        'EDUCATION',
+        'RETIREMENT_PENSION_GAP',
+        'CAPITAL_ACCUMULATION',
+        'ACCIDENT_PROTECTION',
+        'CRITICAL_ILLNESS',
+        'CANCER_PROTECTION',
+        'BUSINESS_PARTNER_PROTECTION',
+        'KEY_PERSON',
+        'BUSINESS_CONTINUITY',
+      ])
+      .optional(),
+  }),
 } as const;
 
 type ToolName = keyof typeof schemas;
@@ -1017,6 +1034,12 @@ export class HenryToolsService {
         'Explica versión, pasos, tiempos, límites y condiciones de parada sin iniciar nada.',
       parameters: objectSchema({ cadenceId: { type: 'string' } }, ['cadenceId']),
     },
+    {
+      name: 'list_authorized_products',
+      description:
+        'Consulta exclusivamente necesidades, soluciones y productos PALIG activos autorizados por HAVONA; no aporta afirmaciones contractuales, que requieren Knowledge.',
+      parameters: objectSchema({ customerNeedKey: { type: 'string' } }),
+    },
   ];
 
   constructor(
@@ -1052,6 +1075,57 @@ export class HenryToolsService {
     switch (name) {
       case 'get_prospect_context':
         return this.getProspectContext(context.conversationId);
+      case 'list_authorized_products': {
+        this.requireActor(context);
+        const needs = await this.db.customerNeed.findMany({
+          where: {
+            status: 'ACTIVE',
+            ...(input.customerNeedKey ? { key: input.customerNeedKey } : {}),
+          },
+          orderBy: { key: 'asc' },
+          include: {
+            mappings: {
+              where: { status: 'ACTIVE', solution: { status: 'ACTIVE' } },
+              include: {
+                solution: {
+                  include: {
+                    product: true,
+                  },
+                },
+              },
+            },
+          },
+        });
+        return {
+          carrier: 'PAN_AMERICAN_LIFE_COLOMBIA',
+          needs: needs.map((need) => ({
+            key: need.key,
+            name: need.name,
+            solutions: need.mappings.flatMap(({ solution }) =>
+              !solution.product ||
+              (solution.product.status === 'ACTIVE' &&
+                solution.product.carrier === 'PAN_AMERICAN_LIFE_COLOMBIA')
+                ? [
+                    {
+                      id: solution.id,
+                      key: solution.key,
+                      name: solution.name,
+                      product: solution.product
+                        ? {
+                            id: solution.product.id,
+                            key: solution.product.key,
+                            name: solution.product.name,
+                          }
+                        : null,
+                    },
+                  ]
+                : [],
+            ),
+          })),
+          knowledgeBoundary:
+            'La autorización de catálogo no sustituye evidencia documental PUBLISHED de Knowledge Core.',
+        };
+      }
       case 'create_or_update_prospect':
         return this.createProspect(input, context);
       case 'register_interaction':

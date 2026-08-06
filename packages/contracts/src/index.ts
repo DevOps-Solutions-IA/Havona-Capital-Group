@@ -173,9 +173,39 @@ export const opportunityListQuerySchema = z.object({
   ownerId: uuid.optional(),
   status: z.enum(['OPEN', 'WON', 'LOST', 'CANCELLED']).optional(),
   priority: crmPriority.optional(),
+  customerNeedKey: z
+    .enum([
+      'FAMILY_PROTECTION',
+      'INCOME_PROTECTION',
+      'EDUCATION',
+      'RETIREMENT_PENSION_GAP',
+      'CAPITAL_ACCUMULATION',
+      'ACCIDENT_PROTECTION',
+      'CRITICAL_ILLNESS',
+      'CANCER_PROTECTION',
+      'BUSINESS_PARTNER_PROTECTION',
+      'KEY_PERSON',
+      'BUSINESS_CONTINUITY',
+    ])
+    .optional(),
+  authorizedSolutionId: uuid.optional(),
+  authorizedProductId: uuid.optional(),
 });
 export const opportunityCurrencySchema = z.enum(['COP', 'USD']);
 export const opportunityForecastCategorySchema = z.enum(['PIPELINE', 'LIKELY', 'COMMIT', 'UPSIDE']);
+export const customerNeedKeySchema = z.enum([
+  'FAMILY_PROTECTION',
+  'INCOME_PROTECTION',
+  'EDUCATION',
+  'RETIREMENT_PENSION_GAP',
+  'CAPITAL_ACCUMULATION',
+  'ACCIDENT_PROTECTION',
+  'CRITICAL_ILLNESS',
+  'CANCER_PROTECTION',
+  'BUSINESS_PARTNER_PROTECTION',
+  'KEY_PERSON',
+  'BUSINESS_CONTINUITY',
+]);
 export const moneyAmountSchema = z
   .string()
   .regex(/^\d{1,17}(?:\.\d{1,2})?$/, 'Monto monetario inválido')
@@ -195,8 +225,18 @@ export const createOpportunitySchema = z.object({
   prospectId: uuid,
   title: plainText(160),
   priority: crmPriority.default('MEDIUM'),
+  customerNeedKey: customerNeedKeySchema.nullable().optional(),
+  authorizedSolutionId: uuid.nullable().optional(),
+  authorizedProductId: uuid.nullable().optional(),
   ...opportunityFinancialFields,
 });
+export const updateOpportunityCommercialContextSchema = z
+  .object({
+    customerNeedKey: customerNeedKeySchema.nullable().optional(),
+    authorizedSolutionId: uuid.nullable().optional(),
+    authorizedProductId: uuid.nullable().optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, 'Sin cambios de contexto comercial');
 export const updateOpportunityFinancialsSchema = z.object({
   ...opportunityFinancialFields,
   reason: optionalPlainText(500),

@@ -72,6 +72,85 @@ export class CrmService {
     if (!linked)
       throw new UnprocessableEntityException('La oportunidad no pertenece al prospecto indicado');
   }
+  private async resolveCommercialContext(
+    input: {
+      customerNeedKey?: string | null;
+      authorizedSolutionId?: string | null;
+      authorizedProductId?: string | null;
+    },
+    db: DbClient = this.db,
+  ) {
+    const customerNeed = input.customerNeedKey
+      ? await db.customerNeed.findFirst({
+          where: { key: input.customerNeedKey as any, status: 'ACTIVE' },
+          select: { id: true, key: true },
+        })
+      : null;
+    if (input.customerNeedKey && !customerNeed)
+      throw new UnprocessableEntityException(
+        'La necesidad no pertenece a la taxonomía PALIG activa',
+      );
+    const requestedProduct = input.authorizedProductId
+      ? await db.authorizedProduct.findFirst({
+          where: {
+            id: input.authorizedProductId,
+            carrier: 'PAN_AMERICAN_LIFE_COLOMBIA',
+            status: 'ACTIVE',
+          },
+          select: { id: true },
+        })
+      : null;
+    if (input.authorizedProductId && !requestedProduct)
+      throw new UnprocessableEntityException(
+        'Producto no autorizado para comercialización en HAVONA',
+      );
+    const solution = input.authorizedSolutionId
+      ? await db.authorizedSolution.findFirst({
+          where: { id: input.authorizedSolutionId, status: 'ACTIVE' },
+          include: {
+            product: { select: { id: true, carrier: true, status: true } },
+            needMappings: {
+              where: { status: 'ACTIVE' },
+              select: { customerNeedId: true },
+            },
+          },
+        })
+      : null;
+    if (input.authorizedSolutionId && !solution)
+      throw new UnprocessableEntityException(
+        'Solución no autorizada para comercialización en HAVONA',
+      );
+    if (solution && !customerNeed)
+      throw new UnprocessableEntityException(
+        'Una solución autorizada requiere necesidad de cliente',
+      );
+    if (
+      solution &&
+      !solution.needMappings.some((mapping) => mapping.customerNeedId === customerNeed!.id)
+    )
+      throw new UnprocessableEntityException(
+        'La solución no está autorizada para la necesidad indicada',
+      );
+    if (
+      solution?.product &&
+      (solution.product.carrier !== 'PAN_AMERICAN_LIFE_COLOMBIA' ||
+        solution.product.status !== 'ACTIVE')
+    )
+      throw new UnprocessableEntityException(
+        'La solución referencia un producto no comercializable',
+      );
+    if (solution?.productId && requestedProduct && solution.productId !== requestedProduct.id)
+      throw new UnprocessableEntityException('Producto y solución autorizada no corresponden');
+    if (solution && !solution.productId && requestedProduct)
+      throw new UnprocessableEntityException(
+        'La solución aún no tiene producto PALIG autorizado asociado',
+      );
+    return {
+      customerNeedId: customerNeed?.id ?? null,
+      authorizedSolutionId: solution?.id ?? null,
+      authorizedProductId: solution?.productId ?? requestedProduct?.id ?? null,
+    };
+  }
   private context(request: any): AuditContext {
     return {
       actorUserId: request.auth.user.id,
@@ -276,6 +355,9 @@ export class CrmService {
       ownerId: query.ownerId,
       status: query.status,
       priority: query.priority,
+      customerNeed: query.customerNeedKey ? { key: query.customerNeedKey } : undefined,
+      authorizedSolutionId: query.authorizedSolutionId,
+      authorizedProductId: query.authorizedProductId,
     };
     const [data, total] = await this.db.$transaction([
       this.db.opportunity.findMany({
@@ -287,6 +369,9 @@ export class CrmService {
           stage: true,
           prospect: { select: { id: true, name: true, interest: true, city: true } },
           owner: { select: { id: true, name: true } },
+          customerNeed: true,
+          authorizedSolution: true,
+          authorizedProduct: true,
         },
       }),
       this.db.opportunity.count({ where }),
@@ -305,6 +390,7 @@ export class CrmService {
     if (input.amount && !input.currency)
       throw new UnprocessableEntityException('La moneda es obligatoria cuando existe monto');
     const created = await this.db.$transaction(async (tx) => {
+      const commercialContext = await this.resolveCommercialContext(input, tx);
       const stage = await tx.pipelineStage.findFirstOrThrow({
         where: { isActive: true },
         orderBy: { position: 'asc' },
@@ -319,6 +405,7 @@ export class CrmService {
           ownerId: assignment?.assigneeId,
           title: input.title,
           priority: input.priority,
+          ...commercialContext,
           amount: input.amount ? new Prisma.Decimal(input.amount) : null,
           currency: input.amount ? input.currency : null,
           expectedCloseDate,
@@ -372,7 +459,12 @@ export class CrmService {
         'Opportunity',
         row.id,
         this.context(request),
-        { prospectId: input.prospectId, stageId: stage.id, financialFields: initialFinancials },
+        {
+          prospectId: input.prospectId,
+          stageId: stage.id,
+          financialFields: initialFinancials,
+          commercialContext,
+        },
         tx,
       );
       return row;
@@ -412,8 +504,65 @@ export class CrmService {
           orderBy: { createdAt: 'desc' },
           include: { changedBy: { select: { id: true, name: true } } },
         },
+        customerNeed: true,
+        authorizedSolution: true,
+        authorizedProduct: true,
       },
     });
+  }
+  async updateOpportunityCommercialContext(id: string, input: any, actor: Actor, request: any) {
+    const current = await this.opportunity(id, actor);
+    const existing = await this.db.opportunity.findUniqueOrThrow({
+      where: { id },
+      include: { customerNeed: true },
+    });
+    const desired = {
+      customerNeedKey:
+        input.customerNeedKey === undefined
+          ? (existing.customerNeed?.key ?? null)
+          : input.customerNeedKey,
+      authorizedSolutionId:
+        input.authorizedSolutionId === undefined
+          ? existing.authorizedSolutionId
+          : input.authorizedSolutionId,
+      authorizedProductId:
+        input.authorizedProductId === undefined
+          ? existing.authorizedProductId
+          : input.authorizedProductId,
+    };
+    const { updated, context } = await this.db.$transaction(async (tx) => {
+      const resolved = await this.resolveCommercialContext(desired, tx);
+      const row = await tx.opportunity.update({ where: { id }, data: resolved });
+      await this.audit.record(
+        'CRM_OPPORTUNITY_COMMERCIAL_CONTEXT_UPDATED',
+        'Opportunity',
+        id,
+        this.context(request),
+        {
+          previous: {
+            customerNeedId: existing.customerNeedId,
+            authorizedSolutionId: existing.authorizedSolutionId,
+            authorizedProductId: existing.authorizedProductId,
+          },
+          next: resolved,
+        },
+        tx,
+      );
+      return { updated: row, context: resolved };
+    });
+    await this.eventBus?.publish({
+      eventId: `opportunity:commercial-context:${id}:${updated.updatedAt.toISOString()}`,
+      type: 'OPPORTUNITY_COMMERCIAL_CONTEXT_UPDATED',
+      entityType: 'Opportunity',
+      entityId: id,
+      actorUserId: actor.id,
+      payload: {
+        opportunityId: id,
+        prospectId: current.prospectId,
+        changedFields: Object.keys(context),
+      },
+    });
+    return updated;
   }
   async updateOpportunityFinancials(id: string, input: any, actor: Actor, request: any) {
     const current = await this.opportunity(id, actor);
@@ -428,7 +577,9 @@ export class CrmService {
           ? null
           : new Prisma.Decimal(input.amount);
     const currency = amount
-      ? (input.currency === undefined ? current.currency : input.currency)
+      ? input.currency === undefined
+        ? current.currency
+        : input.currency
       : null;
     if (amount && !currency)
       throw new UnprocessableEntityException('La moneda es obligatoria cuando existe monto');
@@ -503,7 +654,13 @@ export class CrmService {
         'Opportunity',
         id,
         this.context(request),
-        { changes: changes.map((field) => ({ field, oldValue: before[field as keyof typeof before], newValue: after[field as keyof typeof after] })) },
+        {
+          changes: changes.map((field) => ({
+            field,
+            oldValue: before[field as keyof typeof before],
+            newValue: after[field as keyof typeof after],
+          })),
+        },
         tx,
       );
       return row;

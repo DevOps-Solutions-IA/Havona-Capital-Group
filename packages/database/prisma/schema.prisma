@@ -186,6 +186,33 @@ enum OpportunityFinancialSource {
   EXTERNAL_FUTURE
 }
 
+enum PaligCarrier {
+  PAN_AMERICAN_LIFE_COLOMBIA
+}
+
+enum PaligCatalogStatus {
+  DRAFT
+  REVIEW
+  APPROVED
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum CustomerNeedKey {
+  FAMILY_PROTECTION
+  INCOME_PROTECTION
+  EDUCATION
+  RETIREMENT_PENSION_GAP
+  CAPITAL_ACCUMULATION
+  ACCIDENT_PROTECTION
+  CRITICAL_ILLNESS
+  CANCER_PROTECTION
+  BUSINESS_PARTNER_PROTECTION
+  KEY_PERSON
+  BUSINESS_CONTINUITY
+}
+
 enum TaskStatus {
   PENDING
   IN_PROGRESS
@@ -319,12 +346,18 @@ model Opportunity {
   forecastCategorySource OpportunityFinancialSource?   @map("forecast_category_source")
   financialUpdatedAt     DateTime?                     @map("financial_updated_at")
   financialUpdatedById   String?                       @map("financial_updated_by_id") @db.Uuid
+  customerNeedId         String?                       @map("customer_need_id") @db.Uuid
+  authorizedSolutionId   String?                       @map("authorized_solution_id") @db.Uuid
+  authorizedProductId    String?                       @map("authorized_product_id") @db.Uuid
   createdAt              DateTime                      @default(now()) @map("created_at")
   updatedAt              DateTime                      @updatedAt @map("updated_at")
   prospect               Prospect                      @relation(fields: [prospectId], references: [id], onDelete: Restrict)
   stage                  PipelineStage                 @relation(fields: [stageId], references: [id], onDelete: Restrict)
   owner                  User?                         @relation("OpportunityOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   financialUpdatedBy     User?                         @relation("OpportunityFinancialUpdatedBy", fields: [financialUpdatedById], references: [id], onDelete: SetNull)
+  customerNeed           CustomerNeed?                 @relation(fields: [customerNeedId], references: [id], onDelete: Restrict)
+  authorizedSolution     AuthorizedSolution?           @relation(fields: [authorizedSolutionId], references: [id], onDelete: Restrict)
+  authorizedProduct      AuthorizedProduct?            @relation(fields: [authorizedProductId], references: [id], onDelete: Restrict)
   stageHistory           OpportunityStageHistory[]
   tasks                  Task[]
   notes                  Note[]
@@ -342,8 +375,72 @@ model Opportunity {
   @@index([status, expectedCloseDate])
   @@index([forecastCategory, expectedCloseDate])
   @@index([currency, status])
+  @@index([customerNeedId, status])
+  @@index([authorizedSolutionId, status])
+  @@index([authorizedProductId, status])
   @@index([prospectId, createdAt])
   @@map("opportunities")
+}
+
+model CustomerNeed {
+  id            String                @id @default(uuid()) @db.Uuid
+  key           CustomerNeedKey       @unique
+  name          String                @db.VarChar(120)
+  status        PaligCatalogStatus    @default(DRAFT)
+  createdAt     DateTime              @default(now()) @map("created_at")
+  updatedAt     DateTime              @updatedAt @map("updated_at")
+  mappings      NeedSolutionMapping[]
+  opportunities Opportunity[]
+
+  @@index([status, key])
+  @@map("customer_needs")
+}
+
+model AuthorizedProduct {
+  id            String               @id @default(uuid()) @db.Uuid
+  key           String               @unique @db.VarChar(80)
+  name          String               @db.VarChar(160)
+  carrier       PaligCarrier
+  status        PaligCatalogStatus   @default(DRAFT)
+  reviewNote    String?              @map("review_note") @db.VarChar(500)
+  createdAt     DateTime             @default(now()) @map("created_at")
+  updatedAt     DateTime             @updatedAt @map("updated_at")
+  solutions     AuthorizedSolution[]
+  opportunities Opportunity[]
+
+  @@index([carrier, status])
+  @@map("authorized_products")
+}
+
+model AuthorizedSolution {
+  id            String                @id @default(uuid()) @db.Uuid
+  key           String                @unique @db.VarChar(80)
+  name          String                @db.VarChar(160)
+  productId     String?               @map("product_id") @db.Uuid
+  status        PaligCatalogStatus    @default(DRAFT)
+  reviewNote    String?               @map("review_note") @db.VarChar(500)
+  createdAt     DateTime              @default(now()) @map("created_at")
+  updatedAt     DateTime              @updatedAt @map("updated_at")
+  product       AuthorizedProduct?    @relation(fields: [productId], references: [id], onDelete: Restrict)
+  needMappings  NeedSolutionMapping[]
+  opportunities Opportunity[]
+
+  @@index([productId, status])
+  @@map("authorized_solutions")
+}
+
+model NeedSolutionMapping {
+  customerNeedId String             @map("customer_need_id") @db.Uuid
+  solutionId     String             @map("solution_id") @db.Uuid
+  status         PaligCatalogStatus @default(DRAFT)
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+  customerNeed   CustomerNeed       @relation(fields: [customerNeedId], references: [id], onDelete: Cascade)
+  solution       AuthorizedSolution @relation(fields: [solutionId], references: [id], onDelete: Cascade)
+
+  @@id([customerNeedId, solutionId])
+  @@index([solutionId, status])
+  @@map("need_solution_mappings")
 }
 
 model OpportunityFinancialHistory {

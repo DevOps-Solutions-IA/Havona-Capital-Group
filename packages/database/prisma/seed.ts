@@ -257,6 +257,59 @@ async function main() {
       update: { name, position: index + 1, isActive: true },
       create: { key, name, position: index + 1 },
     });
+  const customerNeeds = [
+    ['FAMILY_PROTECTION', 'Protección familiar'],
+    ['INCOME_PROTECTION', 'Protección de ingresos'],
+    ['EDUCATION', 'Educación'],
+    ['RETIREMENT_PENSION_GAP', 'Retiro y brecha pensional'],
+    ['CAPITAL_ACCUMULATION', 'Acumulación de capital'],
+    ['ACCIDENT_PROTECTION', 'Protección ante accidentes'],
+    ['CRITICAL_ILLNESS', 'Enfermedades graves'],
+    ['CANCER_PROTECTION', 'Protección frente al cáncer'],
+    ['BUSINESS_PARTNER_PROTECTION', 'Protección entre socios'],
+    ['KEY_PERSON', 'Persona clave'],
+    ['BUSINESS_CONTINUITY', 'Continuidad empresarial'],
+  ] as const;
+  for (const [key, name] of customerNeeds)
+    await db.customerNeed.upsert({
+      where: { key },
+      update: { name },
+      create: { key, name, status: 'DRAFT' },
+    });
+  for (const [key, name] of [
+    ['palig.vida-flex-max', 'Vida Flex MAX'],
+    ['palig.accidentes-personales', 'Accidentes Personales'],
+    ['palig.enfermedades-graves', 'Enfermedades Graves'],
+    ['palig.seguro-individual-cancer', 'Seguro Individual de Cáncer'],
+  ] as const)
+    await db.authorizedProduct.upsert({
+      where: { key },
+      update: { name },
+      create: {
+        key,
+        name,
+        carrier: 'PAN_AMERICAN_LIFE_COLOMBIA',
+        status: 'DRAFT',
+        reviewNote: 'CATALOG_REVIEW_REQUIRED; sin contenido contractual cargado.',
+      },
+    });
+  for (const [key, name] of [
+    ['consultative.education', 'Planeación consultiva para educación'],
+    ['consultative.retirement', 'Planeación consultiva para retiro y brecha pensional'],
+    ['consultative.business-partners', 'Protección consultiva entre socios'],
+    ['consultative.key-person', 'Protección consultiva de persona clave'],
+    ['consultative.business-continuity', 'Continuidad empresarial consultiva'],
+  ] as const)
+    await db.authorizedSolution.upsert({
+      where: { key },
+      update: { name },
+      create: {
+        key,
+        name,
+        status: 'DRAFT',
+        reviewNote: 'SOLUTION_MAPPING_REVIEW_REQUIRED; no implica producto autorizado.',
+      },
+    });
   const email = process.env.INITIAL_SUPER_ADMIN_EMAIL?.trim().toLowerCase();
   const password = process.env.INITIAL_SUPER_ADMIN_PASSWORD;
   const name = process.env.INITIAL_SUPER_ADMIN_NAME?.trim() || 'Super Administrador';
