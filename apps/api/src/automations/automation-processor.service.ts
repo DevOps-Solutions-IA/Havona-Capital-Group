@@ -5,6 +5,7 @@ import Redis from 'ioredis';
 import { z } from 'zod';
 import { AutomationService } from './automation.service';
 import { HenryMessagingOperatorService } from '../henry/henry-messaging-operator.service';
+import { CadenceService } from '../cadences/cadence.service';
 
 @Injectable()
 export class AutomationProcessorService implements OnModuleInit, OnApplicationShutdown {
@@ -54,6 +55,10 @@ export class AutomationProcessorService implements OnModuleInit, OnApplicationSh
       return this.moduleRef
         .get(HenryMessagingOperatorService, { strict: false })
         .executeScheduled(z.string().uuid().parse(job.data?.operationId));
+    if (job.name === 'automation.cadence-step')
+      return this.moduleRef
+        .get(CadenceService, { strict: false })
+        .executeStep(z.string().uuid().parse(job.data?.stepExecutionId));
     throw new Error('AUTOMATION_INVALID_TRIGGER');
   }
   async onApplicationShutdown() {

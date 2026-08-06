@@ -17,6 +17,7 @@ describe('HAVONA Automations Core', () => {
     emailTemplates: any = { assertAutomationDispatch: jest.fn() },
     henry: any = { reasonForAutomation: jest.fn() };
   const eventBus: any = { publish: jest.fn() };
+  const cadences: any = { handleDomainEvent: jest.fn() };
   const service = new AutomationService(
     db,
     audit,
@@ -27,6 +28,7 @@ describe('HAVONA Automations Core', () => {
     emailTemplates,
     henry,
     eventBus,
+    cadences,
   );
 
   it('acepta únicamente triggers y actions allowlisted', () => {

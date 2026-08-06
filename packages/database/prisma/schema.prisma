@@ -72,6 +72,8 @@ model User {
   emailSignatures                EmailSignature[]
   emailTemplateUsages            EmailTemplateUsage[]
   henryMessagingOperations       HenryMessagingOperation[]
+  cadencesCreated                CommunicationCadence[]    @relation("CadenceCreator")
+  cadenceEnrollments             CadenceEnrollment[]       @relation("CadenceEnrollmentActor")
 
   @@map("users")
 }
@@ -140,6 +142,7 @@ model Prospect {
   calendarEvents           CalendarEventLink[]
   meetings                 Meeting[]
   communicationThreads     CommunicationThread[]
+  cadenceEnrollments       CadenceEnrollment[]
 
   @@index([status, createdAt])
   @@index([sourceId, createdAt])
@@ -232,6 +235,7 @@ model Company {
   meetings             Meeting[]
   communicationThreads CommunicationThread[]
   emailDrafts          EmailTemplateDraft[]
+  cadenceEnrollments   CadenceEnrollment[]
 
   @@index([name])
   @@map("crm_companies")
@@ -297,6 +301,7 @@ model Opportunity {
   meetings             Meeting[]
   communicationThreads CommunicationThread[]
   emailDrafts          EmailTemplateDraft[]
+  cadenceEnrollments   CadenceEnrollment[]
 
   @@index([stageId, status, updatedAt])
   @@index([ownerId, status, updatedAt])
@@ -1363,6 +1368,7 @@ model CommunicationThread {
   assignments        CommunicationAssignment[]
   consent            CommunicationConsent?
   emailDrafts        EmailTemplateDraft[]
+  cadenceEnrollments CadenceEnrollment[]
 
   @@unique([provider, providerThreadId])
   @@index([channel, status, lastMessageAt])
@@ -1778,6 +1784,152 @@ model AutomationApproval {
   @@unique([executionId, stepOrder])
   @@index([approverUserId, status, expiresAt])
   @@map("automation_approvals")
+}
+
+enum CadenceStatus {
+  DRAFT
+  REVIEW
+  APPROVED
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum CadenceEnrollmentStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  STOPPED
+  FAILED
+  EXPIRED
+}
+
+enum CadenceStepExecutionStatus {
+  SCHEDULED
+  CLAIMED
+  DISPATCHING
+  EXECUTED
+  SKIPPED
+  CANCELLED
+  FAILED
+}
+
+model CommunicationCadence {
+  id              String           @id @default(uuid()) @db.Uuid
+  key             String           @unique @db.VarChar(120)
+  name            String           @db.VarChar(160)
+  purpose         String           @db.VarChar(500)
+  status          CadenceStatus    @default(DRAFT)
+  ownerScope      String           @default("CORPORATE") @map("owner_scope") @db.VarChar(40)
+  createdById     String           @map("created_by_id") @db.Uuid
+  activeVersionId String?          @unique @map("active_version_id") @db.Uuid
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  createdBy       User             @relation("CadenceCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  versions        CadenceVersion[] @relation("CadenceVersions")
+  activeVersion   CadenceVersion?  @relation("CadenceActiveVersion", fields: [activeVersionId], references: [id], onDelete: SetNull)
+
+  @@index([status, updatedAt])
+  @@map("communication_cadences")
+}
+
+model CadenceVersion {
+  id                   String                @id @default(uuid()) @db.Uuid
+  cadenceId            String                @map("cadence_id") @db.Uuid
+  version              Int
+  status               CadenceStatus         @default(DRAFT)
+  allowedRoles         String[]              @map("allowed_roles")
+  channelPolicy        Json                  @map("channel_policy")
+  enrollmentConditions Json                  @map("enrollment_conditions")
+  stopConditions       String[]              @map("stop_conditions")
+  approvalPolicy       String                @default("APPROVAL_REQUIRED") @map("approval_policy") @db.VarChar(40)
+  frequencyPolicy      Json                  @map("frequency_policy")
+  sendingWindow        Json                  @map("sending_window")
+  maxLifetimeDays      Int                   @default(30) @map("max_lifetime_days")
+  createdAt            DateTime              @default(now()) @map("created_at")
+  approvedAt           DateTime?             @map("approved_at")
+  cadence              CommunicationCadence  @relation("CadenceVersions", fields: [cadenceId], references: [id], onDelete: Cascade)
+  activeFor            CommunicationCadence? @relation("CadenceActiveVersion")
+  steps                CadenceStep[]
+  enrollments          CadenceEnrollment[]
+
+  @@unique([cadenceId, version])
+  @@index([status, createdAt])
+  @@map("cadence_versions")
+}
+
+model CadenceStep {
+  id               String                 @id @default(uuid()) @db.Uuid
+  versionId        String                 @map("version_id") @db.Uuid
+  stepOrder        Int                    @map("step_order")
+  type             String                 @db.VarChar(40)
+  delayMinutes     Int                    @default(0) @map("delay_minutes")
+  templateKey      String?                @map("template_key") @db.VarChar(120)
+  approvalMode     AutomationApprovalMode @default(REQUIRES_CONFIRMATION) @map("approval_mode")
+  condition        Json?
+  requiredEvidence String[]               @map("required_evidence")
+  definition       Json
+  version          CadenceVersion         @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  executions       CadenceStepExecution[]
+
+  @@unique([versionId, stepOrder])
+  @@map("cadence_steps")
+}
+
+model CadenceEnrollment {
+  id                    String                  @id @default(uuid()) @db.Uuid
+  versionId             String                  @map("version_id") @db.Uuid
+  prospectId            String?                 @map("prospect_id") @db.Uuid
+  opportunityId         String?                 @map("opportunity_id") @db.Uuid
+  communicationThreadId String?                 @map("communication_thread_id") @db.Uuid
+  enrolledById          String                  @map("enrolled_by_id") @db.Uuid
+  status                CadenceEnrollmentStatus @default(ACTIVE)
+  currentStep           Int                     @default(0) @map("current_step")
+  idempotencyKey        String                  @unique @map("idempotency_key") @db.VarChar(190)
+  timezone              String                  @default("America/Bogota") @db.VarChar(80)
+  nextStepAt            DateTime?               @map("next_step_at")
+  pausedAt              DateTime?               @map("paused_at")
+  expiresAt             DateTime                @map("expires_at")
+  stopReason            String?                 @map("stop_reason") @db.VarChar(60)
+  stoppedAt             DateTime?               @map("stopped_at")
+  createdAt             DateTime                @default(now()) @map("created_at")
+  updatedAt             DateTime                @updatedAt @map("updated_at")
+  version               CadenceVersion          @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  prospect              Prospect?               @relation(fields: [prospectId], references: [id], onDelete: Restrict)
+  opportunity           Opportunity?            @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
+  communicationThread   CommunicationThread?    @relation(fields: [communicationThreadId], references: [id], onDelete: SetNull)
+  enrolledBy            User                    @relation("CadenceEnrollmentActor", fields: [enrolledById], references: [id], onDelete: Restrict)
+  steps                 CadenceStepExecution[]
+  company               Company?                @relation(fields: [companyId], references: [id])
+  companyId             String?                 @db.Uuid
+
+  @@index([prospectId, status, nextStepAt])
+  @@index([opportunityId, status, nextStepAt])
+  @@index([communicationThreadId, status])
+  @@index([enrolledById, status, updatedAt])
+  @@map("cadence_enrollments")
+}
+
+model CadenceStepExecution {
+  id              String                     @id @default(uuid()) @db.Uuid
+  enrollmentId    String                     @map("enrollment_id") @db.Uuid
+  stepId          String                     @map("step_id") @db.Uuid
+  status          CadenceStepExecutionStatus @default(SCHEDULED)
+  scheduledAt     DateTime                   @map("scheduled_at")
+  claimedAt       DateTime?                  @map("claimed_at")
+  executedAt      DateTime?                  @map("executed_at")
+  bullJobId       String?                    @unique @map("bull_job_id") @db.VarChar(255)
+  idempotencyKey  String                     @unique @map("idempotency_key") @db.VarChar(190)
+  communicationId String?                    @map("communication_id") @db.Uuid
+  failureCode     String?                    @map("failure_code") @db.VarChar(80)
+  result          Json?
+  createdAt       DateTime                   @default(now()) @map("created_at")
+  enrollment      CadenceEnrollment          @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  step            CadenceStep                @relation(fields: [stepId], references: [id], onDelete: Restrict)
+
+  @@unique([enrollmentId, stepId])
+  @@index([status, scheduledAt])
+  @@map("cadence_step_executions")
 }
 
 enum AnalyticsGoalStatus {

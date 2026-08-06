@@ -16,6 +16,7 @@ import { EmailTemplateService } from '../email-templates/email-template.service'
 import { HenryService } from '../henry/henry.service';
 import { AutomationQueueService } from './automation-queue.service';
 import { AutomationEventBus } from './automation-event-bus.service';
+import { CadenceService } from '../cadences/cadence.service';
 import {
   AutomationActor,
   AutomationError,
@@ -43,6 +44,7 @@ export class AutomationService {
     private emailTemplates: EmailTemplateService,
     @Inject(forwardRef(() => HenryService)) private henry: HenryService,
     private eventBus: AutomationEventBus,
+    private cadences: CadenceService,
   ) {
     this.dbx = db as any;
   }
@@ -409,6 +411,7 @@ export class AutomationService {
         }),
         this.dbx.automationEvent.update({ where: { eventId }, data: { processedAt: new Date() } }),
       ]);
+      await this.cadences.handleDomainEvent(eventId);
       return { processed: true, executions };
     } catch (error) {
       await this.dbx.domainOutboxEvent.update({

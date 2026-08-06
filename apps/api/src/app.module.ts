@@ -83,6 +83,8 @@ import { EmailTemplateController } from './email-templates/email-template.contro
 import { EmailTemplateService } from './email-templates/email-template.service';
 import { EmailTemplateRenderer } from './email-templates/email-template.renderer';
 import { HenryMessagingOperatorService } from './henry/henry-messaging-operator.service';
+import { CadenceController } from './cadences/cadence.controller';
+import { CadenceService } from './cadences/cadence.service';
 
 @Module({
   imports: [
@@ -112,6 +114,7 @@ import { HenryMessagingOperatorService } from './henry/henry-messaging-operator.
     HenryMemoryController,
     TrainingController,
     EmailTemplateController,
+    CadenceController,
   ],
   providers: [
     PrismaService,
@@ -174,6 +177,7 @@ import { HenryMessagingOperatorService } from './henry/henry-messaging-operator.
     EmailTemplateRenderer,
     EmailTemplateService,
     HenryMessagingOperatorService,
+    CadenceService,
     HenryToolsService,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: AuthGuard },

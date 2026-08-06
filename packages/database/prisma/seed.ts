@@ -435,6 +435,84 @@ async function main() {
         },
       },
     });
+  const cadenceLibrary = [
+    [
+      'prospecting.followup_basic',
+      'Seguimiento básico de prospección',
+      'Seguimiento respetuoso después del primer contacto',
+    ],
+    [
+      'proposal.followup_basic',
+      'Seguimiento básico de propuesta',
+      'Seguimiento de una propuesta con evidencia de envío',
+    ],
+    [
+      'meeting.post_meeting',
+      'Seguimiento posterior a reunión',
+      'Continuidad posterior a una reunión confirmada',
+    ],
+    [
+      'documents.pending',
+      'Documentos pendientes',
+      'Solicitud controlada de documentación pendiente',
+    ],
+    ['service.review', 'Revisión de servicio', 'Seguimiento periódico de servicio autorizado'],
+    [
+      'reactivation.basic',
+      'Reactivación conservadora',
+      'Reactivación limitada de prospectos inactivos con consentimiento',
+    ],
+  ] as const;
+  for (const [key, cadenceName, purpose] of cadenceLibrary) {
+    const cadence = await db.communicationCadence.upsert({
+      where: { key },
+      update: { name: cadenceName, purpose },
+      create: { key, name: cadenceName, purpose, status: 'DRAFT', createdById: user.id },
+    });
+    const version = await db.cadenceVersion.findUnique({
+      where: { cadenceId_version: { cadenceId: cadence.id, version: 1 } },
+    });
+    if (!version)
+      await db.cadenceVersion.create({
+        data: {
+          cadenceId: cadence.id,
+          version: 1,
+          status: 'DRAFT',
+          allowedRoles: ['CONSULTOR', 'GERENTE', 'ADMIN', 'SUPER_ADMIN'],
+          channelPolicy: { channels: ['EMAIL'] },
+          enrollmentConditions: { consentRequired: true, duplicateActiveEnrollment: false },
+          stopConditions: [
+            'CUSTOMER_REPLIED',
+            'OPT_OUT',
+            'SUPPRESSED',
+            'HUMAN_TAKEOVER',
+            'THREAD_PAUSED',
+            'THREAD_CLOSED',
+            'OPPORTUNITY_CLOSED',
+            'MANUAL_STOP',
+          ],
+          approvalPolicy: 'APPROVAL_REQUIRED',
+          frequencyPolicy: { maxPerDay: 1, maxPerSevenDays: 3, minimumIntervalMinutes: 1440 },
+          sendingWindow: {
+            days: [1, 2, 3, 4, 5],
+            start: '08:00',
+            end: '18:00',
+            timezone: 'America/Bogota',
+          },
+          maxLifetimeDays: 30,
+          steps: {
+            create: {
+              stepOrder: 1,
+              type: 'END',
+              delayMinutes: 0,
+              approvalMode: 'HUMAN_ONLY',
+              requiredEvidence: [],
+              definition: { structuralOnly: true },
+            },
+          },
+        },
+      });
+  }
 }
 main()
   .catch((e) => {

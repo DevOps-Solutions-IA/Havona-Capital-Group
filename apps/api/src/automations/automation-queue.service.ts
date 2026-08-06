@@ -115,6 +115,28 @@ export class AutomationQueueService implements OnModuleInit, OnApplicationShutdo
     await job.remove();
     return true;
   }
+  async scheduleCadenceStep(enrollmentId: string, stepExecutionId: string, runAt: Date) {
+    const jobId = toBullMqJobId(`cadence-${enrollmentId}-${stepExecutionId}`);
+    await this.activeQueue.add(
+      'automation.cadence-step',
+      { enrollmentId, stepExecutionId },
+      {
+        jobId,
+        delay: Math.max(0, runAt.getTime() - Date.now()),
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 1500 },
+        removeOnComplete: 2000,
+        removeOnFail: 5000,
+      },
+    );
+    return jobId;
+  }
+  async cancelCadenceEnrollment(enrollmentId: string) {
+    const jobs = await this.activeQueue.getJobs(['delayed', 'waiting', 'paused']);
+    for (const job of jobs)
+      if (job.name === 'automation.cadence-step' && job.data?.enrollmentId === enrollmentId)
+        await job.remove();
+  }
   async onApplicationShutdown() {
     await this.queue?.close();
     if (this.connection?.status !== 'end') await this.connection?.quit();
