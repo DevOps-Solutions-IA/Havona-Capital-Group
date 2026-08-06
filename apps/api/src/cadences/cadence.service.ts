@@ -406,9 +406,29 @@ export class CadenceService {
     const e = item.enrollment;
     if (e.status !== 'ACTIVE') throw new Error('POLICY_BLOCK');
     if (e.expiresAt <= new Date()) throw new Error('CADENCE_EXPIRED');
-    this.assertThread(e.communicationThread);
-    if (!e.prospect?.normalizedEmail) throw new Error('CONTACT_INVALID');
-    if (e.opportunity && e.opportunity.status !== 'OPEN') throw new Error('OPPORTUNITY_CLOSED');
+    const [prospect, thread, opportunity] = await Promise.all([
+      e.prospectId
+        ? this.dbx.prospect.findUnique({
+            where: { id: e.prospectId },
+            select: { normalizedEmail: true },
+          })
+        : null,
+      e.communicationThreadId
+        ? this.dbx.communicationThread.findUnique({
+            where: { id: e.communicationThreadId },
+            include: { consent: true },
+          })
+        : null,
+      e.opportunityId
+        ? this.dbx.opportunity.findUnique({
+            where: { id: e.opportunityId },
+            select: { status: true },
+          })
+        : null,
+    ]);
+    this.assertThread(thread);
+    if (!prospect?.normalizedEmail) throw new Error('CONTACT_INVALID');
+    if (opportunity && opportunity.status !== 'OPEN') throw new Error('OPPORTUNITY_CLOSED');
     if (item.step.templateKey) {
       const template = await this.dbx.emailTemplate.findUnique({
         where: { key: item.step.templateKey },
