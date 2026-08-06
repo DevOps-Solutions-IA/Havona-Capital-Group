@@ -430,16 +430,8 @@ export class CadenceService {
     if (!prospect?.normalizedEmail) throw new Error('CONTACT_INVALID');
     if (opportunity && opportunity.status !== 'OPEN') throw new Error('OPPORTUNITY_CLOSED');
     if (item.step.templateKey) {
-      const template = await this.dbx.emailTemplate.findUnique({
-        where: { key: item.step.templateKey },
-        include: { activeVersion: true },
-      });
-      if (
-        !template ||
-        template.status !== 'ACTIVE' ||
-        template.activeVersion?.legalStatus !== 'LEGAL_APPROVED'
-      )
-        throw new Error('TEMPLATE_INACTIVE');
+      const template = await this.operationalTemplate(item.step.templateKey);
+      if (!template) throw new Error('TEMPLATE_INACTIVE');
     }
     await this.frequency(item);
   }
@@ -500,9 +492,8 @@ export class CadenceService {
       return { taskId: task.id };
     }
     if (step.type === 'SEND_EMAIL' || step.type === 'PREPARE_EMAIL') {
-      const template = await this.dbx.emailTemplate.findUniqueOrThrow({
-        where: { key: step.templateKey },
-      });
+      const template = await this.operationalTemplate(step.templateKey);
+      if (!template) throw new Error('TEMPLATE_INACTIVE');
       const draft = await this.templates.createDraft(
         {
           templateId: template.id,
@@ -753,11 +744,46 @@ export class CadenceService {
       ] as string[],
     };
   }
+  private async operationalTemplate(key: string) {
+    const template = await this.dbx.emailTemplate.findFirst({
+      where: {
+        key,
+        locale: 'es-CO',
+        scope: 'CORPORATE',
+        isCorporate: true,
+        ownerId: null,
+        status: 'ACTIVE',
+      },
+      include: {
+        versions: {
+          where: { status: 'ACTIVE', legalStatus: 'LEGAL_APPROVED' },
+          select: { id: true },
+        },
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+    if (
+      !template?.activeVersionId ||
+      !template.versions.some((version: { id: string }) => version.id === template.activeVersionId)
+    )
+      return null;
+    return template;
+  }
   private failure(error: unknown) {
-    const message = error instanceof Error ? error.message : 'POLICY_BLOCK';
-    const retryable = ['TEMPORARY_PROVIDER_FAILURE', 'PROVIDER_NOT_ENABLED'].some((x) =>
-      message.includes(x),
-    );
+    const response = (error as { response?: unknown } | null)?.response;
+    const responseCode =
+      typeof response === 'string'
+        ? response
+        : response && typeof response === 'object' && 'code' in response
+          ? String((response as { code: unknown }).code)
+          : null;
+    const explicitCode =
+      typeof (error as { code?: unknown } | null)?.code === 'string'
+        ? String((error as { code: string }).code)
+        : null;
+    const message = error instanceof Error ? error.message : null;
+    const code = explicitCode ?? responseCode ?? message;
+    const retryable = ['TEMPORARY_PROVIDER_FAILURE', 'PROVIDER_NOT_ENABLED'].includes(code ?? '');
     return {
       code:
         [
@@ -767,7 +793,7 @@ export class CadenceService {
           'FREQUENCY_CAP',
           'OPPORTUNITY_CLOSED',
           'CADENCE_EXPIRED',
-        ].find((x) => message.includes(x)) ??
+        ].find((candidate) => candidate === code) ??
         (retryable ? 'TEMPORARY_PROVIDER_FAILURE' : 'POLICY_BLOCK'),
       retryable,
     };
