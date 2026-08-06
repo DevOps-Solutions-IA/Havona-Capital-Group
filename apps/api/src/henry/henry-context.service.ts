@@ -84,6 +84,13 @@ const CONSULTANT_TOOLS = [
   'reply_to_email_thread',
   'get_email_send_status',
   'prepare_email_batch',
+  'list_eligible_cadences',
+  'start_cadence',
+  'get_cadence_status',
+  'pause_cadence',
+  'resume_cadence',
+  'stop_cadence',
+  'explain_cadence',
 ];
 const MANAGER_TOOLS = [
   ...CONSULTANT_TOOLS,

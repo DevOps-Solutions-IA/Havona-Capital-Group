@@ -19,6 +19,7 @@ import { HenryMemoryService } from '../knowledge/memory.service';
 import { TrainingService } from '../training/training.service';
 import { EmailTemplateService } from '../email-templates/email-template.service';
 import { HenryMessagingOperatorService } from './henry-messaging-operator.service';
+import { CadenceService } from '../cadences/cadence.service';
 
 type ToolContext = {
   conversationId: string;
@@ -308,6 +309,23 @@ const schemas = {
     prospectIds: z.array(z.string().uuid()).min(1).max(10),
     templateId: z.string().uuid(),
   }),
+  list_eligible_cadences: z.object({
+    prospectId: z.string().uuid(),
+    opportunityId: z.string().uuid().optional(),
+  }),
+  start_cadence: z.object({
+    cadenceId: z.string().uuid(),
+    prospectId: z.string().uuid(),
+    opportunityId: z.string().uuid().optional(),
+    communicationThreadId: z.string().uuid().optional(),
+    timezone: z.string().max(80).default('America/Bogota'),
+    confirmedByUser: z.literal(true),
+  }),
+  get_cadence_status: z.object({ enrollmentId: z.string().uuid() }),
+  pause_cadence: z.object({ enrollmentId: z.string().uuid(), confirmedByUser: z.literal(true) }),
+  resume_cadence: z.object({ enrollmentId: z.string().uuid(), confirmedByUser: z.literal(true) }),
+  stop_cadence: z.object({ enrollmentId: z.string().uuid(), confirmedByUser: z.literal(true) }),
+  explain_cadence: z.object({ cadenceId: z.string().uuid() }),
 } as const;
 
 type ToolName = keyof typeof schemas;
@@ -939,6 +957,66 @@ export class HenryToolsService {
         ['prospectIds', 'templateId'],
       ),
     },
+    {
+      name: 'list_eligible_cadences',
+      description:
+        'Lista cadencias activas elegibles y su plan gobernado para un prospecto autorizado.',
+      parameters: objectSchema(
+        { prospectId: { type: 'string' }, opportunityId: { type: 'string' } },
+        ['prospectId'],
+      ),
+    },
+    {
+      name: 'start_cadence',
+      description:
+        'Inscribe un prospecto en una cadencia aprobada después de confirmación explícita.',
+      parameters: objectSchema(
+        {
+          cadenceId: { type: 'string' },
+          prospectId: { type: 'string' },
+          opportunityId: { type: 'string' },
+          communicationThreadId: { type: 'string' },
+          timezone: { type: 'string' },
+          confirmedByUser: { type: 'boolean', const: true },
+        },
+        ['cadenceId', 'prospectId', 'confirmedByUser'],
+      ),
+    },
+    {
+      name: 'get_cadence_status',
+      description: 'Consulta estado y próximos pasos de un seguimiento autorizado.',
+      parameters: objectSchema({ enrollmentId: { type: 'string' } }, ['enrollmentId']),
+    },
+    {
+      name: 'pause_cadence',
+      description: 'Pausa una cadencia autorizada y cancela pasos pendientes.',
+      parameters: objectSchema(
+        { enrollmentId: { type: 'string' }, confirmedByUser: { type: 'boolean', const: true } },
+        ['enrollmentId', 'confirmedByUser'],
+      ),
+    },
+    {
+      name: 'resume_cadence',
+      description: 'Reanuda una cadencia pausada recalculando su siguiente ventana.',
+      parameters: objectSchema(
+        { enrollmentId: { type: 'string' }, confirmedByUser: { type: 'boolean', const: true } },
+        ['enrollmentId', 'confirmedByUser'],
+      ),
+    },
+    {
+      name: 'stop_cadence',
+      description: 'Detiene definitivamente una cadencia autorizada.',
+      parameters: objectSchema(
+        { enrollmentId: { type: 'string' }, confirmedByUser: { type: 'boolean', const: true } },
+        ['enrollmentId', 'confirmedByUser'],
+      ),
+    },
+    {
+      name: 'explain_cadence',
+      description:
+        'Explica versión, pasos, tiempos, límites y condiciones de parada sin iniciar nada.',
+      parameters: objectSchema({ cadenceId: { type: 'string' } }, ['cadenceId']),
+    },
   ];
 
   constructor(
@@ -1301,12 +1379,58 @@ export class HenryToolsService {
           input,
           context.audit,
         )) as unknown as Record<string, unknown>;
+      case 'list_eligible_cadences':
+        return {
+          data: await this.cadence().eligible(
+            this.requireActor(context),
+            input.prospectId,
+            input.opportunityId,
+          ),
+        };
+      case 'start_cadence':
+        return (await this.cadence().enroll(
+          this.requireActor(context),
+          { ...input, confirm: true },
+          context.audit,
+        )) as Record<string, unknown>;
+      case 'get_cadence_status':
+        return (await this.cadence().getEnrollment(
+          this.requireActor(context),
+          input.enrollmentId,
+        )) as Record<string, unknown>;
+      case 'pause_cadence':
+        return (await this.cadence().pause(
+          this.requireActor(context),
+          input.enrollmentId,
+          context.audit,
+        )) as Record<string, unknown>;
+      case 'resume_cadence':
+        return (await this.cadence().resume(
+          this.requireActor(context),
+          input.enrollmentId,
+          context.audit,
+        )) as Record<string, unknown>;
+      case 'stop_cadence':
+        return (await this.cadence().stop(
+          this.requireActor(context),
+          input.enrollmentId,
+          context.audit,
+        )) as Record<string, unknown>;
+      case 'explain_cadence':
+        return (await this.cadence().get(this.requireActor(context), input.cadenceId)) as Record<
+          string,
+          unknown
+        >;
     }
   }
 
   private automation() {
     if (!this.moduleRef) throw new BadRequestException('Automations Core no disponible');
     return this.moduleRef.get(AutomationService, { strict: false });
+  }
+  private cadence() {
+    if (!this.moduleRef) throw new BadRequestException('Cadences no disponible');
+    return this.moduleRef.get(CadenceService, { strict: false });
   }
 
   private requireKnowledgeActor(context: ToolContext) {

@@ -134,6 +134,13 @@ export class HenryPolicyEngine {
       'reply_to_email_thread',
       'get_email_send_status',
       'prepare_email_batch',
+      'list_eligible_cadences',
+      'start_cadence',
+      'get_cadence_status',
+      'pause_cadence',
+      'resume_cadence',
+      'stop_cadence',
+      'explain_cadence',
     ];
     if (!allowed.includes(name))
       return { action: 'REJECT', policyId: 'tools', ruleId: 'TOOL-NOT-ALLOWLISTED-001' };
