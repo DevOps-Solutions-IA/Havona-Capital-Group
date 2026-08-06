@@ -92,8 +92,110 @@ export class AnalyticsService {
       numerator: number | null | undefined,
       denominator: number | null | undefined;
     let coverage = complete(0);
-    if (key === 'sales.pipeline_value')
-      coverage = unavailable('El modelo vigente no almacena valor monetario de oportunidad.');
+    if (key === 'sales.pipeline_value' || key === 'sales.weighted_pipeline') {
+      const rows = await this.db.opportunity.findMany({
+        where: { ...this.opportunityWhere(scope), status: 'OPEN' },
+        select: { amount: true, currency: true, probability: true },
+      });
+      const eligible = rows.filter((row) =>
+        key === 'sales.pipeline_value'
+          ? row.amount != null && row.currency != null
+          : row.amount != null && row.currency != null && row.probability != null,
+      );
+      const amounts = this.groupMoney(
+        eligible.map((row) => ({
+          currency: row.currency!,
+          amount:
+            key === 'sales.weighted_pipeline'
+              ? row.amount!.mul(row.probability!).div(100)
+              : row.amount!,
+        })),
+      );
+      coverage = {
+        status: eligible.length === rows.length ? 'COMPLETE' : 'PARTIAL',
+        covered: eligible.length,
+        total: rows.length,
+        percentage: rows.length ? Math.round((eligible.length / rows.length) * 10000) / 100 : 100,
+        ...(eligible.length < rows.length
+          ? { warning: 'Las oportunidades sin monto/moneda/probabilidad se excluyen; no equivalen a cero.' }
+          : {}),
+      };
+      return {
+        metric: key,
+        version: definition.version,
+        value: null,
+        money: amounts,
+        availability: amounts.length ? 'available' : 'notAvailable',
+        period: this.periodResult(period),
+        scope: scope.kind,
+        coverage,
+        source: definition.source,
+        generatedAt: new Date().toISOString(),
+      };
+    }
+    if (
+      ['sales.won_value', 'sales.lost_potential_value', 'sales.average_deal_value', 'sales.median_deal_value', 'sales.commit_forecast'].includes(key)
+    ) {
+      const status = key === 'sales.lost_potential_value' ? 'LOST' : key === 'sales.commit_forecast' ? 'OPEN' : 'WON';
+      const rows = await this.db.opportunity.findMany({
+        where: {
+          ...this.opportunityWhere(scope),
+          status,
+          ...(status === 'OPEN'
+            ? { forecastCategory: 'COMMIT', expectedCloseDate: range }
+            : { closedAt: range }),
+        },
+        select: { amount: true, currency: true },
+      });
+      const eligible = rows.filter((row) => row.amount != null && row.currency != null);
+      const grouped = new Map<string, Prisma.Decimal[]>();
+      for (const row of eligible) {
+        const values = grouped.get(row.currency!) ?? [];
+        values.push(row.amount!);
+        grouped.set(row.currency!, values);
+      }
+      const money = [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([currency, values]) => {
+        const ordered = [...values].sort((a, b) => a.comparedTo(b));
+        const total = values.reduce((sum, amount) => sum.add(amount), new Prisma.Decimal(0));
+        const middle = Math.floor(ordered.length / 2);
+        const amount = key === 'sales.average_deal_value'
+          ? total.div(values.length)
+          : key === 'sales.median_deal_value'
+            ? ordered.length % 2
+              ? ordered[middle]!
+              : ordered[middle - 1]!.add(ordered[middle]!).div(2)
+            : total;
+        return { currency, amount: amount.toFixed(2) };
+      });
+      return {
+        metric: key,
+        version: definition.version,
+        value: null,
+        money,
+        availability: money.length ? 'available' : 'notAvailable',
+        period: this.periodResult(period),
+        scope: scope.kind,
+        coverage: {
+          status: eligible.length === rows.length ? 'COMPLETE' : 'PARTIAL',
+          covered: eligible.length,
+          total: rows.length,
+          percentage: rows.length ? Math.round((eligible.length / rows.length) * 10000) / 100 : 100,
+          ...(eligible.length < rows.length ? { warning: 'Registros sin monto/moneda se excluyen y reducen cobertura.' } : {}),
+        },
+        source: definition.source,
+        generatedAt: new Date().toISOString(),
+      };
+    }
+    if (key === 'sales.financial_coverage') {
+      const [total, covered] = await Promise.all([
+        this.db.opportunity.count({ where: { ...this.opportunityWhere(scope), status: 'OPEN' } }),
+        this.db.opportunity.count({ where: { ...this.opportunityWhere(scope), status: 'OPEN', amount: { not: null }, currency: { not: null } } }),
+      ]);
+      value = total ? covered / total : null;
+      numerator = covered;
+      denominator = total;
+      coverage = total ? complete(covered, total) : { status: 'INSUFFICIENT_DATA', covered: 0, total: 0, percentage: null, warning: 'No existen oportunidades abiertas.' };
+    }
     else if (key === 'crm.prospects.created')
       value = await this.db.prospect.count({
         where: { ...this.prospectWhere(scope), createdAt: range },
@@ -446,16 +548,107 @@ export class AnalyticsService {
         riskLevel: riskScore >= 45 ? 'CRITICAL' : riskScore >= 20 ? 'WARNING' : 'INFO',
         components,
         nextAction: row.tasks[0] ?? null,
+        money: row.amount && row.currency ? { amount: row.amount.toFixed(2), currency: row.currency } : null,
+        probability: row.probability?.toFixed(2) ?? null,
+        expectedCloseDate: row.expectedCloseDate?.toISOString().slice(0, 10) ?? null,
+        forecastCategory: row.forecastCategory,
+      };
+    });
+    const withAmount = rows.filter((row) => row.amount != null && row.currency != null);
+    const weighted = rows.filter(
+      (row) => row.amount != null && row.currency != null && row.probability != null,
+    );
+    const rawByCurrency = this.groupMoney(
+      withAmount.map((row) => ({ currency: row.currency!, amount: row.amount! })),
+    );
+    const weightedByCurrency = this.groupMoney(
+      weighted.map((row) => ({
+        currency: row.currency!,
+        amount: row.amount!.mul(row.probability!).div(100),
+      })),
+    );
+    const stageValue = Array.from(
+      rows.reduce((groups, row) => {
+        const current = groups.get(row.stage.id) ?? {
+          stageId: row.stage.id,
+          stageName: row.stage.name,
+          count: 0,
+          money: [] as Array<{ currency: string; amount: Prisma.Decimal }>,
+        };
+        current.count += 1;
+        if (row.amount && row.currency) current.money.push({ currency: row.currency, amount: row.amount });
+        groups.set(row.stage.id, current);
+        return groups;
+      }, new Map<string, { stageId: string; stageName: string; count: number; money: Array<{ currency: string; amount: Prisma.Decimal }> }>()),
+    ).map(([, stage]) => ({
+      stageId: stage.stageId,
+      stageName: stage.stageName,
+      count: stage.count,
+      values: this.groupMoney(stage.money),
+    }));
+    const forecast = (['COMMIT', 'LIKELY', 'UPSIDE', 'PIPELINE'] as const).map((category) => ({
+      category,
+      values: this.groupMoney(
+        rows
+          .filter(
+            (row) =>
+              row.forecastCategory === category &&
+              row.expectedCloseDate &&
+              row.expectedCloseDate >= period.start &&
+              row.expectedCloseDate < period.end &&
+              row.amount &&
+              row.currency,
+          )
+          .map((row) => ({ currency: row.currency!, amount: row.amount! })),
+      ),
+    }));
+    const agingRanges = [
+      { key: '0_30', min: 0, max: 30 },
+      { key: '31_60', min: 31, max: 60 },
+      { key: '61_90', min: 61, max: 90 },
+      { key: '90_PLUS', min: 91, max: Number.POSITIVE_INFINITY },
+    ].map((range) => {
+      const matches = rows.filter((row) => {
+        const age = Math.floor((now.getTime() - row.createdAt.getTime()) / 86_400_000);
+        return age >= range.min && age <= range.max;
+      });
+      return {
+        bucket: range.key,
+        count: matches.length,
+        values: this.groupMoney(
+          matches.flatMap((row) =>
+            row.amount && row.currency ? [{ currency: row.currency, amount: row.amount }] : [],
+          ),
+        ),
       };
     });
     return {
       period: this.periodResult(period),
       active: items.length,
       monetaryValue: {
-        value: null,
-        availability: 'notAvailable',
-        coverage: unavailable('Opportunity no posee valor monetario ni expectedCloseAt.'),
+        values: rawByCurrency,
+        availability: rawByCurrency.length ? 'available' : 'notAvailable',
+        coverage: {
+          status: withAmount.length === rows.length ? 'COMPLETE' : 'PARTIAL',
+          covered: withAmount.length,
+          total: rows.length,
+          percentage: rows.length ? Math.round((withAmount.length / rows.length) * 10000) / 100 : 100,
+          ...(withAmount.length < rows.length ? { warning: 'Monto desconocido no se convierte en cero.' } : {}),
+        },
       },
+      weightedPipeline: {
+        values: weightedByCurrency,
+        coverage: {
+          status: weighted.length === rows.length ? 'COMPLETE' : 'PARTIAL',
+          covered: weighted.length,
+          total: rows.length,
+          percentage: rows.length ? Math.round((weighted.length / rows.length) * 10000) / 100 : 100,
+          ...(weighted.length < rows.length ? { warning: 'Probability desconocida se excluye, no se pondera como cero.' } : {}),
+        },
+      },
+      forecast: { period: this.periodResult(period), categories: forecast, label: 'DETERMINISTIC_NOT_GUARANTEED' },
+      stageValue,
+      agingByValue: agingRanges,
       aging: items,
       stalled: items.filter((item) => item.inactivityDays >= 7),
       methodology: {
@@ -493,8 +686,22 @@ export class AnalyticsService {
         reason: item.components.map((c: any) => c.evidence).join('; '),
         evidence: item.components,
         suggestedAction: 'SCHEDULE_FOLLOW_UP',
-        urgency: item.riskScore,
+        urgency: item.riskScore + (item.money ? 10 : 0),
+        businessImpact: item.money ? 'VALUE_RECORDED' : 'UNKNOWN_VALUE',
       })),
+      ...pipeline.aging
+        .filter((item: any) => item.expectedCloseDate && item.expectedCloseDate < now.toISOString().slice(0, 10))
+        .map((item: any) => ({
+          type: 'EXPECTED_CLOSE_OVERDUE',
+          severity: item.money ? 'CRITICAL' : 'WARNING',
+          entityType: 'Opportunity',
+          entityId: item.id,
+          title: item.title,
+          reason: `Fecha esperada de cierre vencida: ${item.expectedCloseDate}`,
+          evidence: [{ expectedCloseDate: item.expectedCloseDate, money: item.money }],
+          suggestedAction: 'REVIEW_EXPECTED_CLOSE',
+          urgency: item.money ? 75 : 55,
+        })),
       ...tasks.map((task) => ({
         type: 'OVERDUE_TASK',
         severity: task.priority === 'URGENT' ? 'CRITICAL' : 'WARNING',
@@ -590,9 +797,10 @@ export class AnalyticsService {
     const scope = await this.scope(actor, query.consultantId),
       opportunityWhere = this.opportunityWhere(scope),
       prospectWhere = this.prospectWhere(scope);
-    const [prospects, opportunities, withoutOwner, openWithoutTask] = await Promise.all([
+    const [prospects, opportunities, openOpportunities, withoutOwner, openWithoutTask, missingAmount, missingClose, missingProbability, commitWithoutAmount] = await Promise.all([
       this.db.prospect.count({ where: prospectWhere }),
       this.db.opportunity.count({ where: opportunityWhere }),
+      this.db.opportunity.count({ where: { ...opportunityWhere, status: 'OPEN' } }),
       this.db.opportunity.count({ where: { ...opportunityWhere, ownerId: null } }),
       this.db.opportunity.count({
         where: {
@@ -601,6 +809,10 @@ export class AnalyticsService {
           tasks: { none: { status: { in: ['PENDING', 'IN_PROGRESS'] } } },
         },
       }),
+      this.db.opportunity.count({ where: { ...opportunityWhere, status: 'OPEN', OR: [{ amount: null }, { currency: null }] } }),
+      this.db.opportunity.count({ where: { ...opportunityWhere, status: 'OPEN', expectedCloseDate: null } }),
+      this.db.opportunity.count({ where: { ...opportunityWhere, status: 'OPEN', probability: null } }),
+      this.db.opportunity.count({ where: { ...opportunityWhere, status: 'OPEN', forecastCategory: 'COMMIT', OR: [{ amount: null }, { currency: null }, { expectedCloseDate: null }] } }),
     ]);
     const missingSource = 0;
     const checks = [
@@ -611,19 +823,21 @@ export class AnalyticsService {
         note: 'Source es obligatorio en el esquema; inconsistencia esperada 0.',
       },
       { key: 'opportunity.owner', missing: withoutOwner, total: opportunities },
-      { key: 'opportunity.next_action', missing: openWithoutTask, total: opportunities },
+      { key: 'opportunity.next_action', missing: openWithoutTask, total: openOpportunities },
       {
         key: 'opportunity.value',
-        missing: opportunities,
-        total: opportunities,
-        note: 'Campo no modelado; KPIs monetarios no disponibles.',
+        missing: missingAmount,
+        total: openOpportunities,
+        note: 'Monto y moneda deben existir juntos; unknown no equivale a cero.',
       },
       {
         key: 'opportunity.expected_close',
-        missing: opportunities,
-        total: opportunities,
-        note: 'Campo no modelado; forecast no disponible.',
+        missing: missingClose,
+        total: openOpportunities,
+        note: 'Fecha de negocio explícita; no se infiere.',
       },
+      { key: 'opportunity.probability', missing: missingProbability, total: openOpportunities, note: 'Sin política por etapa: probability permanece null salvo captura manual.' },
+      { key: 'opportunity.commit_completeness', missing: commitWithoutAmount, total: openOpportunities, note: 'COMMIT requiere monto, moneda y fecha para forecast.' },
     ].map((item) => ({
       ...item,
       coveragePercentage: item.total
@@ -639,6 +853,15 @@ export class AnalyticsService {
       checks,
       unknownIsZero: false,
     };
+  }
+
+  private groupMoney(rows: Array<{ currency: string; amount: Prisma.Decimal }>) {
+    const totals = new Map<string, Prisma.Decimal>();
+    for (const row of rows)
+      totals.set(row.currency, (totals.get(row.currency) ?? new Prisma.Decimal(0)).add(row.amount));
+    return [...totals.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([currency, amount]) => ({ currency, amount: amount.toFixed(2) }));
   }
 
   async communications(query: any, actor: AnalyticsActor) {
@@ -780,8 +1003,17 @@ export class AnalyticsService {
                 actor,
               )
             : null;
-        const target = row.targetValue.toNumber(),
-          actual = result?.value ?? null;
+        const target = row.targetValue,
+          actualMoney = row.currency
+            ? result?.money?.find((item) => item.currency === row.currency)?.amount ?? null
+            : null,
+          actual = row.currency
+            ? actualMoney
+              ? new Prisma.Decimal(actualMoney)
+              : null
+            : result?.value == null
+              ? null
+              : new Prisma.Decimal(result.value);
         const elapsed = Math.max(
           0,
           Math.min(
@@ -793,13 +1025,14 @@ export class AnalyticsService {
         return {
           ...row,
           progress: {
-            actual,
-            target,
-            attainment: actual === null ? null : actual / target,
-            remaining: actual === null ? null : Math.max(0, target - actual),
+            actual: actual?.toFixed(row.currency ? 2 : 4) ?? null,
+            target: target.toFixed(row.currency ? 2 : 4),
+            currency: row.currency,
+            attainment: actual === null || target.isZero() ? null : actual.div(target).toNumber(),
+            remaining: actual === null ? null : Prisma.Decimal.max(0, target.sub(actual)).toFixed(row.currency ? 2 : 4),
             elapsedPeriod: elapsed,
-            linearPaceExpected: target * elapsed,
-            gapToPace: actual === null ? null : actual - target * elapsed,
+            linearPaceExpected: target.mul(elapsed).toFixed(row.currency ? 2 : 4),
+            gapToPace: actual === null ? null : actual.sub(target.mul(elapsed)).toFixed(row.currency ? 2 : 4),
             label: 'PACING_NOT_FORECAST',
           },
           evidence: result,
@@ -809,8 +1042,13 @@ export class AnalyticsService {
   }
   async createGoal(input: any, actor: AnalyticsActor, request: any) {
     const definition = metricDefinition(input.metricKey);
-    if (!definition || definition.unit === 'CURRENCY')
-      throw new BadRequestException('Métrica no disponible para metas');
+    if (!definition) throw new BadRequestException('Métrica no disponible para metas');
+    if (definition.unit === 'CURRENCY' && !input.currency)
+      throw new BadRequestException('La meta monetaria requiere moneda explícita');
+    if (definition.unit === 'CURRENCY' && typeof input.targetValue !== 'string')
+      throw new BadRequestException('La meta monetaria debe enviarse como string decimal');
+    if (definition.unit !== 'CURRENCY' && input.currency)
+      throw new BadRequestException('La moneda solo aplica a metas monetarias');
     if (input.scopeType === 'ORGANIZATION' && !actor.permissions.includes('analytics.read_all'))
       throw new ForbiddenException('Sin permiso para crear metas organizacionales');
     if (input.scopeType !== 'ORGANIZATION' && !input.scopeUserId)
@@ -821,6 +1059,7 @@ export class AnalyticsService {
         metricKey: input.metricKey,
         targetValue: new Prisma.Decimal(input.targetValue),
         unit: definition.unit,
+        currency: input.currency,
         scopeType: input.scopeType,
         scopeUserId: input.scopeUserId,
         periodStart: new Date(input.periodStart),
@@ -841,6 +1080,8 @@ export class AnalyticsService {
   async updateGoal(id: string, input: any, actor: AnalyticsActor, request: any) {
     const existing = await this.db.analyticsGoal.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Meta no encontrada');
+    if (existing.currency && input.targetValue !== undefined && typeof input.targetValue !== 'string')
+      throw new BadRequestException('La meta monetaria debe enviarse como string decimal');
     if (existing.scopeUserId) await this.scope(actor, existing.scopeUserId);
     const row = await this.db.analyticsGoal.update({
       where: { id },
@@ -873,21 +1114,75 @@ export class AnalyticsService {
       where: { id: { in: ids } },
       select: { id: true, name: true },
     });
+    const period = analyticsPeriod(query);
+    const financialRows = await this.db.opportunity.findMany({
+      where: { ownerId: { in: ids } },
+      select: {
+        ownerId: true,
+        status: true,
+        amount: true,
+        currency: true,
+        probability: true,
+        forecastCategory: true,
+        expectedCloseDate: true,
+        closedAt: true,
+      },
+    });
     return Promise.all(
-      users.map(async (user) => ({
-        user,
-        prospects: (
-          await this.metric('crm.prospects.created', { ...query, consultantId: user.id }, actor)
-        ).value,
-        opportunities: (
-          await this.metric('crm.opportunities.created', { ...query, consultantId: user.id }, actor)
-        ).value,
-        overdueTasks: (
-          await this.metric('activities.tasks_overdue', { ...query, consultantId: user.id }, actor)
-        ).value,
-        winRate: (await this.metric('sales.win_rate', { ...query, consultantId: user.id }, actor))
-          .value,
-      })),
+      users.map(async (user) => {
+        const userRows = financialRows.filter((row) => row.ownerId === user.id);
+        const openRows = userRows.filter((row) => row.status === 'OPEN');
+        const withAmount = openRows.filter((row) => row.amount && row.currency);
+        const weighted = withAmount.filter((row) => row.probability != null);
+        const closingInPeriod = withAmount.filter(
+          (row) =>
+            row.expectedCloseDate &&
+            row.expectedCloseDate >= period.start &&
+            row.expectedCloseDate < period.end,
+        );
+        return {
+          user,
+          prospects: (
+            await this.metric('crm.prospects.created', { ...query, consultantId: user.id }, actor)
+          ).value,
+          opportunities: (
+            await this.metric('crm.opportunities.created', { ...query, consultantId: user.id }, actor)
+          ).value,
+          overdueTasks: (
+            await this.metric('activities.tasks_overdue', { ...query, consultantId: user.id }, actor)
+          ).value,
+          winRate: (await this.metric('sales.win_rate', { ...query, consultantId: user.id }, actor))
+            .value,
+          financials: {
+            activePipeline: this.groupMoney(
+              withAmount.map((row) => ({ currency: row.currency!, amount: row.amount! })),
+            ),
+            weightedPipeline: this.groupMoney(
+              weighted.map((row) => ({
+                currency: row.currency!,
+                amount: row.amount!.mul(row.probability!).div(100),
+              })),
+            ),
+            commit: this.groupMoney(
+              closingInPeriod
+                .filter((row) => row.forecastCategory === 'COMMIT')
+                .map((row) => ({ currency: row.currency!, amount: row.amount! })),
+            ),
+            upside: this.groupMoney(
+              closingInPeriod
+                .filter((row) => row.forecastCategory === 'UPSIDE')
+                .map((row) => ({ currency: row.currency!, amount: row.amount! })),
+            ),
+            amountCoverage: {
+              covered: withAmount.length,
+              total: openRows.length,
+              percentage: openRows.length
+                ? Math.round((withAmount.length / openRows.length) * 10000) / 100
+                : 100,
+            },
+          },
+        };
+      }),
     );
   }
 

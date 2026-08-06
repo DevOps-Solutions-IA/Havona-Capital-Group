@@ -700,7 +700,7 @@ export class HenryToolsService {
     {
       name: 'get_pipeline_health',
       description:
-        'Consulta salud, aging y factores explicables de riesgo del pipeline autorizado.',
+        'Consulta valor monetario por moneda, forecast determinístico, cobertura, aging y factores explicables de riesgo del pipeline autorizado.',
       parameters: objectSchema({
         preset: { type: 'string', enum: ['week', 'month', 'quarter', 'year'] },
       }),

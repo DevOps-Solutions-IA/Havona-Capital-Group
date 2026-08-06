@@ -1,5 +1,6 @@
 import { ForbiddenException } from '@nestjs/common';
 import { AnalyticsService } from './analytics.service';
+import { Prisma } from '@havona/database';
 
 const db: any = {
   calendarTeamMembership: { findMany: jest.fn() },
@@ -23,8 +24,28 @@ describe('AnalyticsService', () => {
     await expect(service.scope(manager, 'outside')).rejects.toBeInstanceOf(ForbiddenException);
   });
   it('no convierte pipeline monetario desconocido en cero', async () => {
+    db.opportunity.findMany.mockResolvedValue([]);
     const result = await service.metric('sales.pipeline_value', { preset: 'month' }, own);
-    expect(result).toEqual(expect.objectContaining({ value: null, availability: 'notAvailable', coverage: expect.objectContaining({ status: 'NOT_AVAILABLE' }) }));
+    expect(result).toEqual(expect.objectContaining({ value: null, money: [], availability: 'notAvailable' }));
+  });
+  it('separa monedas y conserva precisión decimal en pipeline', async () => {
+    db.opportunity.findMany.mockResolvedValue([
+      { amount: new Prisma.Decimal('250000000.25'), currency: 'COP', probability: new Prisma.Decimal(50) },
+      { amount: new Prisma.Decimal('100.00'), currency: 'USD', probability: new Prisma.Decimal(25) },
+    ]);
+    const raw = await service.metric('sales.pipeline_value', { preset: 'month' }, own);
+    const weighted = await service.metric('sales.weighted_pipeline', { preset: 'month' }, own);
+    expect(raw.money).toEqual([{ currency: 'COP', amount: '250000000.25' }, { currency: 'USD', amount: '100.00' }]);
+    expect(weighted.money).toEqual([{ currency: 'COP', amount: '125000000.13' }, { currency: 'USD', amount: '25.00' }]);
+  });
+  it('reduce cobertura ponderada cuando falta probabilidad sin usar cero', async () => {
+    db.opportunity.findMany.mockResolvedValue([
+      { amount: new Prisma.Decimal('100.00'), currency: 'COP', probability: null },
+      { amount: new Prisma.Decimal('100.00'), currency: 'COP', probability: new Prisma.Decimal(50) },
+    ]);
+    const result = await service.metric('sales.weighted_pipeline', { preset: 'month' }, own);
+    expect(result.money).toEqual([{ currency: 'COP', amount: '50.00' }]);
+    expect(result.coverage).toEqual(expect.objectContaining({ status: 'PARTIAL', covered: 1, total: 2, percentage: 50 }));
   });
   it('maneja win rate sin denominador como dato insuficiente', async () => {
     db.opportunity.count.mockResolvedValue(0);

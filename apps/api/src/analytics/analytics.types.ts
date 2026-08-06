@@ -17,6 +17,7 @@ export type MetricResult = {
   metric: string;
   version: number;
   value: number | null;
+  money?: Array<{ currency: string; amount: string }>;
   availability: 'available' | 'notAvailable';
   numerator?: number | null;
   denominator?: number | null;
@@ -26,4 +27,3 @@ export type MetricResult = {
   source: string[];
   generatedAt: string;
 };
-

@@ -12,8 +12,8 @@ const querySchema = z.object({
   consultantId: z.string().uuid().optional(),
   status: z.enum(['ACTIVE', 'COMPLETED', 'CANCELLED']).optional(),
 }).refine((value) => value.preset !== 'custom' || (value.start && value.end), 'Rango personalizado incompleto');
-const goalSchema = z.object({ metricKey: z.string().min(3).max(120), targetValue: z.coerce.number().positive(), scopeType: z.enum(['ORGANIZATION', 'TEAM', 'USER']), scopeUserId: z.string().uuid().optional(), periodStart: z.string().datetime({ offset: true }), periodEnd: z.string().datetime({ offset: true }), timezone: z.string().min(1).max(80).optional() }).refine((value) => new Date(value.periodStart) < new Date(value.periodEnd), 'Periodo de meta inválido');
-const goalUpdateSchema = z.object({ targetValue: z.coerce.number().positive().optional(), status: z.enum(['ACTIVE', 'COMPLETED', 'CANCELLED']).optional() }).refine((value) => Object.keys(value).length > 0, 'Sin cambios');
+const goalSchema = z.object({ metricKey: z.string().min(3).max(120), targetValue: z.union([z.string().regex(/^\d{1,20}(?:\.\d{1,4})?$/), z.number().positive()]), currency: z.enum(['COP', 'USD']).optional(), scopeType: z.enum(['ORGANIZATION', 'TEAM', 'USER']), scopeUserId: z.string().uuid().optional(), periodStart: z.string().datetime({ offset: true }), periodEnd: z.string().datetime({ offset: true }), timezone: z.string().min(1).max(80).optional() }).refine((value) => new Date(value.periodStart) < new Date(value.periodEnd), 'Periodo de meta inválido');
+const goalUpdateSchema = z.object({ targetValue: z.union([z.string().regex(/^\d{1,20}(?:\.\d{1,4})?$/), z.number().positive()]).optional(), status: z.enum(['ACTIVE', 'COMPLETED', 'CANCELLED']).optional() }).refine((value) => Object.keys(value).length > 0, 'Sin cambios');
 const actor = (req: any) => ({ id: req.auth.user.id, roles: req.auth.user.roles, permissions: req.auth.user.permissions });
 
 @Controller('analytics')

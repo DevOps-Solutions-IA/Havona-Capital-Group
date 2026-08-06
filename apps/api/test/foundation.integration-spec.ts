@@ -21,6 +21,9 @@ import {
 import { EmailTemplateService } from '../src/email-templates/email-template.service';
 import { HenryMessagingOperatorService } from '../src/henry/henry-messaging-operator.service';
 import { CadenceService } from '../src/cadences/cadence.service';
+import { CrmService } from '../src/crm/crm.service';
+import { AnalyticsService } from '../src/analytics/analytics.service';
+import { HenryToolsService } from '../src/henry/henry-tools.service';
 
 describe('Fase 0 (PostgreSQL + Redis)', () => {
   let app: INestApplication;
@@ -970,6 +973,33 @@ describe('Fase 0 (PostgreSQL + Redis)', () => {
     await expect(operator.cancel(actor, scheduled.operationId, ctx)).resolves.toEqual(
       expect.objectContaining({ status: 'CANCELLED' }),
     );
+  });
+
+  it('preserva finanzas de oportunidad y las expone a Analytics y Henry sin mezclar monedas', async () => {
+    const crm = app.get(CrmService), analytics = app.get(AnalyticsService), tools = app.get(HenryToolsService);
+    const admin = await db.user.findUniqueOrThrow({ where: { email: process.env.INITIAL_SUPER_ADMIN_EMAIL } });
+    const permissions = (await db.rolePermission.findMany({ where: { role: { name: 'SUPER_ADMIN' } }, include: { permission: true } })).map((row) => row.permission.key);
+    const actor = { id: admin.id, roles: ['SUPER_ADMIN'], permissions };
+    const requestContext = { auth: { user: actor }, ip: '127.0.0.1', headers: {} };
+    const source = await db.leadSource.findFirstOrThrow({ where: { isActive: true } });
+    const prospectEmail = `financial-${randomUUID()}@example.com`;
+    const prospect = await db.prospect.create({ data: { name: 'Finanzas Integración', email: prospectEmail, normalizedEmail: prospectEmail, city: 'Bogotá', sourceId: source.id, landing: 'integration', interest: 'integration' } });
+    const opportunity = await crm.createOpportunity({ prospectId: prospect.id, title: 'Oportunidad financiera verificable', priority: 'HIGH', amount: '250000000.25', currency: 'COP', expectedCloseDate: '2026-08-20', probability: 50, forecastCategory: 'COMMIT' }, actor, requestContext);
+
+    const pipeline = await analytics.pipeline({ preset: 'month' }, actor);
+    expect(pipeline.monetaryValue.values).toEqual(expect.arrayContaining([{ currency: 'COP', amount: expect.any(String) }]));
+    expect(pipeline.weightedPipeline.values).toEqual(expect.arrayContaining([{ currency: 'COP', amount: expect.any(String) }]));
+    const henry = await tools.execute('get_pipeline_health', { preset: 'month' }, { conversationId: randomUUID(), actor, audit: { actorUserId: admin.id } });
+    expect(henry).toEqual(expect.objectContaining({ monetaryValue: expect.objectContaining({ availability: 'available' }) }));
+
+    await crm.updateOpportunityFinancials(opportunity.id, { amount: '300000000.50', reason: 'Valor confirmado por consultor' }, actor, requestContext);
+    const history = await db.opportunityFinancialHistory.findMany({ where: { opportunityId: opportunity.id, field: 'amount' }, orderBy: { createdAt: 'asc' } });
+    expect(history.at(-1)).toEqual(expect.objectContaining({ oldValue: '250000000.25', newValue: '300000000.5', source: 'MANUAL' }));
+    const wonStage = await db.pipelineStage.findUniqueOrThrow({ where: { key: 'client' } });
+    await crm.moveOpportunity(opportunity.id, { stageId: wonStage.id }, actor, requestContext);
+    const won = await analytics.metric('sales.won_value', { preset: 'month' }, actor);
+    expect(won.money).toEqual(expect.arrayContaining([{ currency: 'COP', amount: '300000000.50' }]));
+    expect(await db.auditLog.count({ where: { resource: 'Opportunity', resourceId: opportunity.id, action: 'CRM_OPPORTUNITY_FINANCIALS_UPDATED' } })).toBe(1);
   });
 
   it('ejecuta una cadencia una vez y la detiene ante una respuesta inbound real', async () => {
