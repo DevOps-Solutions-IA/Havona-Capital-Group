@@ -1,12 +1,12 @@
 import { api } from './api';
 
-export type MetricResult = { metric: string; value: number | null; availability: 'available' | 'notAvailable'; coverage: { status: string; warning?: string }; period: { start: string; end: string; timezone: string } };
+export type MetricResult = { metric: string; value: number | null; money?: Array<{ currency: string; amount: string }>; availability: 'available' | 'notAvailable'; coverage: { status: string; warning?: string }; period: { start: string; end: string; timezone: string } };
 export type AnalyticsSummary = {
   period: { start: string; end: string; timezone: string };
   freshness: { status: string; generatedAt: string };
   metrics: Array<{ current: MetricResult; previous: MetricResult; delta: { absolute: number | null; percentage: number | null; status: string } }>;
   funnel: { stages: Array<{ stage: { key: string; name: string }; entered: number; conversionToNext: number | null; averageDays: number | null; medianDays: number | null }> };
-  pipeline: { active: number; monetaryValue: { availability: string; coverage: { warning?: string } }; stalled: Array<{ id: string; title: string; inactivityDays: number; riskScore: number }> };
+  pipeline: { active: number; monetaryValue: { values?: Array<{ currency: string; amount: string }>; availability: string; coverage: { warning?: string; percentage?: number | null } }; weightedPipeline?: { values: Array<{ currency: string; amount: string }>; coverage: { percentage: number | null } }; forecast?: { categories: Array<{ category: string; values: Array<{ currency: string; amount: string }> }> }; stalled: Array<{ id: string; title: string; inactivityDays: number; riskScore: number }> };
   priorities: Array<{ type: string; severity: string; entityType: string; entityId: string; title: string; reason: string; suggestedAction: string }>;
   goals: Array<{ id: string; metricKey: string; targetValue: string; periodEnd: string }>;
   dataQuality: { status: string; issues: number };

@@ -6,10 +6,21 @@ export type Opportunity = {
   priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
   status: 'OPEN' | 'WON' | 'LOST' | 'CANCELLED';
   updatedAt: string;
+  amount?: string | null;
+  currency?: 'COP' | 'USD' | null;
+  expectedCloseDate?: string | null;
+  probability?: string | null;
+  forecastCategory?: 'PIPELINE' | 'LIKELY' | 'COMMIT' | 'UPSIDE' | null;
   stage: Stage;
   owner?: Owner;
   prospect: { id: string; name: string; interest: string; city: string };
 };
+export const formatMoney = (amount: string, currency: string) =>
+  `${currency} ${(() => {
+    const [integer, decimals] = amount.split('.');
+    const grouped = integer!.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    return decimals && decimals !== '00' ? `${grouped},${decimals.replace(/0$/, '')}` : grouped;
+  })()}`;
 export type CrmProspect = {
   id: string;
   name: string;
