@@ -96,3 +96,7 @@ completos al navegador. Redis/snapshots se añadirán donde medición real demue
 claves incluirán versión, scope, rango, filtros y timezone. No se calculan atributos sensibles ni
 perfiles psicológicos. Las pruebas cubren tiempo, cero denominador, unknown distinto de cero,
 reingreso, scope, métricas live, UI y salida natural PostgreSQL/Redis.
+
+Las métricas de oportunidad admiten dimensiones gobernadas `customerNeed`, `authorizedSolution` y
+`authorizedProduct`. Un registro legacy sin estas referencias permanece unknown y no se infiere
+desde `Prospect.interest`.

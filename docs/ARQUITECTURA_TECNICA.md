@@ -244,3 +244,10 @@ Orden de separación futura:
 - Introducir microservicios.
 - Introducir Kubernetes.
 - Añadir proveedores sin justificación.
+
+## PALIG Product & Need Core
+
+PALIG Product & Need Core gobierna el único portafolio comercializable
+(`PAN_AMERICAN_LIFE_COLOMBIA`) y separa CustomerNeed, AuthorizedSolution, AuthorizedProduct y
+evidencia Knowledge. Las referencias de Opportunity son nullable para respetar discovery y no
+alteran el dominio financiero.

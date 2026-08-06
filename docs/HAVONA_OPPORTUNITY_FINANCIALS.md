@@ -4,6 +4,8 @@
 
 `Opportunity.amount` es exclusivamente el **valor comercial estimado de la oportunidad**. No es prima mensual/anual, suma asegurada, valor en efectivo, capital objetivo, comisión ni ingreso reconocido por HAVONA CAPITAL GROUP. Esos conceptos requieren campos o dominios separados si se incorporan posteriormente.
 
+El contexto PALIG no altera esta definición. Necesidad, solución y producto autorizado son dimensiones comerciales separadas y nunca convierten `amount` en prima, suma asegurada o comisión.
+
 El monto usa `Decimal(19,2)` y se entrega como string. Un monto exige moneda ISO soportada (`COP` o `USD`); `null` significa desconocido y nunca se transforma en cero. Los reportes agrupan por moneda. No existe conversión FX ni total multimoneda implícito.
 
 ## Fecha, probabilidad y forecast

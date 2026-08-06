@@ -259,3 +259,9 @@ Posibles módulos:
 - Modelos predictivos.
 - Distribución automática.
 - Infraestructura distribuida.
+
+## Addendum pre-cierre — PALIG Product & Need Alignment
+
+El gate transversal exclusivo Pan-American Life agrega catálogo estructural DRAFT, contexto
+nullable en Opportunity y autorización server-side sin reabrir el enriquecimiento financiero ni
+ingerir todavía el corpus documental privado.
