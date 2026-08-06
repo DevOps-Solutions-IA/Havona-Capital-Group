@@ -1,5 +1,7 @@
 # PLAN DE FASES — HAVONA CAPITAL GROUP
 
+> Pre-cierre Fase F: Opportunity Financial Enrichment incorpora valor comercial, moneda, fecha esperada, probability manual, forecast conservador, provenance e historia. No habilita Fase G, FX ni contabilidad.
+
 > Fase 8 en construcción: Knowledge Core, RAG trazable, Training Core y memoria gobernada amplían el único Henry Core. El PR permanece Draft y no constituye release.
 
 > Pre-cierre Fase B en construcción: Email Template Core gobierna templates, versiones, variantes,

@@ -1,5 +1,7 @@
 # HAVONA Enterprise Analytics & Commercial Intelligence Core
 
+> La semántica financiera de Opportunity y el forecast conservador se definen en [HAVONA_OPPORTUNITY_FINANCIALS.md](./HAVONA_OPPORTUNITY_FINANCIALS.md). Los agregados monetarios usan Decimal/string, se agrupan por moneda y separan actual, forecast y pacing.
+
 ## Propósito y arquitectura
 
 HAVONA Analytics Core convierte hechos persistidos por CRM, Communications, Calendar, Meet,
@@ -94,4 +96,3 @@ completos al navegador. Redis/snapshots se añadirán donde medición real demue
 claves incluirán versión, scope, rango, filtros y timezone. No se calculan atributos sensibles ni
 perfiles psicológicos. Las pruebas cubren tiempo, cero denominador, unknown distinto de cero,
 reingreso, scope, métricas live, UI y salida natural PostgreSQL/Redis.
-

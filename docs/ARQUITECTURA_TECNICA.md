@@ -1,5 +1,7 @@
 # ARQUITECTURA TÉCNICA — HAVONA CAPITAL GROUP
 
+> Opportunity conserva enriquecimiento financiero nullable e historia append-only. CRM es fuente, Outbox publica cambios, Analytics agrega por moneda y Henry consume Analytics. No existe motor FX o contable.
+
 > Knowledge Core es transversal y no depende de Henry. Storage, embeddings, recuperación autorizada, formación y memoria gobernada son dominios reutilizables; Henry los consume mediante tools y un único ContextAssembler.
 
 ## 1. Enfoque

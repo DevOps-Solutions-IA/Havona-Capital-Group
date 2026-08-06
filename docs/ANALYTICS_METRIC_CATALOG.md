@@ -1,5 +1,20 @@
 # Catálogo semántico de métricas HAVONA
 
+## Métricas financieras Opportunity — v1
+
+| Key | Definición | Fuente | Nulos, moneda y tiempo |
+|---|---|---|---|
+| `sales.pipeline_value` | Σ amount OPEN | amount/currency/status | Unknown reduce coverage; agrupado por moneda |
+| `sales.weighted_pipeline` | Σ amount × probability/100 OPEN | amount/probability/currency | Probability null no es cero; por moneda |
+| `sales.won_value` | Valor comercial WON | amount/currency/status/closedAt | No es ingreso; `closedAt` en `[start,end)` |
+| `sales.lost_potential_value` | Potencial LOST | amount/currency/status/closedAt | No es pérdida contable; por moneda |
+| `sales.average_deal_value` | Promedio amount WON | amount/currency | Solo registros cubiertos |
+| `sales.median_deal_value` | Mediana amount WON | amount/currency | Solo registros cubiertos |
+| `sales.commit_forecast` | COMMIT con expected close en periodo | amount/currency/category/date | No garantiza cierre |
+| `sales.financial_coverage` | OPEN con amount+currency / OPEN | Opportunity | Sin muestra = insufficient |
+
+COP y USD nunca se suman sin FX explícita. `amount` es valor comercial estimado, no prima, suma asegurada, comisión ni revenue.
+
 Diccionario empresarial autoritativo. La implementación ejecutable está en
 `apps/api/src/analytics/metric-catalog.ts`. Todas las definiciones iniciales son `v1` y usan rango
 `[inicio, fin)` en timezone IANA.
@@ -26,4 +41,3 @@ Diccionario empresarial autoritativo. La implementación ejecutable está en
 
 Cambiar fórmula, criterios, timezone o fuente incrementa `version`. Todo KPI nuevo debe definir
 numerador, denominador, exclusiones, nulos, cobertura, dimensiones, owner y fuente antes de verse.
-
