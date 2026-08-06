@@ -174,10 +174,32 @@ export const opportunityListQuerySchema = z.object({
   status: z.enum(['OPEN', 'WON', 'LOST', 'CANCELLED']).optional(),
   priority: crmPriority.optional(),
 });
+export const opportunityCurrencySchema = z.enum(['COP', 'USD']);
+export const opportunityForecastCategorySchema = z.enum(['PIPELINE', 'LIKELY', 'COMMIT', 'UPSIDE']);
+export const moneyAmountSchema = z
+  .string()
+  .regex(/^\d{1,17}(?:\.\d{1,2})?$/, 'Monto monetario inválido')
+  .refine((value) => !/^0+(?:\.0{1,2})?$/.test(value), 'El monto debe ser mayor que cero');
+const opportunityFinancialFields = {
+  amount: moneyAmountSchema.nullable().optional(),
+  currency: opportunityCurrencySchema.nullable().optional(),
+  expectedCloseDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha de cierre esperada inválida')
+    .nullable()
+    .optional(),
+  probability: z.coerce.number().min(0).max(100).nullable().optional(),
+  forecastCategory: opportunityForecastCategorySchema.nullable().optional(),
+};
 export const createOpportunitySchema = z.object({
   prospectId: uuid,
   title: plainText(160),
   priority: crmPriority.default('MEDIUM'),
+  ...opportunityFinancialFields,
+});
+export const updateOpportunityFinancialsSchema = z.object({
+  ...opportunityFinancialFields,
+  reason: optionalPlainText(500),
 });
 export const moveOpportunityStageSchema = z.object({
   stageId: uuid,

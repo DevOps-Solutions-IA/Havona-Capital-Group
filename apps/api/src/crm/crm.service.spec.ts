@@ -1,4 +1,5 @@
 import { CrmService } from './crm.service';
+import { Prisma } from '@havona/database';
 
 describe('CrmService', () => {
   const consultant = {
@@ -92,5 +93,32 @@ describe('CrmService', () => {
     } as any;
     const service = new CrmService(db,{record:jest.fn()} as any);
     await expect(service.createNote({prospectId:'prospect-a',opportunityId:'opportunity-b',body:'Seguimiento'},consultant,{auth:{user:consultant},headers:{}})).rejects.toThrow('La oportunidad no pertenece');
+  });
+
+  it('preserva precisión, provenance e historial al cambiar monto', async () => {
+    const current = { id:'opp', prospectId:'prospect', stageId:'stage', status:'OPEN', stage:{key:'new'}, amount:new Prisma.Decimal('100000000.00'), currency:'COP', expectedCloseDate:null, probability:null, forecastCategory:null };
+    const tx:any = {
+      opportunity:{update:jest.fn().mockImplementation(({data})=>({ ...current, ...data, updatedAt:new Date('2026-08-06T12:00:00Z') }))},
+      opportunityFinancialHistory:{create:jest.fn().mockResolvedValue({})},
+    };
+    const db:any = {
+      opportunity:{findFirst:jest.fn().mockResolvedValue(current)},
+      $transaction:jest.fn(async(callback:(client:any)=>unknown)=>callback(tx)),
+    };
+    const audit={record:jest.fn()};
+    const events={publish:jest.fn()};
+    const service = new CrmService(db,audit as any,events as any);
+    const result = await service.updateOpportunityFinancials('opp',{amount:'120000000.25',reason:'Alcance confirmado'},consultant,{auth:{user:consultant},headers:{}});
+    expect(result.amount!.toString()).toBe('120000000.25');
+    expect(tx.opportunityFinancialHistory.create).toHaveBeenCalledWith({data:expect.objectContaining({field:'amount',oldValue:'100000000',newValue:'120000000.25',source:'MANUAL',reason:'Alcance confirmado'})});
+    expect(audit.record).toHaveBeenCalledWith('CRM_OPPORTUNITY_FINANCIALS_UPDATED','Opportunity','opp',expect.anything(),expect.objectContaining({changes:expect.any(Array)}),tx);
+  });
+
+  it('mantiene moneda obligatoria y valida fecha de negocio', async () => {
+    const current = { id:'opp', prospectId:'prospect', stageId:'stage', status:'OPEN', stage:{key:'new'}, amount:null, currency:null, expectedCloseDate:null, probability:null, forecastCategory:null };
+    const db:any = { opportunity:{findFirst:jest.fn().mockResolvedValue(current)} };
+    const service = new CrmService(db,{record:jest.fn()} as any);
+    await expect(service.updateOpportunityFinancials('opp',{amount:'500.00'},consultant,{auth:{user:consultant},headers:{}})).rejects.toThrow('moneda es obligatoria');
+    await expect(service.updateOpportunityFinancials('opp',{expectedCloseDate:'2026-02-31'},consultant,{auth:{user:consultant},headers:{}})).rejects.toThrow('Fecha de cierre esperada inválida');
   });
 });

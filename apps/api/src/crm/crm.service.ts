@@ -301,6 +301,9 @@ export class CrmService {
   }
   async createOpportunity(input: any, actor: Actor, request: any) {
     await this.prospect(input.prospectId, actor);
+    const expectedCloseDate = this.businessDate(input.expectedCloseDate);
+    if (input.amount && !input.currency)
+      throw new UnprocessableEntityException('La moneda es obligatoria cuando existe monto');
     const created = await this.db.$transaction(async (tx) => {
       const stage = await tx.pipelineStage.findFirstOrThrow({
         where: { isActive: true },
@@ -316,8 +319,42 @@ export class CrmService {
           ownerId: assignment?.assigneeId,
           title: input.title,
           priority: input.priority,
+          amount: input.amount ? new Prisma.Decimal(input.amount) : null,
+          currency: input.amount ? input.currency : null,
+          expectedCloseDate,
+          probability:
+            input.probability === undefined || input.probability === null
+              ? null
+              : new Prisma.Decimal(input.probability),
+          forecastCategory: input.forecastCategory,
+          amountSource: input.amount ? 'MANUAL' : null,
+          expectedCloseSource: expectedCloseDate ? 'MANUAL' : null,
+          probabilitySource:
+            input.probability === undefined || input.probability === null ? null : 'MANUAL',
+          forecastCategorySource: input.forecastCategory ? 'MANUAL' : null,
+          financialUpdatedAt:
+            input.amount || expectedCloseDate || input.probability != null || input.forecastCategory
+              ? new Date()
+              : null,
+          financialUpdatedById:
+            input.amount || expectedCloseDate || input.probability != null || input.forecastCategory
+              ? actor.id
+              : null,
         },
       });
+      const initialFinancials = this.financialSnapshot(row);
+      for (const [field, value] of Object.entries(initialFinancials))
+        if (value !== null)
+          await tx.opportunityFinancialHistory.create({
+            data: {
+              opportunityId: row.id,
+              field,
+              oldValue: Prisma.JsonNull,
+              newValue: value as Prisma.InputJsonValue,
+              source: 'MANUAL',
+              changedById: actor.id,
+            },
+          });
       await tx.opportunityStageHistory.create({
         data: { opportunityId: row.id, newStageId: stage.id, changedById: actor.id },
       });
@@ -335,7 +372,7 @@ export class CrmService {
         'Opportunity',
         row.id,
         this.context(request),
-        { prospectId: input.prospectId, stageId: stage.id },
+        { prospectId: input.prospectId, stageId: stage.id, financialFields: initialFinancials },
         tx,
       );
       return row;
@@ -371,8 +408,134 @@ export class CrmService {
             changedBy: { select: { id: true, name: true } },
           },
         },
+        financialHistory: {
+          orderBy: { createdAt: 'desc' },
+          include: { changedBy: { select: { id: true, name: true } } },
+        },
       },
     });
+  }
+  async updateOpportunityFinancials(id: string, input: any, actor: Actor, request: any) {
+    const current = await this.opportunity(id, actor);
+    const expectedCloseDate =
+      input.expectedCloseDate === undefined
+        ? current.expectedCloseDate
+        : this.businessDate(input.expectedCloseDate);
+    const amount =
+      input.amount === undefined
+        ? current.amount
+        : input.amount === null
+          ? null
+          : new Prisma.Decimal(input.amount);
+    const currency = amount
+      ? (input.currency === undefined ? current.currency : input.currency)
+      : null;
+    if (amount && !currency)
+      throw new UnprocessableEntityException('La moneda es obligatoria cuando existe monto');
+    if (!amount && input.currency)
+      throw new UnprocessableEntityException('No se puede registrar moneda sin monto');
+    const probability =
+      input.probability === undefined
+        ? current.probability
+        : input.probability === null
+          ? null
+          : new Prisma.Decimal(input.probability);
+    const forecastCategory =
+      input.forecastCategory === undefined ? current.forecastCategory : input.forecastCategory;
+    const next = {
+      amount,
+      currency,
+      expectedCloseDate,
+      probability,
+      forecastCategory,
+    };
+    const before = this.financialSnapshot(current);
+    const after = this.financialSnapshot(next);
+    const changes = Object.keys(after).filter(
+      (field) => before[field as keyof typeof before] !== after[field as keyof typeof after],
+    );
+    if (!changes.length) return current;
+    const updated = await this.db.$transaction(async (tx) => {
+      const row = await tx.opportunity.update({
+        where: { id },
+        data: {
+          ...next,
+          amountSource: changes.includes('amount') ? (amount ? 'MANUAL' : null) : undefined,
+          expectedCloseSource: changes.includes('expectedCloseDate')
+            ? expectedCloseDate
+              ? 'MANUAL'
+              : null
+            : undefined,
+          probabilitySource: changes.includes('probability')
+            ? probability != null
+              ? 'MANUAL'
+              : null
+            : undefined,
+          forecastCategorySource: changes.includes('forecastCategory')
+            ? forecastCategory
+              ? 'MANUAL'
+              : null
+            : undefined,
+          financialUpdatedAt: new Date(),
+          financialUpdatedById: actor.id,
+        },
+      });
+      for (const field of changes)
+        await tx.opportunityFinancialHistory.create({
+          data: {
+            opportunityId: id,
+            field,
+            oldValue:
+              before[field as keyof typeof before] === null
+                ? Prisma.JsonNull
+                : (before[field as keyof typeof before] as Prisma.InputJsonValue),
+            newValue:
+              after[field as keyof typeof after] === null
+                ? Prisma.JsonNull
+                : (after[field as keyof typeof after] as Prisma.InputJsonValue),
+            source: 'MANUAL',
+            reason: input.reason,
+            changedById: actor.id,
+          },
+        });
+      await this.audit.record(
+        'CRM_OPPORTUNITY_FINANCIALS_UPDATED',
+        'Opportunity',
+        id,
+        this.context(request),
+        { changes: changes.map((field) => ({ field, oldValue: before[field as keyof typeof before], newValue: after[field as keyof typeof after] })) },
+        tx,
+      );
+      return row;
+    });
+    await this.eventBus?.publish({
+      eventId: `opportunity:financials:${id}:${updated.updatedAt.toISOString()}`,
+      type: 'OPPORTUNITY_FINANCIALS_UPDATED',
+      entityType: 'Opportunity',
+      entityId: id,
+      actorUserId: actor.id,
+      payload: { opportunityId: id, prospectId: current.prospectId, changedFields: changes },
+    });
+    return updated;
+  }
+
+  private businessDate(value?: string | null) {
+    if (!value) return null;
+    const date = new Date(`${value}T00:00:00.000Z`);
+    if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value)
+      throw new UnprocessableEntityException('Fecha de cierre esperada inválida');
+    return date;
+  }
+  private financialSnapshot(row: any) {
+    return {
+      amount: row.amount == null ? null : row.amount.toString(),
+      currency: row.currency ?? null,
+      expectedCloseDate: row.expectedCloseDate
+        ? row.expectedCloseDate.toISOString().slice(0, 10)
+        : null,
+      probability: row.probability == null ? null : row.probability.toString(),
+      forecastCategory: row.forecastCategory ?? null,
+    };
   }
   async moveOpportunity(id: string, input: any, actor: Actor, request: any) {
     const current = await this.opportunity(id, actor);

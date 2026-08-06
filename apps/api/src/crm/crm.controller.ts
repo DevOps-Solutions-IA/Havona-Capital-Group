@@ -28,6 +28,7 @@ import {
   taskListQuerySchema,
   updateNoteSchema,
   updateCrmProspectSchema,
+  updateOpportunityFinancialsSchema,
   updateTaskStatusSchema,
 } from '@havona/contracts';
 import { RequirePermissions } from '../common/decorators';
@@ -99,6 +100,13 @@ export class CrmController {
     @Req() req: any,
   ) {
     return this.crm.moveOpportunity(id, body, actor(req), req);
+  }
+  @Patch('opportunities/:id/financials') @RequirePermissions('crm.opportunities') financials(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodPipe(updateOpportunityFinancialsSchema)) body: any,
+    @Req() req: any,
+  ) {
+    return this.crm.updateOpportunityFinancials(id, body, actor(req), req);
   }
   @Get('tasks') @RequirePermissions('crm.tasks.own') tasks(
     @Query(new ZodPipe(taskListQuerySchema)) query: any,

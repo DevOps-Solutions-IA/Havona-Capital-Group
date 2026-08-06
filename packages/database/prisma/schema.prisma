@@ -8,72 +8,74 @@ datasource db {
 }
 
 model User {
-  id                             String                    @id @default(uuid()) @db.Uuid
-  email                          String                    @unique @db.VarChar(254)
-  name                           String                    @db.VarChar(120)
-  passwordHash                   String                    @map("password_hash")
-  isActive                       Boolean                   @default(true) @map("is_active")
-  failedLoginAttempts            Int                       @default(0) @map("failed_login_attempts")
-  lockedUntil                    DateTime?                 @map("locked_until")
-  lastLoginAt                    DateTime?                 @map("last_login_at")
-  createdAt                      DateTime                  @default(now()) @map("created_at")
-  updatedAt                      DateTime                  @updatedAt @map("updated_at")
+  id                             String                        @id @default(uuid()) @db.Uuid
+  email                          String                        @unique @db.VarChar(254)
+  name                           String                        @db.VarChar(120)
+  passwordHash                   String                        @map("password_hash")
+  isActive                       Boolean                       @default(true) @map("is_active")
+  failedLoginAttempts            Int                           @default(0) @map("failed_login_attempts")
+  lockedUntil                    DateTime?                     @map("locked_until")
+  lastLoginAt                    DateTime?                     @map("last_login_at")
+  createdAt                      DateTime                      @default(now()) @map("created_at")
+  updatedAt                      DateTime                      @updatedAt @map("updated_at")
   roles                          UserRole[]
   sessions                       Session[]
   passwordResetTokens            PasswordResetToken[]
-  auditLogs                      AuditLog[]                @relation("AuditActor")
-  assignedProspects              Assignment[]              @relation("AssignmentAssignee")
-  prospectAssignments            Assignment[]              @relation("AssignmentActor")
-  opportunities                  Opportunity[]             @relation("OpportunityOwner")
-  stageChanges                   OpportunityStageHistory[] @relation("StageChangedBy")
-  crmTasks                       Task[]                    @relation("TaskAssignee")
-  createdTasks                   Task[]                    @relation("TaskCreator")
-  notes                          Note[]                    @relation("NoteAuthor")
-  activities                     Activity[]                @relation("ActivityActor")
-  interactions                   Interaction[]             @relation("InteractionActor")
-  convertedClients               ClientProfile[]           @relation("ClientConvertedBy")
+  auditLogs                      AuditLog[]                    @relation("AuditActor")
+  assignedProspects              Assignment[]                  @relation("AssignmentAssignee")
+  prospectAssignments            Assignment[]                  @relation("AssignmentActor")
+  opportunities                  Opportunity[]                 @relation("OpportunityOwner")
+  stageChanges                   OpportunityStageHistory[]     @relation("StageChangedBy")
+  opportunityFinancialChanges    OpportunityFinancialHistory[] @relation("OpportunityFinancialChangedBy")
+  opportunityFinancialUpdates    Opportunity[]                 @relation("OpportunityFinancialUpdatedBy")
+  crmTasks                       Task[]                        @relation("TaskAssignee")
+  createdTasks                   Task[]                        @relation("TaskCreator")
+  notes                          Note[]                        @relation("NoteAuthor")
+  activities                     Activity[]                    @relation("ActivityActor")
+  interactions                   Interaction[]                 @relation("InteractionActor")
+  convertedClients               ClientProfile[]               @relation("ClientConvertedBy")
   conversationParticipants       ConversationParticipant[]
-  assignedEscalations            Escalation[]              @relation("EscalationAssignee")
+  assignedEscalations            Escalation[]                  @relation("EscalationAssignee")
   voiceSessions                  VoiceSession[]
   calendarConnections            CalendarConnection[]
   calendarAvailability           CalendarAvailabilityRule?
-  calendarEventsCreated          CalendarEventLink[]       @relation("CalendarEventCreator")
-  calendarEventsAssigned         CalendarEventLink[]       @relation("CalendarEventAssignee")
-  calendarTeamMembers            CalendarTeamMembership[]  @relation("CalendarTeamManager")
-  calendarTeamManagers           CalendarTeamMembership[]  @relation("CalendarTeamMember")
-  calendarTeamAssignmentsCreated CalendarTeamMembership[]  @relation("CalendarTeamCreatedBy")
-  meetingsCreated                Meeting[]                 @relation("MeetingCreator")
-  meetingsOwned                  Meeting[]                 @relation("MeetingOwner")
-  meetingsAssigned               Meeting[]                 @relation("MeetingAssignee")
+  calendarEventsCreated          CalendarEventLink[]           @relation("CalendarEventCreator")
+  calendarEventsAssigned         CalendarEventLink[]           @relation("CalendarEventAssignee")
+  calendarTeamMembers            CalendarTeamMembership[]      @relation("CalendarTeamManager")
+  calendarTeamManagers           CalendarTeamMembership[]      @relation("CalendarTeamMember")
+  calendarTeamAssignmentsCreated CalendarTeamMembership[]      @relation("CalendarTeamCreatedBy")
+  meetingsCreated                Meeting[]                     @relation("MeetingCreator")
+  meetingsOwned                  Meeting[]                     @relation("MeetingOwner")
+  meetingsAssigned               Meeting[]                     @relation("MeetingAssignee")
   meetingParticipants            MeetingParticipant[]
-  meetingInvitationsCreated      MeetingInvitation[]       @relation("MeetingInvitationCreator")
-  communicationThreadsAssigned   CommunicationThread[]     @relation("CommunicationThreadAssignee")
-  communicationMessagesCreated   CommunicationMessage[]    @relation("CommunicationMessageCreator")
-  communicationAssignments       CommunicationAssignment[] @relation("CommunicationAssignmentAssignee")
-  communicationAssignmentsMade   CommunicationAssignment[] @relation("CommunicationAssignmentActor")
-  analyticsGoalsCreated          AnalyticsGoal[]           @relation("AnalyticsGoalCreator")
-  analyticsGoalsScoped           AnalyticsGoal[]           @relation("AnalyticsGoalScopeUser")
-  knowledgeDocumentsOwned        KnowledgeDocument[]       @relation("KnowledgeDocumentOwner")
-  knowledgeVersionsCreated       KnowledgeVersion[]        @relation("KnowledgeVersionCreator")
-  knowledgeVersionsApproved      KnowledgeVersion[]        @relation("KnowledgeVersionApprover")
-  trainingProgramsCreated        TrainingProgram[]         @relation("TrainingProgramCreator")
+  meetingInvitationsCreated      MeetingInvitation[]           @relation("MeetingInvitationCreator")
+  communicationThreadsAssigned   CommunicationThread[]         @relation("CommunicationThreadAssignee")
+  communicationMessagesCreated   CommunicationMessage[]        @relation("CommunicationMessageCreator")
+  communicationAssignments       CommunicationAssignment[]     @relation("CommunicationAssignmentAssignee")
+  communicationAssignmentsMade   CommunicationAssignment[]     @relation("CommunicationAssignmentActor")
+  analyticsGoalsCreated          AnalyticsGoal[]               @relation("AnalyticsGoalCreator")
+  analyticsGoalsScoped           AnalyticsGoal[]               @relation("AnalyticsGoalScopeUser")
+  knowledgeDocumentsOwned        KnowledgeDocument[]           @relation("KnowledgeDocumentOwner")
+  knowledgeVersionsCreated       KnowledgeVersion[]            @relation("KnowledgeVersionCreator")
+  knowledgeVersionsApproved      KnowledgeVersion[]            @relation("KnowledgeVersionApprover")
+  trainingProgramsCreated        TrainingProgram[]             @relation("TrainingProgramCreator")
   trainingEnrollments            TrainingEnrollment[]
   trainingAttempts               TrainingAttempt[]
   trainingRoleplays              TrainingRoleplay[]
   henryMemories                  HenryMemory[]
-  emailTemplatesOwned            EmailTemplate[]           @relation("EmailTemplateOwner")
-  emailTemplatesCreated          EmailTemplate[]           @relation("EmailTemplateCreator")
-  emailTemplatesUpdated          EmailTemplate[]           @relation("EmailTemplateUpdater")
-  emailTemplateVersionsCreated   EmailTemplateVersion[]    @relation("EmailTemplateVersionCreator")
-  emailTemplateVersionsApproved  EmailTemplateVersion[]    @relation("EmailTemplateVersionApprover")
+  emailTemplatesOwned            EmailTemplate[]               @relation("EmailTemplateOwner")
+  emailTemplatesCreated          EmailTemplate[]               @relation("EmailTemplateCreator")
+  emailTemplatesUpdated          EmailTemplate[]               @relation("EmailTemplateUpdater")
+  emailTemplateVersionsCreated   EmailTemplateVersion[]        @relation("EmailTemplateVersionCreator")
+  emailTemplateVersionsApproved  EmailTemplateVersion[]        @relation("EmailTemplateVersionApprover")
   emailTemplateVariants          EmailTemplateVariant[]
-  emailDrafts                    EmailTemplateDraft[]      @relation("EmailDraftOwner")
-  emailDraftsCreated             EmailTemplateDraft[]      @relation("EmailDraftCreator")
+  emailDrafts                    EmailTemplateDraft[]          @relation("EmailDraftOwner")
+  emailDraftsCreated             EmailTemplateDraft[]          @relation("EmailDraftCreator")
   emailSignatures                EmailSignature[]
   emailTemplateUsages            EmailTemplateUsage[]
   henryMessagingOperations       HenryMessagingOperation[]
-  cadencesCreated                CommunicationCadence[]    @relation("CadenceCreator")
-  cadenceEnrollments             CadenceEnrollment[]       @relation("CadenceEnrollmentActor")
+  cadencesCreated                CommunicationCadence[]        @relation("CadenceCreator")
+  cadenceEnrollments             CadenceEnrollment[]           @relation("CadenceEnrollmentActor")
 
   @@map("users")
 }
@@ -162,6 +164,26 @@ enum OpportunityStatus {
   WON
   LOST
   CANCELLED
+}
+
+enum OpportunityCurrency {
+  COP
+  USD
+}
+
+enum OpportunityForecastCategory {
+  PIPELINE
+  LIKELY
+  COMMIT
+  UPSIDE
+}
+
+enum OpportunityFinancialSource {
+  MANUAL
+  IMPORT
+  CRM_STAGE_POLICY
+  SYSTEM
+  EXTERNAL_FUTURE
 }
 
 enum TaskStatus {
@@ -278,34 +300,68 @@ model PipelineStage {
 }
 
 model Opportunity {
-  id                   String                    @id @default(uuid()) @db.Uuid
-  prospectId           String                    @map("prospect_id") @db.Uuid
-  stageId              String                    @map("stage_id") @db.Uuid
-  ownerId              String?                   @map("owner_id") @db.Uuid
-  title                String                    @db.VarChar(160)
-  priority             OpportunityPriority       @default(MEDIUM)
-  status               OpportunityStatus         @default(OPEN)
-  closedAt             DateTime?                 @map("closed_at")
-  createdAt            DateTime                  @default(now()) @map("created_at")
-  updatedAt            DateTime                  @updatedAt @map("updated_at")
-  prospect             Prospect                  @relation(fields: [prospectId], references: [id], onDelete: Restrict)
-  stage                PipelineStage             @relation(fields: [stageId], references: [id], onDelete: Restrict)
-  owner                User?                     @relation("OpportunityOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  stageHistory         OpportunityStageHistory[]
-  tasks                Task[]
-  notes                Note[]
-  activities           Activity[]
-  interactions         Interaction[]
-  calendarEvents       CalendarEventLink[]
-  meetings             Meeting[]
-  communicationThreads CommunicationThread[]
-  emailDrafts          EmailTemplateDraft[]
-  cadenceEnrollments   CadenceEnrollment[]
+  id                     String                        @id @default(uuid()) @db.Uuid
+  prospectId             String                        @map("prospect_id") @db.Uuid
+  stageId                String                        @map("stage_id") @db.Uuid
+  ownerId                String?                       @map("owner_id") @db.Uuid
+  title                  String                        @db.VarChar(160)
+  priority               OpportunityPriority           @default(MEDIUM)
+  status                 OpportunityStatus             @default(OPEN)
+  closedAt               DateTime?                     @map("closed_at")
+  amount                 Decimal?                      @db.Decimal(19, 2)
+  currency               OpportunityCurrency?
+  expectedCloseDate      DateTime?                     @map("expected_close_date") @db.Date
+  probability            Decimal?                      @db.Decimal(5, 2)
+  forecastCategory       OpportunityForecastCategory?  @map("forecast_category")
+  amountSource           OpportunityFinancialSource?   @map("amount_source")
+  expectedCloseSource    OpportunityFinancialSource?   @map("expected_close_source")
+  probabilitySource      OpportunityFinancialSource?   @map("probability_source")
+  forecastCategorySource OpportunityFinancialSource?   @map("forecast_category_source")
+  financialUpdatedAt     DateTime?                     @map("financial_updated_at")
+  financialUpdatedById   String?                       @map("financial_updated_by_id") @db.Uuid
+  createdAt              DateTime                      @default(now()) @map("created_at")
+  updatedAt              DateTime                      @updatedAt @map("updated_at")
+  prospect               Prospect                      @relation(fields: [prospectId], references: [id], onDelete: Restrict)
+  stage                  PipelineStage                 @relation(fields: [stageId], references: [id], onDelete: Restrict)
+  owner                  User?                         @relation("OpportunityOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  financialUpdatedBy     User?                         @relation("OpportunityFinancialUpdatedBy", fields: [financialUpdatedById], references: [id], onDelete: SetNull)
+  stageHistory           OpportunityStageHistory[]
+  tasks                  Task[]
+  notes                  Note[]
+  activities             Activity[]
+  interactions           Interaction[]
+  calendarEvents         CalendarEventLink[]
+  meetings               Meeting[]
+  communicationThreads   CommunicationThread[]
+  emailDrafts            EmailTemplateDraft[]
+  cadenceEnrollments     CadenceEnrollment[]
+  financialHistory       OpportunityFinancialHistory[]
 
   @@index([stageId, status, updatedAt])
   @@index([ownerId, status, updatedAt])
+  @@index([status, expectedCloseDate])
+  @@index([forecastCategory, expectedCloseDate])
+  @@index([currency, status])
   @@index([prospectId, createdAt])
   @@map("opportunities")
+}
+
+model OpportunityFinancialHistory {
+  id            String                     @id @default(uuid()) @db.Uuid
+  opportunityId String                     @map("opportunity_id") @db.Uuid
+  field         String                     @db.VarChar(60)
+  oldValue      Json?                      @map("old_value")
+  newValue      Json?                      @map("new_value")
+  source        OpportunityFinancialSource
+  reason        String?                    @db.VarChar(500)
+  changedById   String                     @map("changed_by_id") @db.Uuid
+  createdAt     DateTime                   @default(now()) @map("created_at")
+  opportunity   Opportunity                @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  changedBy     User                       @relation("OpportunityFinancialChangedBy", fields: [changedById], references: [id], onDelete: Restrict)
+
+  @@index([opportunityId, createdAt])
+  @@index([changedById, createdAt])
+  @@map("opportunity_financial_history")
 }
 
 model OpportunityStageHistory {
@@ -1948,21 +2004,22 @@ enum AnalyticsSignalStatus {
 }
 
 model AnalyticsGoal {
-  id          String              @id @default(uuid()) @db.Uuid
-  metricKey   String              @map("metric_key") @db.VarChar(120)
-  targetValue Decimal             @map("target_value") @db.Decimal(20, 4)
-  unit        String              @db.VarChar(30)
-  scopeType   String              @map("scope_type") @db.VarChar(30)
-  scopeUserId String?             @map("scope_user_id") @db.Uuid
-  periodStart DateTime            @map("period_start")
-  periodEnd   DateTime            @map("period_end")
-  timezone    String              @default("America/Bogota") @db.VarChar(80)
-  status      AnalyticsGoalStatus @default(ACTIVE)
-  createdById String              @map("created_by_id") @db.Uuid
-  createdAt   DateTime            @default(now()) @map("created_at")
-  updatedAt   DateTime            @updatedAt @map("updated_at")
-  createdBy   User                @relation("AnalyticsGoalCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  scopeUser   User?               @relation("AnalyticsGoalScopeUser", fields: [scopeUserId], references: [id], onDelete: Restrict)
+  id          String               @id @default(uuid()) @db.Uuid
+  metricKey   String               @map("metric_key") @db.VarChar(120)
+  targetValue Decimal              @map("target_value") @db.Decimal(20, 4)
+  unit        String               @db.VarChar(30)
+  currency    OpportunityCurrency?
+  scopeType   String               @map("scope_type") @db.VarChar(30)
+  scopeUserId String?              @map("scope_user_id") @db.Uuid
+  periodStart DateTime             @map("period_start")
+  periodEnd   DateTime             @map("period_end")
+  timezone    String               @default("America/Bogota") @db.VarChar(80)
+  status      AnalyticsGoalStatus  @default(ACTIVE)
+  createdById String               @map("created_by_id") @db.Uuid
+  createdAt   DateTime             @default(now()) @map("created_at")
+  updatedAt   DateTime             @updatedAt @map("updated_at")
+  createdBy   User                 @relation("AnalyticsGoalCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  scopeUser   User?                @relation("AnalyticsGoalScopeUser", fields: [scopeUserId], references: [id], onDelete: Restrict)
 
   @@index([metricKey, periodStart, periodEnd])
   @@index([scopeType, scopeUserId, status])
