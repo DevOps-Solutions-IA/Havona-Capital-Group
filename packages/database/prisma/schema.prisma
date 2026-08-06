@@ -235,7 +235,6 @@ model Company {
   meetings             Meeting[]
   communicationThreads CommunicationThread[]
   emailDrafts          EmailTemplateDraft[]
-  cadenceEnrollments   CadenceEnrollment[]
 
   @@index([name])
   @@map("crm_companies")
@@ -1900,8 +1899,6 @@ model CadenceEnrollment {
   communicationThread   CommunicationThread?    @relation(fields: [communicationThreadId], references: [id], onDelete: SetNull)
   enrolledBy            User                    @relation("CadenceEnrollmentActor", fields: [enrolledById], references: [id], onDelete: Restrict)
   steps                 CadenceStepExecution[]
-  company               Company?                @relation(fields: [companyId], references: [id])
-  companyId             String?                 @db.Uuid
 
   @@index([prospectId, status, nextStepAt])
   @@index([opportunityId, status, nextStepAt])
