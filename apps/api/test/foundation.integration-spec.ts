@@ -20,6 +20,7 @@ import {
 } from '../src/knowledge/rag-orchestrator.service';
 import { EmailTemplateService } from '../src/email-templates/email-template.service';
 import { HenryMessagingOperatorService } from '../src/henry/henry-messaging-operator.service';
+import { CadenceService } from '../src/cadences/cadence.service';
 
 describe('Fase 0 (PostgreSQL + Redis)', () => {
   let app: INestApplication;
@@ -968,6 +969,156 @@ describe('Fase 0 (PostgreSQL + Redis)', () => {
     expect(scheduled.status).toBe('SCHEDULED');
     await expect(operator.cancel(actor, scheduled.operationId, ctx)).resolves.toEqual(
       expect.objectContaining({ status: 'CANCELLED' }),
+    );
+  });
+
+  it('ejecuta una cadencia una vez y la detiene ante una respuesta inbound real', async () => {
+    const cadences = app.get(CadenceService);
+    const communications = app.get(CommunicationsService);
+    const automations = app.get(AutomationService);
+    const admin = await db.user.findUniqueOrThrow({
+      where: { email: process.env.INITIAL_SUPER_ADMIN_EMAIL },
+    });
+    const permissions = (
+      await db.rolePermission.findMany({
+        where: { role: { name: 'SUPER_ADMIN' } },
+        include: { permission: true },
+      })
+    ).map((row) => row.permission.key);
+    const actor = { id: admin.id, roles: ['SUPER_ADMIN'], permissions };
+    const ctx = { actorUserId: admin.id };
+    const source = await db.leadSource.findFirstOrThrow({ where: { isActive: true } });
+    const prospectEmail = `cadence-${randomUUID()}@example.com`;
+    const prospect = await db.prospect.create({
+      data: {
+        name: 'Cadencia Integración',
+        email: prospectEmail,
+        normalizedEmail: prospectEmail,
+        city: 'Bogotá',
+        sourceId: source.id,
+        landing: 'integration',
+        interest: 'integration',
+      },
+    });
+    const thread = await db.communicationThread.create({
+      data: {
+        channel: 'EMAIL',
+        provider: 'RESEND',
+        providerThreadId: prospect.normalizedEmail!,
+        contactIdentity: prospect.normalizedEmail!,
+        assignedUserId: admin.id,
+        prospectId: prospect.id,
+        handlingMode: 'HENRY',
+        consent: {
+          create: {
+            commercialStatus: 'OPTED_IN',
+            serviceStatus: 'OPTED_IN',
+            source: 'INTEGRATION_TEST',
+          },
+        },
+      },
+    });
+    const template = await db.emailTemplate.findFirstOrThrow({
+      where: { key: 'meeting.post_meeting_summary', status: 'ACTIVE' },
+    });
+    const cadence = await db.communicationCadence.create({
+      data: {
+        key: `integration.followup.${randomUUID()}`,
+        name: 'Seguimiento de integración',
+        purpose: 'Valida dispatch y stop por respuesta',
+        status: 'ACTIVE',
+        ownerScope: 'CORPORATE',
+        createdById: admin.id,
+      },
+    });
+    const version = await db.cadenceVersion.create({
+      data: {
+        cadenceId: cadence.id,
+        version: 1,
+        status: 'ACTIVE',
+        allowedRoles: ['SUPER_ADMIN'],
+        channelPolicy: { channels: ['EMAIL'] },
+        enrollmentConditions: {},
+        stopConditions: ['CUSTOMER_REPLIED', 'OPT_OUT'],
+        approvalPolicy: 'AUTO',
+        frequencyPolicy: { maxPerDay: 2, maxPerSevenDays: 3, minimumIntervalMinutes: 1 },
+        sendingWindow: {
+          timezone: 'America/Bogota',
+          days: [1, 2, 3, 4, 5, 6, 7],
+          start: '00:00',
+          end: '23:59',
+        },
+        maxLifetimeDays: 7,
+        steps: {
+          create: [
+            {
+              stepOrder: 1,
+              type: 'SEND_EMAIL',
+              delayMinutes: 0,
+              templateKey: template.key,
+              approvalMode: 'AUTO',
+              requiredEvidence: [],
+              definition: { automationApproved: true },
+            },
+            {
+              stepOrder: 2,
+              type: 'WAIT',
+              delayMinutes: 60,
+              approvalMode: 'AUTO',
+              requiredEvidence: [],
+              definition: {},
+            },
+          ],
+        },
+      },
+      include: { steps: { orderBy: { stepOrder: 'asc' } } },
+    });
+    await db.communicationCadence.update({
+      where: { id: cadence.id },
+      data: { activeVersionId: version.id },
+    });
+
+    const enrollment = await cadences.enroll(
+      actor,
+      {
+        cadenceId: cadence.id,
+        prospectId: prospect.id,
+        communicationThreadId: thread.id,
+        timezone: 'America/Bogota',
+        confirm: true,
+      },
+      ctx,
+    );
+    const firstExecution = enrollment.steps[0]!;
+    const sent = await cadences.executeStep(firstExecution.id);
+    expect(sent).toEqual(expect.objectContaining({ status: 'QUEUED' }));
+    expect(await cadences.executeStep(firstExecution.id)).toEqual({ ignored: true });
+    expect(
+      await db.communicationMessage.count({
+        where: { threadId: thread.id, direction: 'OUTBOUND' },
+      }),
+    ).toBe(1);
+
+    const providerMessageId = `cadence-inbound-${randomUUID()}`;
+    await communications.receiveInbound({
+      channel: 'EMAIL',
+      provider: 'RESEND',
+      providerMessageId,
+      from: prospect.normalizedEmail!,
+      to: 'integration@example.com',
+      text: 'Gracias, ya recibí el mensaje.',
+    });
+    await automations.dispatchOutbox(`communication:inbound:${providerMessageId}`);
+
+    const stopped = await db.cadenceEnrollment.findUniqueOrThrow({
+      where: { id: enrollment.id },
+      include: { steps: true },
+    });
+    expect(stopped).toEqual(
+      expect.objectContaining({ status: 'STOPPED', stopReason: 'CUSTOMER_REPLIED' }),
+    );
+    expect(stopped.steps).toEqual(
+      expect.arrayContaining([expect.objectContaining({ status: 'CANCELLED' })]),
     );
   });
 });
