@@ -44,10 +44,14 @@ Preview no envía. Devuelve destinatario, asunto, preheader, HTML, texto, variab
 advertencias y referencias. El handoff persiste un snapshot exacto con template, versión, variante,
 draft, clasificación, locale y timestamp; cambios posteriores no alteran el histórico.
 
+En Fase G, Communications vuelve a comprobar en ejecución la versión ACTIVE/legal, clasificación,
+consentimiento y contexto PALIG persistido. Template Core sigue sin conocer Resend ni sus eventos.
+
 Calendar aporta fecha/hora/zona sin que Template Core cree citas. Meet aporta referencia interna
 autorizada. Knowledge aporta hechos publicados. Los attachments son referencias autorizadas, no
 blobs del template. Communications aplica consentimiento/supresión y es la única salida al provider.
-En Fase B el handoff declara `providerDispatched: false`: no crea mensajes ni llama al provider.
+El preview por sí solo declara `providerDispatched: false`; solo un handoff gobernado crea el
+`CommunicationMessage`, que luego puede llegar al provider.
 
 Henry dispone de catálogo, detalle, creación/personalización y preview. Automations debe validar
 template `ACTIVE`, variables y consentimiento antes de delegar en Communications.

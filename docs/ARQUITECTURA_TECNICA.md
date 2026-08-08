@@ -25,6 +25,11 @@ HAVONA Email Template Core es la capa transversal de composición y gobierno de 
 Automations y las interfaces producen borradores/versiones mediante este núcleo; el núcleo entrega
 mensajes renderizados a Communications Core y nunca depende de Resend ni de otro provider.
 
+En la integración Resend de Fase G, BullMQ reclama el mensaje y realiza una revalidación final de
+recipient, consentimiento/suppression, template, adjuntos y Product/Need PALIG. El transporte
+compartido solo conoce HTTP, timeout, idempotencia y mapping seguro; el webhook Svix es la única
+fuente de `DELIVERED`, `BOUNCED` y `COMPLAINED`. `SENT` no equivale a entrega.
+
 HAVONA Henry Messaging Operator es una capa de orquestación dentro del único Henry Core. Resuelve
 intención y contexto, conserva el draft activo, exige confirmación ligada al snapshot y delega el
 dispatch a Communications Core y la programación a Automations Core. No contiene provider ni crea

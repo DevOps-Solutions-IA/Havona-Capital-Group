@@ -26,7 +26,8 @@ proveedor. No contienen reglas CRM, RBAC comercial, prompts ni asignación.
   referencia externa.
 - `CommunicationParticipant`: participantes del hilo sin asumir identidad CRM ambigua.
 - `CommunicationAttachment`: metadata privada con expiración; no publica archivos.
-- `MessageDeliveryEvent`: historial append-only de enviado, entregado, leído o fallido.
+- `MessageDeliveryEvent`: historial append-only de enviado, entregado, leído, rebotado, complaint
+  o fallido. `SENT` solo significa aceptación del provider; `DELIVERED` exige webhook válido.
 - `CommunicationAssignment`: historial de asignaciones y reasignaciones.
 - `CommunicationConsent`: opt-in, opt-out y supresión por tipo de comunicación.
 - `WhatsAppTemplate`: catálogo local de plantillas externas aprobadas; no crea plantillas ficticias.
@@ -65,16 +66,18 @@ la clave idempotente evitan duplicados ante reintentos.
 
 ## Resend
 
-El provider envía texto/HTML server-side con `reply-to`, clave idempotente y referencia externa.
-Los webhooks soportan enviado, entregado, rebote, complaint y fallo. La recepción se normaliza solo
-cuando Resend entrega `email.received`; la UI no declara inbound activo porque requiere dominio y
-routing externos.
+El provider envía texto/HTML server-side con sender del subdominio corporativo, `reply-to`, timeout,
+clave idempotente y referencia externa. API y worker comparten un único transporte tipado. Los
+webhooks soportan `sent`, `delivered`, `bounced`, `complained` y `failed`, deduplican por `svix-id`
+y aplican precedencia para que un evento tardío no degrade el estado. Bounce y complaint generan
+suppression. Inbound no se declara activo porque requiere receiving/routing externo real.
 
 ## Colas
 
 `havona-communications` utiliza BullMQ/Redis. El API persiste primero y encola `communication.send`
-o `communication.inbound`. El worker realiza I/O con Meta/Resend, actualiza el mensaje y aplica
-reintentos exponenciales seguros. Un mensaje ya enviado no vuelve a salir. El webhook no espera IA.
+o `communication.inbound`. El worker reclama atómicamente `QUEUED → SENDING`, revalida recipient,
+consentimiento, suppression, template, adjuntos y contexto PALIG inmediatamente antes del I/O, y
+solo reintenta fallos transitorios. Un mensaje ya aceptado no vuelve a salir. El webhook no espera IA.
 
 ## Henry y takeover
 
@@ -90,8 +93,8 @@ hilo; no dependen exclusivamente del modelo. El envío a `OPTED_OUT` o `SUPPRESS
 en API como en worker. No se activa marketing automation en esta fase.
 
 Adjuntos conservan únicamente metadata y aplican tamaño/MIME/retención configurable. Media privada
-no se sirve como URL pública y no se ejecuta. La recuperación binaria externa permanece oculta
-hasta contar con almacenamiento privado y escaneo autorizados.
+no se sirve como URL pública y no se ejecuta. Mientras Storage Core no entregue bytes escaneados y
+autorizados al provider boundary, el dispatch con referencias se bloquea; nunca se simula un adjunto.
 
 ## Variables
 

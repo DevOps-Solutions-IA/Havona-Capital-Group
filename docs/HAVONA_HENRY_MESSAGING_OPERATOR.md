@@ -58,7 +58,8 @@ versión y checksum. `HenryMessagingOperation` liga la confirmación a:
 La confirmación usa `ALWAYS_CONFIRM` y expira tras
 `HENRY_MESSAGING_CONFIRMATION_TTL_SECONDS` (900 segundos por defecto). Antes del dispatch se
 revalidan actor, expiración, checksum, destinatario, adjuntos, estado/version legal, consentimiento,
-supresión y thread. Una edición posterior genera `EMAIL_CONFIRMATION_STALE`.
+supresión y thread. El worker repite la validación autoritativa de recipient, template y contexto
+PALIG justo antes del I/O. Una edición posterior genera `EMAIL_CONFIRMATION_STALE`.
 
 ## Envío, idempotencia y estados
 
@@ -117,6 +118,6 @@ clasificación y adjuntos; muestra `Enviar correo` únicamente para una confirma
 
 ## Validación externa
 
-Las pruebas usan servicios determinísticos y colas internas; no llaman Resend. La validación real
-de dominio, credencial, aceptación, delivery, bounce y complaint permanece pendiente para Fase G
-o preproducción autorizada.
+Las pruebas usan servicios determinísticos y colas internas; no llaman Resend. El código de Fase G
+está preparado, pero dominio, sender, webhook y entrega real permanecen pendientes de configuración
+externa autorizada.

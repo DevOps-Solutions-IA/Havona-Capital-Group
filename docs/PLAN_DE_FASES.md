@@ -1,6 +1,10 @@
 # PLAN DE FASES — HAVONA CAPITAL GROUP
 
 > Pre-cierre Fase F: Opportunity Financial Enrichment incorpora valor comercial, moneda, fecha esperada, probability manual, forecast conservador, provenance e historia. No habilita Fase G, FX ni contabilidad.
+>
+> Pre-cierre Fase G: el código de Resend, estados reales, webhook idempotente y revalidación PALIG
+> queda sujeto a CI y validación externa. Sin dominio/sender/webhook/E2E demostrados el estado es
+> `CODE READY / EXTERNAL VALIDATION PENDING`; no habilita Fase H.
 
 > Fase 8 en construcción: Knowledge Core, RAG trazable, Training Core y memoria gobernada amplían el único Henry Core. El PR permanece Draft y no constituye release.
 

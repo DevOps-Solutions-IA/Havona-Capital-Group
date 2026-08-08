@@ -56,13 +56,18 @@ Analytics admite filtros nullable `customerNeedKey`, `authorizedSolutionId` y `a
 
 Henry usa la herramienta allowlisted `list_authorized_products`, que solo devuelve catálogo `ACTIVE` del carrier PALIG. Esta herramienta declara explícitamente que los hechos de producto requieren Knowledge Core; no existe un catálogo hardcoded paralelo en prompts.
 
+Communications Fase G persiste una instantánea mínima de CustomerNeed/Solution/Product y vuelve a
+resolver la Opportunity antes de enviar. Discovery con necesidad y sin producto es válido; cuando
+existe producto debe ser PALIG, ACTIVE y corresponder a un mapping activo. `Prospect.interest` no se
+convierte automáticamente en contexto comercial ni sale como metadata del provider.
+
 ## Web y fases posteriores
 
 La vista de pipeline muestra necesidad gobernada cuando existe, marca `interest` como legacy y declara “Discovery sin producto asociado” cuando corresponde. No se rehizo la web pública.
 
 Pendientes deliberados:
 
-- Fase G: validación externa sin alterar este dominio.
+- Fase G: código de transporte y gobierno listo; validación Resend externa pendiente.
 - Fase K: auditoría y migración completa de landings/copy público hacia CustomerNeed.
 - Fase L: ingesta gobernada del corpus PALIG, revisión de productos/mappings, asociación con Knowledge y activación humana.
 - Fases M–N: evolución autorizada de entrenamiento, reporting y experiencia sin abrir carriers ni catálogo arbitrario.
