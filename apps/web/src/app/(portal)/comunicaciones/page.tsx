@@ -14,7 +14,12 @@ import {
 } from 'lucide-react';
 import { Alert, EmptyState, Skeleton } from '@havona/ui';
 import { PageHeader } from '@/components/page';
-import { communicationsApi, CommunicationThread, ConfigStatus } from '@/lib/communications';
+import {
+  communicationsApi,
+  CommunicationThread,
+  ConfigStatus,
+  deliveryStatusLabel,
+} from '@/lib/communications';
 import { messageOf } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 
@@ -294,7 +299,7 @@ export default function CommunicationsPage() {
                     <p
                       className={`mt-1 text-[11px] text-slate-400 ${m.direction === 'OUTBOUND' ? 'text-right' : ''}`}
                     >
-                      {m.status} ·{' '}
+                      {deliveryStatusLabel[m.status]} ·{' '}
                       {new Intl.DateTimeFormat('es-CO', {
                         dateStyle: 'short',
                         timeStyle: 'short',

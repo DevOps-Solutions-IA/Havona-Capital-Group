@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { isAuthorizedResendSender } from '@havona/shared';
 @Injectable()
 export class CommunicationsConfig {
   readonly whatsappProvider = process.env.WHATSAPP_PROVIDER ?? 'meta';
@@ -41,7 +42,13 @@ export class CommunicationsConfig {
       email: {
         provider: 'RESEND',
         enabled: this.resendEnabled,
-        configured: Boolean(this.resendEnabled && this.resendApiKey && this.resendFromEmail),
+        configured: Boolean(
+          this.emailProvider === 'resend' &&
+          this.resendEnabled &&
+          this.resendApiKey &&
+          this.resendFromEmail &&
+          isAuthorizedResendSender(this.resendFromEmail),
+        ),
         webhookReady: Boolean(this.resendEnabled && this.resendWebhookSecret),
         inboundEnabled: false,
       },

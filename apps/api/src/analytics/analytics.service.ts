@@ -963,28 +963,43 @@ export class AnalyticsService {
       scope = await this.scope(actor, query.consultantId),
       range = { gte: period.start, lt: period.end },
       thread = scope.userIds ? { assignedUserId: { in: scope.userIds } } : undefined;
-    const [inbound, outbound, failed, delivered, unread, escalated] = await Promise.all([
-      this.db.communicationMessage.count({
-        where: { direction: 'INBOUND', createdAt: range, thread },
-      }),
-      this.db.communicationMessage.count({
-        where: { direction: 'OUTBOUND', createdAt: range, thread },
-      }),
-      this.db.communicationMessage.count({ where: { status: 'FAILED', createdAt: range, thread } }),
-      this.db.communicationMessage.count({
-        where: { status: 'DELIVERED', createdAt: range, thread },
-      }),
-      this.db.communicationThread.count({ where: { ...(thread ?? {}), unreadCount: { gt: 0 } } }),
-      this.db.communicationThread.count({
-        where: { ...(thread ?? {}), handlingMode: 'HUMAN', status: { in: ['OPEN', 'PENDING'] } },
-      }),
-    ]);
+    const [inbound, outbound, sent, failed, delivered, bounced, complained, unread, escalated] =
+      await Promise.all([
+        this.db.communicationMessage.count({
+          where: { direction: 'INBOUND', createdAt: range, thread },
+        }),
+        this.db.communicationMessage.count({
+          where: { direction: 'OUTBOUND', createdAt: range, thread },
+        }),
+        this.db.communicationMessage.count({
+          where: { sentAt: { not: null }, createdAt: range, thread },
+        }),
+        this.db.communicationMessage.count({
+          where: { status: 'FAILED', createdAt: range, thread },
+        }),
+        this.db.communicationMessage.count({
+          where: { deliveredAt: { not: null }, createdAt: range, thread },
+        }),
+        this.db.communicationMessage.count({
+          where: { status: 'BOUNCED', createdAt: range, thread },
+        }),
+        this.db.communicationMessage.count({
+          where: { status: 'COMPLAINED', createdAt: range, thread },
+        }),
+        this.db.communicationThread.count({ where: { ...(thread ?? {}), unreadCount: { gt: 0 } } }),
+        this.db.communicationThread.count({
+          where: { ...(thread ?? {}), handlingMode: 'HUMAN', status: { in: ['OPEN', 'PENDING'] } },
+        }),
+      ]);
     return {
       period: this.periodResult(period),
       inbound,
       outbound,
+      sent,
       failed,
       delivered,
+      bounced,
+      complained,
       deliveryRate: outbound ? delivered / outbound : null,
       unreadThreads: unread,
       escalatedThreads: escalated,

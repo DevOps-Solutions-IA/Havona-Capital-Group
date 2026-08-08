@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@havona/database';
 import { createHash, randomUUID } from 'node:crypto';
+import { normalizeEmailIdentity, validatePaligMessagingContext } from '@havona/shared';
 import { AuditContext, AuditService } from '../audit/audit.service';
 import { CalendarAccessService, CalendarActor } from '../calendar/calendar-access.service';
 import { PrismaService } from '../common/prisma.service';
@@ -23,9 +24,9 @@ type Relations = {
   conversationId?: string;
 };
 const E164 = /^\+[1-9]\d{7,14}$/;
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const OPT_OUT =
   /\b(no me escriban|no quiero recibir mensajes|darme de baja|cancelar suscripci[oó]n|stop|unsubscribe)\b/i;
+const DELIVERY_TERMINAL = new Set(['BOUNCED', 'COMPLAINED']);
 
 @Injectable()
 export class CommunicationsService {
@@ -123,6 +124,8 @@ export class CommunicationsService {
   }
   async send(actor: Actor, threadId: string, input: any, ctx: AuditContext) {
     const thread = await this.get(actor, threadId);
+    const messageClassification =
+      input.messageClassification ?? (thread.channel === 'EMAIL' ? 'RELATIONSHIP' : undefined);
     if (thread.status === 'CLOSED' || thread.status === 'BLOCKED')
       throw new CommunicationError(
         'COMMUNICATION_FORBIDDEN',
@@ -139,7 +142,7 @@ export class CommunicationsService {
         409,
       );
     if (
-      ['COMMERCIAL', 'MARKETING'].includes(input.messageClassification) &&
+      ['COMMERCIAL', 'MARKETING'].includes(messageClassification) &&
       thread.consent?.commercialStatus !== 'OPTED_IN'
     )
       throw new CommunicationError(
@@ -188,6 +191,7 @@ export class CommunicationsService {
           409,
         );
     }
+    const commercialContext = await this.resolvePaligContext(thread);
     const idempotencyKey = input.idempotencyKey ?? randomUUID();
     const message = await this.db.communicationMessage.upsert({
       where: { idempotencyKey },
@@ -214,10 +218,11 @@ export class CommunicationsService {
               }
             : {}),
           ...(input.subject ? { subject: input.subject } : {}),
-          ...(input.messageClassification
-            ? { messageClassification: input.messageClassification }
+          ...(messageClassification
+            ? { messageClassification }
             : {}),
           ...(input.templateMetadata ?? {}),
+          commercialContext,
         },
       },
     });
@@ -230,6 +235,57 @@ export class CommunicationsService {
       { threadId, channel: thread.channel, generatedByHenry: message.generatedByHenry },
     );
     return message;
+  }
+
+  private async resolvePaligContext(thread: {
+    opportunityId?: string | null;
+  }): Promise<Record<string, string | null> | null> {
+    if (!thread.opportunityId) return null;
+    const opportunity = await this.db.opportunity.findUnique({
+      where: { id: thread.opportunityId },
+      select: {
+        customerNeedId: true,
+        authorizedSolutionId: true,
+        authorizedProductId: true,
+        customerNeed: { select: { status: true } },
+        authorizedSolution: { select: { status: true, productId: true } },
+        authorizedProduct: { select: { status: true, carrier: true } },
+      },
+    });
+    if (!opportunity)
+      throw new CommunicationError('PALIG_CONTEXT_INVALID', 'Contexto comercial inválido', 409);
+    let mappingStatus: string | null = null;
+    if (opportunity.customerNeedId && opportunity.authorizedSolutionId) {
+      const mapping = await this.db.needSolutionMapping.findUnique({
+        where: {
+          customerNeedId_solutionId: {
+            customerNeedId: opportunity.customerNeedId,
+            solutionId: opportunity.authorizedSolutionId,
+          },
+        },
+        select: { status: true },
+      });
+      mappingStatus = mapping?.status ?? null;
+    }
+    const validationError = validatePaligMessagingContext({
+      customerNeedId: opportunity.customerNeedId,
+      customerNeedStatus: opportunity.customerNeed?.status ?? null,
+      authorizedSolutionId: opportunity.authorizedSolutionId,
+      authorizedSolutionStatus: opportunity.authorizedSolution?.status ?? null,
+      solutionProductId: opportunity.authorizedSolution?.productId ?? null,
+      authorizedProductId: opportunity.authorizedProductId,
+      authorizedProductStatus: opportunity.authorizedProduct?.status ?? null,
+      authorizedProductCarrier: opportunity.authorizedProduct?.carrier ?? null,
+      mappingStatus,
+    });
+    if (validationError)
+      throw new CommunicationError(validationError, 'Contexto comercial PALIG no autorizado', 409);
+    return {
+      customerNeedId: opportunity.customerNeedId,
+      authorizedSolutionId: opportunity.authorizedSolutionId,
+      authorizedProductId:
+        opportunity.authorizedProductId ?? opportunity.authorizedSolution?.productId ?? null,
+    };
   }
 
   async resolveEmailThread(actor: Actor, prospectId: string, ctx: AuditContext) {
@@ -397,10 +453,9 @@ export class CommunicationsService {
     return true;
   }
   normalizeIdentity(channel: 'WHATSAPP' | 'EMAIL', value: string) {
-    const emailValue = value.match(/<([^>]+)>/)?.[1] ?? value;
     const normalized =
-      channel === 'EMAIL' ? emailValue.trim().toLowerCase() : value.trim().replace(/[\s()-]/g, '');
-    if (channel === 'EMAIL' ? !EMAIL.test(normalized) : !E164.test(normalized))
+      channel === 'EMAIL' ? normalizeEmailIdentity(value) : value.trim().replace(/[\s()-]/g, '');
+    if (!normalized || (channel === 'WHATSAPP' && !E164.test(normalized)))
       throw new BadRequestException(
         channel === 'EMAIL' ? 'Correo inválido' : 'Teléfono debe estar en formato E.164',
       );
@@ -492,30 +547,31 @@ export class CommunicationsService {
     eventType: string,
     payload: Record<string, unknown>,
   ) {
-    const existing = await this.db.communicationWebhookEvent.findUnique({
-      where: { provider_providerEventId: { provider, providerEventId } },
-      select: { id: true },
-    });
-    if (existing) return false;
-    await this.db.communicationWebhookEvent.create({
-      data: {
-        provider,
-        providerEventId,
-        eventType,
-        status: 'PROCESSED',
-        payload: payload as Prisma.InputJsonValue,
-        attempts: 1,
-        processedAt: new Date(),
-      },
-    });
-    return true;
+    try {
+      await this.db.communicationWebhookEvent.create({
+        data: {
+          provider,
+          providerEventId,
+          eventType,
+          status: 'PROCESSED',
+          payload: payload as Prisma.InputJsonValue,
+          attempts: 1,
+          processedAt: new Date(),
+        },
+      });
+      return true;
+    } catch (error) {
+      if ((error as { code?: string }).code === 'P2002') return false;
+      throw error;
+    }
   }
   async recordDelivery(
     providerMessageId: string,
     providerEventId: string,
-    status: 'SENT' | 'DELIVERED' | 'READ' | 'FAILED',
+    status: 'SENT' | 'DELIVERED' | 'READ' | 'BOUNCED' | 'COMPLAINED' | 'FAILED',
     occurredAt: Date,
     errorCode?: string,
+    metadata?: Record<string, unknown>,
   ) {
     const message = await this.db.communicationMessage.findUnique({ where: { providerMessageId } });
     if (!message) return null;
@@ -523,8 +579,47 @@ export class CommunicationsService {
       await tx.messageDeliveryEvent.upsert({
         where: { providerEventId },
         update: {},
-        create: { messageId: message.id, providerEventId, status, occurredAt, errorCode },
+        create: {
+          messageId: message.id,
+          providerEventId,
+          status,
+          occurredAt,
+          errorCode,
+          metadata: metadata as Prisma.InputJsonValue | undefined,
+        },
       });
+      const current = message.status;
+      const mayAdvance =
+        status === 'COMPLAINED' ||
+        (status === 'BOUNCED' && current !== 'COMPLAINED') ||
+        (!DELIVERY_TERMINAL.has(current) &&
+          !(
+            (status === 'SENT' && ['DELIVERED', 'READ', 'FAILED'].includes(current)) ||
+            (status === 'FAILED' && ['DELIVERED', 'READ'].includes(current)) ||
+            (status === 'DELIVERED' && current === 'READ')
+          ));
+      if (!mayAdvance) return message;
+      if (status === 'BOUNCED' || status === 'COMPLAINED') {
+        await tx.communicationConsent.upsert({
+          where: { threadId: message.threadId },
+          update: {
+            commercialStatus: 'SUPPRESSED',
+            source: `RESEND_${status}`,
+            evidence: { providerEventId, status },
+          },
+          create: {
+            threadId: message.threadId,
+            commercialStatus: 'SUPPRESSED',
+            serviceStatus: 'UNKNOWN',
+            source: `RESEND_${status}`,
+            evidence: { providerEventId, status },
+          },
+        });
+        await tx.communicationThread.update({
+          where: { id: message.threadId },
+          data: { status: 'BLOCKED', handlingMode: 'PAUSED' },
+        });
+      }
       return tx.communicationMessage.update({
         where: { id: message.id },
         data: {
@@ -532,11 +627,18 @@ export class CommunicationsService {
           ...(status === 'SENT' ? { sentAt: occurredAt } : {}),
           ...(status === 'DELIVERED' ? { deliveredAt: occurredAt } : {}),
           ...(status === 'READ' ? { readAt: occurredAt } : {}),
-          ...(status === 'FAILED' ? { errorCode } : {}),
+          ...(['FAILED', 'BOUNCED', 'COMPLAINED'].includes(status) ? { errorCode } : {}),
         },
       });
     });
-    if (status === 'FAILED')
+    await this.audit.record(
+      `COMMUNICATION_EMAIL_${status}`,
+      'CommunicationMessage',
+      message.id,
+      {},
+      { providerEventId, status, errorCode: errorCode ?? null },
+    );
+    if (['FAILED', 'BOUNCED', 'COMPLAINED'].includes(status))
       await this.eventBus?.publish({
         eventId: `communication:delivery-failed:${providerEventId}`,
         type: 'COMMUNICATION_DELIVERY_FAILED',

@@ -1,5 +1,11 @@
 import { Injectable, Logger, OnApplicationShutdown, OnModuleInit } from '@nestjs/common';
-import { errorDetails } from '@havona/shared';
+import {
+  errorDetails,
+  normalizeEmailIdentity,
+  ResendTransportError,
+  sendResendEmail,
+  validatePaligMessagingContext,
+} from '@havona/shared';
 import { Job, Worker } from 'bullmq';
 import Redis from 'ioredis';
 import { loadWorkerEnvironment } from '@havona/config';
@@ -132,17 +138,21 @@ export class QueueService implements OnModuleInit, OnApplicationShutdown {
       include: { thread: true },
     });
     if (!message) throw new Error('COMMUNICATION_THREAD_NOT_FOUND');
-    if (['SENT', 'DELIVERED', 'READ'].includes(message.status))
+    if (['SENT', 'DELIVERED', 'READ', 'BOUNCED', 'COMPLAINED'].includes(message.status))
       return { idempotent: true, messageId };
-    const consent = await this.db.communicationConsent.findUnique({
-      where: { threadId: message.threadId },
+    const claim = await this.db.communicationMessage.updateMany({
+      where: { id: message.id, status: { in: ['QUEUED', 'FAILED'] } },
+      data: { status: 'SENDING', errorCode: null },
     });
-    if (consent?.commercialStatus === 'OPTED_OUT' || consent?.commercialStatus === 'SUPPRESSED') {
+    if (!claim.count) return { idempotent: true, messageId };
+    const policyBlock = await this.validateCommunicationBeforeDispatch(message);
+    if (policyBlock) {
       await this.db.communicationMessage.update({
         where: { id: message.id },
-        data: { status: 'BLOCKED', errorCode: 'CONTACT_SUPPRESSED' },
+        data: { status: 'BLOCKED', errorCode: policyBlock },
       });
-      return { blocked: true, messageId };
+      this.logger.warn({ event: 'communication.blocked', messageId, code: policyBlock });
+      return { blocked: true, messageId, code: policyBlock };
     }
     try {
       const providerMessageId =
@@ -155,13 +165,120 @@ export class QueueService implements OnModuleInit, OnApplicationShutdown {
       });
       return { sent: true, messageId };
     } catch (error) {
-      const code = error instanceof Error ? error.message.slice(0, 100) : 'PROVIDER_UNAVAILABLE';
+      const providerError =
+        error instanceof ResendTransportError
+          ? error
+          : new ResendTransportError(
+              error instanceof Error ? error.message.slice(0, 100) : 'PROVIDER_UNAVAILABLE',
+              true,
+            );
+      const exhausted = job.attemptsMade + 1 >= Number(job.opts.attempts ?? 1);
       await this.db.communicationMessage.update({
         where: { id: message.id },
-        data: { status: 'FAILED', errorCode: code },
+        data: {
+          status: providerError.retryable && !exhausted ? 'QUEUED' : 'FAILED',
+          errorCode: providerError.code,
+        },
       });
-      throw error;
+      this.logger[providerError.retryable ? 'warn' : 'error']({
+        event:
+          providerError.retryable && !exhausted
+            ? 'communication.retry_scheduled'
+            : 'communication.failed',
+        messageId,
+        code: providerError.code,
+        retryable: providerError.retryable,
+        exhausted,
+      });
+      if (providerError.retryable && !exhausted) throw providerError;
+      return { failed: true, messageId, code: providerError.code, retryable: false };
     }
+  }
+
+  private async validateCommunicationBeforeDispatch(message: any): Promise<string | null> {
+    if (message.thread.status === 'CLOSED' || message.thread.status === 'BLOCKED')
+      return 'COMMUNICATION_FORBIDDEN';
+    if (message.thread.channel === 'EMAIL') {
+      const recipient = normalizeEmailIdentity(message.recipientIdentity);
+      if (!recipient) return 'CONTACT_INVALID';
+      if (message.thread.prospectId) {
+        const prospect = await this.db.prospect.findUnique({
+          where: { id: message.thread.prospectId },
+          select: { normalizedEmail: true },
+        });
+        if (
+          !prospect?.normalizedEmail ||
+          normalizeEmailIdentity(prospect.normalizedEmail) !== recipient
+        )
+          return 'CONTACT_INVALID';
+      }
+    }
+    const consent = await this.db.communicationConsent.findUnique({
+      where: { threadId: message.threadId },
+    });
+    if (consent?.commercialStatus === 'OPTED_OUT' || consent?.commercialStatus === 'SUPPRESSED')
+      return 'CONTACT_SUPPRESSED';
+    const metadata = (message.metadata ?? {}) as Record<string, any>;
+    if (
+      ['COMMERCIAL', 'MARKETING'].includes(String(metadata.messageClassification ?? '')) &&
+      consent?.commercialStatus !== 'OPTED_IN'
+    )
+      return 'COMMUNICATION_CONSENT_REQUIRED';
+    if (Array.isArray(metadata.attachmentReferences) && metadata.attachmentReferences.length)
+      return 'ATTACHMENTS_NOT_DISPATCHABLE';
+    if (metadata.templateVersionId) {
+      const version = await this.db.emailTemplateVersion.findUnique({
+        where: { id: String(metadata.templateVersionId) },
+        include: { template: true },
+      });
+      if (
+        !version ||
+        version.status !== 'ACTIVE' ||
+        version.legalStatus !== 'LEGAL_APPROVED' ||
+        version.template.status !== 'ACTIVE' ||
+        version.template.activeVersionId !== version.id
+      )
+        return 'EMAIL_TEMPLATE_NOT_OPERATIONAL';
+    }
+    if (message.thread.opportunityId) {
+      const opportunity = await this.db.opportunity.findUnique({
+        where: { id: message.thread.opportunityId },
+        select: {
+          customerNeedId: true,
+          authorizedSolutionId: true,
+          authorizedProductId: true,
+          customerNeed: { select: { status: true } },
+          authorizedSolution: { select: { status: true, productId: true } },
+          authorizedProduct: { select: { status: true, carrier: true } },
+        },
+      });
+      if (!opportunity) return 'PALIG_CONTEXT_INVALID';
+      const mapping =
+        opportunity.customerNeedId && opportunity.authorizedSolutionId
+          ? await this.db.needSolutionMapping.findUnique({
+              where: {
+                customerNeedId_solutionId: {
+                  customerNeedId: opportunity.customerNeedId,
+                  solutionId: opportunity.authorizedSolutionId,
+                },
+              },
+              select: { status: true },
+            })
+          : null;
+      const paligError = validatePaligMessagingContext({
+        customerNeedId: opportunity.customerNeedId,
+        customerNeedStatus: opportunity.customerNeed?.status ?? null,
+        authorizedSolutionId: opportunity.authorizedSolutionId,
+        authorizedSolutionStatus: opportunity.authorizedSolution?.status ?? null,
+        solutionProductId: opportunity.authorizedSolution?.productId ?? null,
+        authorizedProductId: opportunity.authorizedProductId,
+        authorizedProductStatus: opportunity.authorizedProduct?.status ?? null,
+        authorizedProductCarrier: opportunity.authorizedProduct?.carrier ?? null,
+        mappingStatus: mapping?.status ?? null,
+      });
+      if (paligError) return paligError;
+    }
+    return null;
   }
 
   private async sendMeta(message: any): Promise<string> {
@@ -221,26 +338,19 @@ export class QueueService implements OnModuleInit, OnApplicationShutdown {
     const subject =
       typeof metadata.subject === 'string' ? metadata.subject : message.thread.subject;
     if (!subject) throw new Error('EMAIL_SUBJECT_REQUIRED');
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${key}`,
-        'Content-Type': 'application/json',
-        'Idempotency-Key': message.idempotencyKey,
-      },
-      body: JSON.stringify({
-        from: `${process.env.RESEND_FROM_NAME ?? 'HAVONA CAPITAL GROUP'} <${from}>`,
-        to: [message.recipientIdentity],
-        subject,
-        text: message.bodyText,
-        html: message.bodyHtml ?? undefined,
-        reply_to: process.env.RESEND_REPLY_TO || undefined,
-      }),
-      signal: AbortSignal.timeout(Number(process.env.RESEND_REQUEST_TIMEOUT_MS ?? 15000)),
+    const result = await sendResendEmail({
+      apiKey: key,
+      fromEmail: from,
+      fromName: process.env.RESEND_FROM_NAME ?? 'HAVONA CAPITAL GROUP',
+      to: message.recipientIdentity,
+      subject,
+      text: message.bodyText ?? '',
+      html: message.bodyHtml ?? undefined,
+      replyTo: process.env.RESEND_REPLY_TO || undefined,
+      idempotencyKey: message.idempotencyKey,
+      timeoutMs: Number(process.env.RESEND_REQUEST_TIMEOUT_MS ?? 15000),
     });
-    const data = (await response.json().catch(() => ({}))) as { id?: string };
-    if (!response.ok || !data.id) throw new Error('EMAIL_DELIVERY_FAILED');
-    return data.id;
+    return result.providerMessageId;
   }
 
   async onApplicationShutdown(): Promise<void> {

@@ -11,6 +11,8 @@ describe('HAVONA Communications Core', () => {
     },
     communicationMessage: { findFirst: jest.fn(), findUnique: jest.fn(), upsert: jest.fn() },
     communicationConsent: { findUnique: jest.fn() },
+    opportunity: { findUnique: jest.fn() },
+    needSolutionMapping: { findUnique: jest.fn() },
     whatsAppTemplate: { findUnique: jest.fn() },
     user: { findFirst: jest.fn() },
     communicationAssignment: { updateMany: jest.fn(), create: jest.fn() },
@@ -25,6 +27,7 @@ describe('HAVONA Communications Core', () => {
     jest.clearAllMocks();
     db.communicationThread.findMany.mockResolvedValue([]);
     db.communicationThread.count.mockResolvedValue(0);
+    config.status.mockReturnValue({ email: { configured: true }, whatsapp: { configured: true } });
     db.$transaction.mockImplementation((arg: any) =>
       Array.isArray(arg)
         ? Promise.all(arg)
@@ -158,5 +161,79 @@ describe('HAVONA Communications Core', () => {
       {},
       expect.objectContaining({ mode: 'HUMAN' }),
     );
+  });
+  it('permite discovery por necesidad sin producto y persiste contexto autoritativo', async () => {
+    db.communicationThread.findFirst.mockResolvedValue({
+      id: 'thread',
+      channel: 'EMAIL',
+      status: 'OPEN',
+      handlingMode: 'HUMAN',
+      contactIdentity: 'person@example.com',
+      opportunityId: 'opportunity',
+      consent: { commercialStatus: 'OPTED_IN' },
+      messages: [],
+    });
+    db.opportunity.findUnique.mockResolvedValue({
+      customerNeedId: 'need',
+      authorizedSolutionId: null,
+      authorizedProductId: null,
+      customerNeed: { status: 'ACTIVE' },
+      authorizedSolution: null,
+      authorizedProduct: null,
+    });
+    db.communicationMessage.upsert.mockResolvedValue({
+      id: 'message',
+      generatedByHenry: false,
+    });
+    await service.send(
+      { id: 'self', permissions: [] },
+      'thread',
+      { text: 'Seguimiento consultivo', messageClassification: 'RELATIONSHIP' },
+      {},
+    );
+    expect(db.communicationMessage.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          metadata: expect.objectContaining({
+            commercialContext: expect.objectContaining({
+              customerNeedId: 'need',
+              authorizedProductId: null,
+            }),
+          }),
+        }),
+      }),
+    );
+  });
+  it('rechaza producto inactivo sin traducir interest legacy', async () => {
+    db.communicationThread.findFirst.mockResolvedValue({
+      id: 'thread',
+      channel: 'EMAIL',
+      status: 'OPEN',
+      handlingMode: 'HUMAN',
+      contactIdentity: 'person@example.com',
+      opportunityId: 'opportunity',
+      consent: { commercialStatus: 'OPTED_IN' },
+      messages: [],
+    });
+    db.opportunity.findUnique.mockResolvedValue({
+      customerNeedId: null,
+      authorizedSolutionId: null,
+      authorizedProductId: 'product',
+      customerNeed: null,
+      authorizedSolution: null,
+      authorizedProduct: {
+        status: 'INACTIVE',
+        carrier: 'PAN_AMERICAN_LIFE_COLOMBIA',
+      },
+    });
+    await expect(
+      service.send(
+        { id: 'self', permissions: [] },
+        'thread',
+        { text: 'Producto', messageClassification: 'RELATIONSHIP' },
+        {},
+      ),
+    ).rejects.toMatchObject({ code: 'PALIG_PRODUCT_INACTIVE' });
+    expect(db.communicationMessage.upsert).not.toHaveBeenCalled();
   });
 });

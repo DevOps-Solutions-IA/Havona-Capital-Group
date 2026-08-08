@@ -5,10 +5,32 @@ export type CommunicationMessage = {
   senderType: string;
   bodyText?: string | null;
   bodyHtml?: string | null;
-  status: string;
+  status:
+    | 'RECEIVED'
+    | 'QUEUED'
+    | 'SENDING'
+    | 'SENT'
+    | 'DELIVERED'
+    | 'READ'
+    | 'BOUNCED'
+    | 'COMPLAINED'
+    | 'FAILED'
+    | 'BLOCKED';
   createdAt: string;
   generatedByHenry: boolean;
   attachments: Array<{ id: string; fileName?: string | null; mimeType: string }>;
+};
+export const deliveryStatusLabel: Record<CommunicationMessage['status'], string> = {
+  RECEIVED: 'Recibido',
+  QUEUED: 'En cola',
+  SENDING: 'Enviando',
+  SENT: 'Enviado',
+  DELIVERED: 'Entregado',
+  READ: 'Leído',
+  BOUNCED: 'Rebotado',
+  COMPLAINED: 'Marcado como spam',
+  FAILED: 'Fallido',
+  BLOCKED: 'Bloqueado',
 };
 export type CommunicationThread = {
   id: string;

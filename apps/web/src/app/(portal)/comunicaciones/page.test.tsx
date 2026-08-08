@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import CommunicationsPage from './page';
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ can: () => true }) }));
 vi.mock('@/lib/communications', () => ({
+  deliveryStatusLabel: {},
   communicationsApi: {
     list: vi.fn().mockResolvedValue({ data: [], meta: { total: 0 } }),
     config: vi

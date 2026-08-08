@@ -1463,9 +1463,12 @@ enum CommunicationContentType {
 enum CommunicationMessageStatus {
   RECEIVED
   QUEUED
+  SENDING
   SENT
   DELIVERED
   READ
+  BOUNCED
+  COMPLAINED
   FAILED
   BLOCKED
 }

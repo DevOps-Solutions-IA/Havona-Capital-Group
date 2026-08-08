@@ -524,6 +524,7 @@ export class HenryMessagingOperatorService {
           usageId: usage?.usageId,
           henryOperationId: operation.id,
           confirmationLevel: operation.confirmationLevel,
+          attachmentReferences: preview.attachmentReferences ?? [],
         },
       },
       ctx,

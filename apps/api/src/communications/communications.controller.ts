@@ -118,10 +118,10 @@ export class CommunicationsController {
     return this.communications.close(req.auth.user, uuid.parse(id), audit(req));
   }
 
-  @Public() @Throttle({ default: { limit: 60, ttl: 60000 } }) @Get('integrations/meta/whatsapp/webhook') verifyMeta(
-    @Query() q: Record<string, string>,
-    @Res() res: Response,
-  ) {
+  @Public()
+  @Throttle({ default: { limit: 60, ttl: 60000 } })
+  @Get('integrations/meta/whatsapp/webhook')
+  verifyMeta(@Query() q: Record<string, string>, @Res() res: Response) {
     if (
       q['hub.mode'] !== 'subscribe' ||
       !this.safeEqual(q['hub.verify_token'] ?? '', this.config.metaVerifyToken)
@@ -234,11 +234,14 @@ export class CommunicationsController {
         {
           'email.sent': 'SENT',
           'email.delivered': 'DELIVERED',
-          'email.bounced': 'FAILED',
-          'email.complained': 'FAILED',
+          'email.bounced': 'BOUNCED',
+          'email.complained': 'COMPLAINED',
           'email.failed': 'FAILED',
         } as const
-      )[type as 'email.sent'];
+      )[
+        type as
+          'email.sent' | 'email.delivered' | 'email.bounced' | 'email.complained' | 'email.failed'
+      ];
       if (status && data.email_id)
         await this.communications.recordDelivery(
           data.email_id,
@@ -246,6 +249,10 @@ export class CommunicationsController {
           status,
           new Date(data.created_at ?? Date.now()),
           type,
+          {
+            provider: 'RESEND',
+            bounceType: typeof data.bounce?.type === 'string' ? data.bounce.type : null,
+          },
         );
     }
     return { received: true };
