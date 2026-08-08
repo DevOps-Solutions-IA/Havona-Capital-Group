@@ -9,7 +9,7 @@
     "lint": "tsc -p tsconfig.json --noEmit",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "jest --runInBand",
-    "test:integration": "pnpm --filter @havona/database build && pnpm --filter @havona/auth build && pnpm --filter @havona/contracts build && jest --config jest.integration.json --runInBand"
+    "test:integration": "pnpm --filter '@havona/api^...' build && jest --config jest.integration.json --runInBand"
   },
   "dependencies": {
     "@havona/auth": "workspace:*",
