@@ -10,6 +10,7 @@ import { PrismaService } from '../src/common/prisma.service';
 import { AI_PROVIDER } from '../src/ai/ai-provider';
 import { FakeAIProvider } from '../src/ai/fake-ai.provider';
 import { CommunicationsService } from '../src/communications/communications.service';
+import { EMAIL_PROVIDER, type EmailProvider } from '../src/communications/communications.types';
 import { AutomationService } from '../src/automations/automation.service';
 import { KnowledgeService } from '../src/knowledge/knowledge.service';
 import { KNOWLEDGE_NOT_FOUND } from '../src/knowledge/knowledge.types';
@@ -30,14 +31,22 @@ describe('Fase 0 (PostgreSQL + Redis)', () => {
   let db: PrismaService;
   let redis: Redis;
   const fakeProvider = new FakeAIProvider();
+  const fakeEmailProvider: EmailProvider = {
+    send: jest.fn().mockResolvedValue({
+      providerMessageId: 'integration-provider-message',
+      acceptedAt: new Date('2026-08-15T12:00:00.000Z'),
+    }),
+  };
 
   beforeAll(async () => {
     process.env.RESEND_ENABLED = 'true';
     process.env.RESEND_API_KEY = 'integration-not-a-real-provider-key';
-    process.env.RESEND_FROM_EMAIL = 'integration@example.com';
+    process.env.RESEND_FROM_EMAIL = 'integration@mail.havonacapitalgroup.com';
     const module = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(AI_PROVIDER)
       .useValue(fakeProvider)
+      .overrideProvider(EMAIL_PROVIDER)
+      .useValue(fakeEmailProvider)
       .compile();
     app = module.createNestApplication();
     app.setGlobalPrefix('api/v1', { exclude: ['health', 'health/ready'] });
