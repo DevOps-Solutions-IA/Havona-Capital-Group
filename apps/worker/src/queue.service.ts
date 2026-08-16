@@ -38,16 +38,22 @@ export class QueueService implements OnModuleInit, OnApplicationShutdown {
 
   async onModuleInit(): Promise<void> {
     await this.redis.ping();
-    this.mailer =
-      this.config.NODE_ENV === 'production'
-        ? nodemailer.createTransport({
-            host: this.config.SMTP_HOST,
-            port: this.config.SMTP_PORT,
-            secure: this.config.SMTP_SECURE,
-            auth: { user: this.config.SMTP_USER, pass: this.config.SMTP_PASSWORD },
-          })
-        : nodemailer.createTransport({ jsonTransport: true });
-    if (this.config.NODE_ENV === 'production') await this.mailer.verify();
+    if (
+      this.config.SMTP_HOST &&
+      this.config.SMTP_USER &&
+      this.config.SMTP_PASSWORD &&
+      this.config.SMTP_FROM
+    ) {
+      this.mailer = nodemailer.createTransport({
+        host: this.config.SMTP_HOST,
+        port: this.config.SMTP_PORT,
+        secure: this.config.SMTP_SECURE,
+        auth: { user: this.config.SMTP_USER, pass: this.config.SMTP_PASSWORD },
+      });
+      if (this.config.NODE_ENV === 'production') await this.mailer.verify();
+    } else if (this.config.NODE_ENV !== 'production') {
+      this.mailer = nodemailer.createTransport({ jsonTransport: true });
+    }
     this.worker = new Worker(this.config.WORKER_QUEUE_NAME, (job) => this.process(job), {
       connection: this.redis,
       concurrency: this.config.WORKER_CONCURRENCY,
@@ -106,7 +112,7 @@ export class QueueService implements OnModuleInit, OnApplicationShutdown {
   private async processEmail(job: Job): Promise<{ messageId: string }> {
     if (job.name !== 'password-reset') throw new Error(`Unsupported email job type: ${job.name}`);
     const payload = passwordResetJobSchema.parse(job.data);
-    if (!this.mailer) throw new Error('Mail transport is not initialized');
+    if (!this.mailer || !this.config.SMTP_FROM) throw new Error('CHANNEL_NOT_CONFIGURED');
     const result = await this.mailer.sendMail({
       from: this.config.SMTP_FROM,
       to: payload.to,

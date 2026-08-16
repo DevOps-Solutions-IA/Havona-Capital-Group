@@ -15,7 +15,15 @@ describe('loadWorkerEnvironment', () => {
     );
   });
 
-  it('requires SMTP credentials in production', () => {
-    expect(() => loadWorkerEnvironment({ NODE_ENV: 'production' })).toThrow('SMTP_HOST');
+  it('allows production workers without the optional SMTP transport', () => {
+    expect(loadWorkerEnvironment({ NODE_ENV: 'production' })).toMatchObject({
+      NODE_ENV: 'production',
+    });
+  });
+
+  it('rejects a partially configured SMTP transport', () => {
+    expect(() =>
+      loadWorkerEnvironment({ NODE_ENV: 'production', SMTP_HOST: 'smtp.example.com' }),
+    ).toThrow('SMTP_USER');
   });
 });
