@@ -59,6 +59,14 @@ describe('resolveDomainRouting', () => {
     });
   });
 
+  it('mantiene el acceso de invitados a Meet en el app domain', () => {
+    expect(route('/meet/invitado', config.appHostname)).toEqual({ type: 'next' });
+    expect(route('/meet/invitado', 'havonacapitalgroup.com', false, '?token=fixture')).toEqual({
+      type: 'redirect',
+      destination: 'https://app.havonacapitalgroup.com/meet/invitado?token=fixture',
+    });
+  });
+
   it('no altera hosts locales o no gestionados', () => {
     expect(route('/', 'localhost:3000')).toEqual({ type: 'next' });
   });

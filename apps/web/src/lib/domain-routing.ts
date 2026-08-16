@@ -55,6 +55,10 @@ function isPrivatePath(pathname: string): boolean {
   return PRIVATE_ROOTS.some((root) => matchesRoot(pathname, root));
 }
 
+function isAppGuestPath(pathname: string): boolean {
+  return pathname === '/meet/invitado';
+}
+
 function normalizeHostname(value: string): string {
   return value.trim().toLowerCase().replace(/:\d+$/, '').replace(/^https?:\/\//, '').split('/')[0];
 }
@@ -90,6 +94,7 @@ export function resolveDomainRouting(
         return { type: 'redirect', destination: `${configuredAppOrigin}/dashboard` };
       return { type: 'next' };
     }
+    if (isAppGuestPath(request.pathname)) return { type: 'next' };
     if (isPrivatePath(request.pathname)) {
       if (request.hasSession) return { type: 'next' };
       return {
@@ -104,6 +109,12 @@ export function resolveDomainRouting(
   }
 
   if (hostname === publicHostname || hostname === `www.${publicHostname}`) {
+    if (isAppGuestPath(request.pathname)) {
+      return {
+        type: 'redirect',
+        destination: appendPath(configuredAppOrigin, request.pathname, request.search),
+      };
+    }
     if (isAuthPath(request.pathname)) {
       return {
         type: 'redirect',
