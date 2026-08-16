@@ -136,12 +136,16 @@ services:
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
         NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+        APP_DOMAIN: ${APP_DOMAIN:-app.havonacapitalgroup.com}
+        PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-https://havonacapitalgroup.com}
     profiles: [prod]
     restart: unless-stopped
     environment:
       NODE_ENV: ${NODE_ENV:-development}
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
       NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+      APP_DOMAIN: ${APP_DOMAIN:-app.havonacapitalgroup.com}
+      PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-https://havonacapitalgroup.com}
     depends_on:
       api: { condition: service_healthy }
     healthcheck:
@@ -198,11 +202,15 @@ services:
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
         NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+        APP_DOMAIN: ${APP_DOMAIN:-app.havonacapitalgroup.com}
+        PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-https://havonacapitalgroup.com}
     profiles: [dev]
     environment:
       NODE_ENV: development
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
       NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+      APP_DOMAIN: ${APP_DOMAIN:-app.havonacapitalgroup.com}
+      PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-https://havonacapitalgroup.com}
     ports: ['127.0.0.1:3000:3000']
     volumes: ['.:/app', 'web_node_modules:/app/node_modules']
     depends_on:
