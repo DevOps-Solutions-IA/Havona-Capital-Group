@@ -565,6 +565,51 @@ export class CommunicationsService {
       throw error;
     }
   }
+  async claimWebhook(
+    provider: 'META' | 'RESEND',
+    providerEventId: string,
+    eventType: string,
+    payload: Record<string, unknown>,
+  ) {
+    try {
+      await this.db.communicationWebhookEvent.create({
+        data: {
+          provider,
+          providerEventId,
+          eventType,
+          status: 'QUEUED',
+          payload: payload as Prisma.InputJsonValue,
+          attempts: 1,
+        },
+      });
+      return true;
+    } catch (error) {
+      if ((error as { code?: string }).code !== 'P2002') throw error;
+      const retry = await this.db.communicationWebhookEvent.updateMany({
+        where: { provider, providerEventId, status: 'FAILED' },
+        data: {
+          status: 'QUEUED',
+          attempts: { increment: 1 },
+          errorCode: null,
+          processedAt: null,
+        },
+      });
+      return retry.count === 1;
+    }
+  }
+  async completeWebhook(provider: 'META' | 'RESEND', providerEventId: string) {
+    const completed = await this.db.communicationWebhookEvent.updateMany({
+      where: { provider, providerEventId, status: 'QUEUED' },
+      data: { status: 'PROCESSED', processedAt: new Date(), errorCode: null },
+    });
+    if (completed.count !== 1) throw new Error('WEBHOOK_STATE_CONFLICT');
+  }
+  async failWebhook(provider: 'META' | 'RESEND', providerEventId: string) {
+    await this.db.communicationWebhookEvent.updateMany({
+      where: { provider, providerEventId, status: 'QUEUED' },
+      data: { status: 'FAILED', errorCode: 'WEBHOOK_PROCESSING_FAILED' },
+    });
+  }
   async recordDelivery(
     providerMessageId: string,
     providerEventId: string,

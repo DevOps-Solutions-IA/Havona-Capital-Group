@@ -213,47 +213,53 @@ export class CommunicationsController {
       data = event.data ?? {},
       eventId = id || this.communications.providerEventId('RESEND', event);
     if (
-      !(await this.communications.registerWebhook('RESEND', eventId, type, {
+      !(await this.communications.claimWebhook('RESEND', eventId, type, {
         messageId: data.email_id ?? null,
         type,
       }))
     )
       return { received: true, duplicate: true };
-    if (type === 'email.received')
-      await this.communications.receiveInbound({
-        channel: 'EMAIL',
-        provider: 'RESEND',
-        providerMessageId: data.email_id ?? eventId,
-        from: Array.isArray(data.from) ? data.from[0] : data.from,
-        to: Array.isArray(data.to) ? data.to[0] : data.to,
-        text: data.text ?? '',
-        subject: data.subject,
-      });
-    else {
-      const status = (
-        {
-          'email.sent': 'SENT',
-          'email.delivered': 'DELIVERED',
-          'email.bounced': 'BOUNCED',
-          'email.complained': 'COMPLAINED',
-          'email.failed': 'FAILED',
-        } as const
-      )[
-        type as
-          'email.sent' | 'email.delivered' | 'email.bounced' | 'email.complained' | 'email.failed'
-      ];
-      if (status && data.email_id)
-        await this.communications.recordDelivery(
-          data.email_id,
-          eventId,
-          status,
-          new Date(data.created_at ?? Date.now()),
-          type,
+    try {
+      if (type === 'email.received')
+        await this.communications.receiveInbound({
+          channel: 'EMAIL',
+          provider: 'RESEND',
+          providerMessageId: data.email_id ?? eventId,
+          from: Array.isArray(data.from) ? data.from[0] : data.from,
+          to: Array.isArray(data.to) ? data.to[0] : data.to,
+          text: data.text ?? '',
+          subject: data.subject,
+        });
+      else {
+        const status = (
           {
-            provider: 'RESEND',
-            bounceType: typeof data.bounce?.type === 'string' ? data.bounce.type : null,
-          },
-        );
+            'email.sent': 'SENT',
+            'email.delivered': 'DELIVERED',
+            'email.bounced': 'BOUNCED',
+            'email.complained': 'COMPLAINED',
+            'email.failed': 'FAILED',
+          } as const
+        )[
+          type as
+            'email.sent' | 'email.delivered' | 'email.bounced' | 'email.complained' | 'email.failed'
+        ];
+        if (status && data.email_id)
+          await this.communications.recordDelivery(
+            data.email_id,
+            eventId,
+            status,
+            new Date(data.created_at ?? Date.now()),
+            type,
+            {
+              provider: 'RESEND',
+              bounceType: typeof data.bounce?.type === 'string' ? data.bounce.type : null,
+            },
+          );
+      }
+      await this.communications.completeWebhook('RESEND', eventId);
+    } catch (error) {
+      await this.communications.failWebhook('RESEND', eventId);
+      throw error;
     }
     return { received: true };
   }
@@ -268,11 +274,13 @@ export class CommunicationsController {
     return this.safeEqual(signature, expected);
   }
   private verifySvix(raw: Buffer, id: string, timestamp: string, signature: string) {
+    const timestampNumber = Number(timestamp);
     if (
       !this.config.resendWebhookSecret ||
       !id ||
       !timestamp ||
-      Math.abs(Date.now() / 1000 - Number(timestamp)) > 300
+      !Number.isFinite(timestampNumber) ||
+      Math.abs(Date.now() / 1000 - timestampNumber) > 300
     )
       return false;
     try {
