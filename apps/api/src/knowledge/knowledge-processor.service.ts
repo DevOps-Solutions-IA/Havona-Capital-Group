@@ -2,6 +2,7 @@ import { Injectable, Logger, OnApplicationShutdown, OnModuleInit } from '@nestjs
 import { Worker } from 'bullmq';
 import Redis from 'ioredis';
 import { z } from 'zod';
+import { createRedisClient } from '../common/redis-client';
 import { KnowledgeService } from './knowledge.service';
 
 @Injectable()
@@ -12,7 +13,7 @@ export class KnowledgeProcessorService implements OnModuleInit, OnApplicationShu
   constructor(private readonly knowledge: KnowledgeService) {}
   async onModuleInit() {
     if (process.env.NODE_ENV === 'test' || process.env.KNOWLEDGE_WORKER_ENABLED === 'false') return;
-    this.connection = new Redis(process.env.REDIS_URL ?? 'redis://127.0.0.1:6379', {
+    this.connection = createRedisClient({
       maxRetriesPerRequest: null,
       enableReadyCheck: true,
     });

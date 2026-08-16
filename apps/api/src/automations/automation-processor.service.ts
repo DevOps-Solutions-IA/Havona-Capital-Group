@@ -3,6 +3,7 @@ import { ModuleRef } from '@nestjs/core';
 import { Job, Worker } from 'bullmq';
 import Redis from 'ioredis';
 import { z } from 'zod';
+import { createRedisClient } from '../common/redis-client';
 import { AutomationService } from './automation.service';
 import { HenryMessagingOperatorService } from '../henry/henry-messaging-operator.service';
 import { CadenceService } from '../cadences/cadence.service';
@@ -21,7 +22,7 @@ export class AutomationProcessorService implements OnModuleInit, OnApplicationSh
     // Starting a competing background worker in the same Jest process introduces
     // nondeterministic races and leaves an unnecessary Redis blocking connection.
     if (process.env.NODE_ENV === 'test') return;
-    this.connection = new Redis(process.env.REDIS_URL ?? 'redis://127.0.0.1:6379', {
+    this.connection = createRedisClient({
       maxRetriesPerRequest: null,
       enableReadyCheck: true,
     });

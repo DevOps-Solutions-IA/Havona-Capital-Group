@@ -1,16 +1,17 @@
 import { Injectable, OnApplicationShutdown } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
+import { createRedisClient } from '../common/redis-client';
 import { CommunicationsConfig } from './communications-config';
 @Injectable()
 export class CommunicationsQueueService implements OnApplicationShutdown {
   private readonly connection: Redis;
   private readonly queue: Queue;
   constructor(config: CommunicationsConfig) {
-    this.connection = new Redis(config.redisUrl, {
-      maxRetriesPerRequest: null,
-      enableReadyCheck: true,
-    });
+    this.connection = createRedisClient(
+      { maxRetriesPerRequest: null, enableReadyCheck: true },
+      config.redisUrl,
+    );
     this.queue = new Queue(config.queueName, { connection: this.connection });
   }
   enqueueSend(messageId: string, idempotencyKey: string) {

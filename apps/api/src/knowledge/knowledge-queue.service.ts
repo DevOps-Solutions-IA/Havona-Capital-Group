@@ -1,13 +1,14 @@
 import { Injectable, OnApplicationShutdown, OnModuleInit } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
+import { createRedisClient } from '../common/redis-client';
 
 @Injectable()
 export class KnowledgeQueueService implements OnModuleInit, OnApplicationShutdown {
   private connection?: Redis;
   private queue?: Queue;
   async onModuleInit() {
-    this.connection = new Redis(process.env.REDIS_URL ?? 'redis://127.0.0.1:6379', {
+    this.connection = createRedisClient({
       maxRetriesPerRequest: null,
       enableReadyCheck: true,
     });

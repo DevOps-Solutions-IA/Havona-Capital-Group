@@ -6,7 +6,7 @@ x-app-environment: &app-environment
   REDIS_HOST: redis
   REDIS_PORT: 6379
   REDIS_PASSWORD: ${REDIS_PASSWORD}
-  REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+  REDIS_URL: redis://redis:6379
   LOG_LEVEL: ${LOG_LEVEL:-info}
   AI_PROVIDER: ${AI_PROVIDER:-openrouter}
   AI_MODEL: ${AI_MODEL:-}
@@ -88,7 +88,7 @@ services:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
     healthcheck:
-      test: [CMD, wget, --quiet, --tries=1, --spider, http://localhost:3001/health/ready]
+      test: [CMD, wget, --quiet, --tries=1, --spider, http://127.0.0.1:3001/health/ready]
       interval: 15s
       timeout: 5s
       retries: 10

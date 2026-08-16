@@ -1,6 +1,7 @@
 import { Injectable, OnApplicationShutdown, OnModuleInit } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
+import { createRedisClient } from '../common/redis-client';
 import { toBullMqJobId } from './automation-job-id';
 
 @Injectable()
@@ -9,7 +10,7 @@ export class AutomationQueueService implements OnModuleInit, OnApplicationShutdo
   private queue?: Queue;
 
   async onModuleInit() {
-    this.connection = new Redis(process.env.REDIS_URL ?? 'redis://127.0.0.1:6379', {
+    this.connection = createRedisClient({
       maxRetriesPerRequest: null,
       enableReadyCheck: true,
     });
