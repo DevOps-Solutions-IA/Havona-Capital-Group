@@ -23,6 +23,10 @@ const actor = (req: any) => ({
   roles: req.auth.user.roles,
   permissions: req.auth.user.permissions,
 });
+const formBoolean = z.preprocess(
+  (value) => value === 'true' ? true : value === 'false' ? false : value,
+  z.boolean(),
+);
 const upload = z.object({
   title: z.string().trim().min(3).max(240),
   description: z.string().max(1000).optional(),
@@ -40,6 +44,23 @@ const upload = z.object({
   effectiveFrom: z.string().datetime({ offset: true }).optional(),
   effectiveUntil: z.string().datetime({ offset: true }).optional(),
   changeSummary: z.string().max(1000).optional(),
+  versionLabel: z.string().max(120).optional(),
+  sourceType: z.enum(['CONTRACTUAL', 'CAPACITACION', 'COMERCIAL', 'SIMULADOR', 'HISTORICO_VERSION', 'TRIBUTARIO_USUARIO', 'INFERENCIA_CONSULTIVA', 'CORPORATIVO']).optional(),
+  authorityLevel: z.enum(['CUSTOMER_CONTRACTUAL', 'CONTRACTUAL_GENERAL', 'CUSTOMER_QUOTATION', 'OFFICIAL_TECHNICAL', 'TRAINING', 'COMMERCIAL', 'INTERPRETATION']).optional(),
+  documentDate: z.string().date().optional(),
+  currentStatus: z.enum(['CURRENT', 'HISTORICAL', 'UNKNOWN']).optional(),
+  publicAllowed: formBoolean.optional(),
+  consultantAllowed: formBoolean.optional(),
+  managerAllowed: formBoolean.optional(),
+  trainingAllowed: formBoolean.optional(),
+  carrier: z.literal('PAN_AMERICAN_LIFE_COLOMBIA').optional(),
+  authorizedProductId: z.string().uuid().optional(),
+  authorizedSolutionId: z.string().uuid().optional(),
+  productCode: z.string().max(100).optional(),
+  sourceLocator: z.string().max(500).optional(),
+  country: z.string().length(2).optional(),
+  notes: z.string().max(1000).optional(),
+  customerNeedKeys: z.array(z.enum(['FAMILY_PROTECTION', 'INCOME_PROTECTION', 'EDUCATION', 'RETIREMENT_PENSION_GAP', 'CAPITAL_ACCUMULATION', 'ACCIDENT_PROTECTION', 'CRITICAL_ILLNESS', 'CANCER_PROTECTION', 'BUSINESS_PARTNER_PROTECTION', 'KEY_PERSON', 'BUSINESS_CONTINUITY'])).max(11).optional(),
 });
 const search = z.object({
   query: z.string().trim().min(2).max(500),
@@ -110,7 +131,7 @@ export class KnowledgeController {
     @Body(
       new ZodPipe(
         upload
-          .pick({ effectiveFrom: true, effectiveUntil: true })
+          .omit({ title: true, description: true, collectionId: true, classification: true, language: true })
           .extend({ changeSummary: z.string().min(3).max(1000) }),
       ),
     )
@@ -131,6 +152,27 @@ export class KnowledgeController {
     @Req() req: any,
   ) {
     return this.knowledge.publish(id, actor(req), req);
+  }
+  @Post('versions/:id/facts') @RequirePermissions('knowledge.review') addFact(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(
+      new ZodPipe(
+        z.object({
+          claimKey: z.string().regex(/^[a-z0-9._-]+$/).max(200),
+          subject: z.string().min(2).max(200),
+          predicate: z.string().min(2).max(160),
+          value: z.unknown(),
+          productVariant: z.string().max(120).optional(),
+          plan: z.string().max(80).optional(),
+          conditions: z.unknown().optional(),
+          customerSpecific: z.boolean().optional(),
+        }),
+      ),
+    )
+    body: any,
+    @Req() req: any,
+  ) {
+    return this.knowledge.addFact(id, body, actor(req));
   }
   @Patch('documents/:id/deprecate') @RequirePermissions('knowledge.publish') deprecate(
     @Param('id', ParseUUIDPipe) id: string,

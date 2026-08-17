@@ -383,47 +383,50 @@ model Opportunity {
 }
 
 model CustomerNeed {
-  id            String                @id @default(uuid()) @db.Uuid
-  key           CustomerNeedKey       @unique
-  name          String                @db.VarChar(120)
-  status        PaligCatalogStatus    @default(DRAFT)
-  createdAt     DateTime              @default(now()) @map("created_at")
-  updatedAt     DateTime              @updatedAt @map("updated_at")
-  mappings      NeedSolutionMapping[]
-  opportunities Opportunity[]
+  id                String                 @id @default(uuid()) @db.Uuid
+  key               CustomerNeedKey        @unique
+  name              String                 @db.VarChar(120)
+  status            PaligCatalogStatus     @default(DRAFT)
+  createdAt         DateTime               @default(now()) @map("created_at")
+  updatedAt         DateTime               @updatedAt @map("updated_at")
+  mappings          NeedSolutionMapping[]
+  opportunities     Opportunity[]
+  knowledgeVersions KnowledgeVersionNeed[]
 
   @@index([status, key])
   @@map("customer_needs")
 }
 
 model AuthorizedProduct {
-  id            String               @id @default(uuid()) @db.Uuid
-  key           String               @unique @db.VarChar(80)
-  name          String               @db.VarChar(160)
-  carrier       PaligCarrier
-  status        PaligCatalogStatus   @default(DRAFT)
-  reviewNote    String?              @map("review_note") @db.VarChar(500)
-  createdAt     DateTime             @default(now()) @map("created_at")
-  updatedAt     DateTime             @updatedAt @map("updated_at")
-  solutions     AuthorizedSolution[]
-  opportunities Opportunity[]
+  id                String               @id @default(uuid()) @db.Uuid
+  key               String               @unique @db.VarChar(80)
+  name              String               @db.VarChar(160)
+  carrier           PaligCarrier
+  status            PaligCatalogStatus   @default(DRAFT)
+  reviewNote        String?              @map("review_note") @db.VarChar(500)
+  createdAt         DateTime             @default(now()) @map("created_at")
+  updatedAt         DateTime             @updatedAt @map("updated_at")
+  solutions         AuthorizedSolution[]
+  opportunities     Opportunity[]
+  knowledgeVersions KnowledgeVersion[]
 
   @@index([carrier, status])
   @@map("authorized_products")
 }
 
 model AuthorizedSolution {
-  id            String                @id @default(uuid()) @db.Uuid
-  key           String                @unique @db.VarChar(80)
-  name          String                @db.VarChar(160)
-  productId     String?               @map("product_id") @db.Uuid
-  status        PaligCatalogStatus    @default(DRAFT)
-  reviewNote    String?               @map("review_note") @db.VarChar(500)
-  createdAt     DateTime              @default(now()) @map("created_at")
-  updatedAt     DateTime              @updatedAt @map("updated_at")
-  product       AuthorizedProduct?    @relation(fields: [productId], references: [id], onDelete: Restrict)
-  needMappings  NeedSolutionMapping[]
-  opportunities Opportunity[]
+  id                String                @id @default(uuid()) @db.Uuid
+  key               String                @unique @db.VarChar(80)
+  name              String                @db.VarChar(160)
+  productId         String?               @map("product_id") @db.Uuid
+  status            PaligCatalogStatus    @default(DRAFT)
+  reviewNote        String?               @map("review_note") @db.VarChar(500)
+  createdAt         DateTime              @default(now()) @map("created_at")
+  updatedAt         DateTime              @updatedAt @map("updated_at")
+  product           AuthorizedProduct?    @relation(fields: [productId], references: [id], onDelete: Restrict)
+  needMappings      NeedSolutionMapping[]
+  opportunities     Opportunity[]
+  knowledgeVersions KnowledgeVersion[]
 
   @@index([productId, status])
   @@map("authorized_solutions")
@@ -2221,6 +2224,46 @@ enum KnowledgeIngestionStatus {
   FAILED
 }
 
+enum KnowledgeSourceType {
+  CONTRACTUAL
+  CAPACITACION
+  COMERCIAL
+  SIMULADOR
+  HISTORICO_VERSION
+  TRIBUTARIO_USUARIO
+  INFERENCIA_CONSULTIVA
+  CORPORATIVO
+}
+
+enum KnowledgeAuthorityLevel {
+  CUSTOMER_CONTRACTUAL
+  CONTRACTUAL_GENERAL
+  CUSTOMER_QUOTATION
+  OFFICIAL_TECHNICAL
+  TRAINING
+  COMMERCIAL
+  INTERPRETATION
+}
+
+enum KnowledgeCurrentStatus {
+  CURRENT
+  HISTORICAL
+  UNKNOWN
+}
+
+enum KnowledgeConflictType {
+  VERSION_CONFLICT
+  AUTHORITY_CONFLICT
+  VALIDITY_UNKNOWN
+  CUSTOMER_SPECIFIC
+}
+
+enum KnowledgeConflictStatus {
+  OPEN
+  RESOLVED
+  ACCEPTED
+}
+
 enum TrainingEnrollmentStatus {
   ASSIGNED
   IN_PROGRESS
@@ -2284,33 +2327,108 @@ model KnowledgeDocument {
 }
 
 model KnowledgeVersion {
-  id             String                  @id @default(uuid()) @db.Uuid
-  documentId     String                  @map("document_id") @db.Uuid
-  version        Int
-  status         KnowledgeDocumentStatus @default(PROCESSING)
-  checksum       String                  @db.Char(64)
-  storageKey     String?                 @map("storage_key") @db.VarChar(500)
-  originalName   String                  @map("original_name") @db.VarChar(255)
-  mimeType       String                  @map("mime_type") @db.VarChar(120)
-  fileSize       Int                     @map("file_size")
-  effectiveFrom  DateTime?               @map("effective_from")
-  effectiveUntil DateTime?               @map("effective_until")
-  changeSummary  String?                 @map("change_summary") @db.VarChar(1000)
-  createdById    String                  @map("created_by_id") @db.Uuid
-  approvedById   String?                 @map("approved_by_id") @db.Uuid
-  approvedAt     DateTime?               @map("approved_at")
-  publishedAt    DateTime?               @map("published_at")
-  createdAt      DateTime                @default(now()) @map("created_at")
-  document       KnowledgeDocument       @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  createdBy      User                    @relation("KnowledgeVersionCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  approvedBy     User?                   @relation("KnowledgeVersionApprover", fields: [approvedById], references: [id], onDelete: Restrict)
-  chunks         KnowledgeChunk[]
-  ingestions     KnowledgeIngestion[]
+  id                   String                  @id @default(uuid()) @db.Uuid
+  documentId           String                  @map("document_id") @db.Uuid
+  version              Int
+  status               KnowledgeDocumentStatus @default(PROCESSING)
+  checksum             String                  @db.Char(64)
+  storageKey           String?                 @map("storage_key") @db.VarChar(500)
+  originalName         String                  @map("original_name") @db.VarChar(255)
+  mimeType             String                  @map("mime_type") @db.VarChar(120)
+  fileSize             Int                     @map("file_size")
+  effectiveFrom        DateTime?               @map("effective_from")
+  effectiveUntil       DateTime?               @map("effective_until")
+  changeSummary        String?                 @map("change_summary") @db.VarChar(1000)
+  versionLabel         String?                 @map("version_label") @db.VarChar(120)
+  sourceType           KnowledgeSourceType     @default(CORPORATIVO) @map("source_type")
+  authorityLevel       KnowledgeAuthorityLevel @default(OFFICIAL_TECHNICAL) @map("authority_level")
+  authorityRank        Int                     @default(4) @map("authority_rank")
+  documentDate         DateTime?               @map("document_date") @db.Date
+  currentStatus        KnowledgeCurrentStatus  @default(UNKNOWN) @map("current_status")
+  publicAllowed        Boolean                 @default(false) @map("public_allowed")
+  consultantAllowed    Boolean                 @default(true) @map("consultant_allowed")
+  managerAllowed       Boolean                 @default(true) @map("manager_allowed")
+  trainingAllowed      Boolean                 @default(false) @map("training_allowed")
+  carrier              PaligCarrier?
+  authorizedProductId  String?                 @map("authorized_product_id") @db.Uuid
+  authorizedSolutionId String?                 @map("authorized_solution_id") @db.Uuid
+  productCode          String?                 @map("product_code") @db.VarChar(100)
+  sourceLocator        String?                 @map("source_locator") @db.VarChar(500)
+  country              String                  @default("CO") @db.VarChar(2)
+  notes                String?                 @db.VarChar(1000)
+  createdById          String                  @map("created_by_id") @db.Uuid
+  approvedById         String?                 @map("approved_by_id") @db.Uuid
+  approvedAt           DateTime?               @map("approved_at")
+  publishedAt          DateTime?               @map("published_at")
+  createdAt            DateTime                @default(now()) @map("created_at")
+  document             KnowledgeDocument       @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  createdBy            User                    @relation("KnowledgeVersionCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  approvedBy           User?                   @relation("KnowledgeVersionApprover", fields: [approvedById], references: [id], onDelete: Restrict)
+  chunks               KnowledgeChunk[]
+  ingestions           KnowledgeIngestion[]
+  authorizedProduct    AuthorizedProduct?      @relation(fields: [authorizedProductId], references: [id], onDelete: Restrict)
+  authorizedSolution   AuthorizedSolution?     @relation(fields: [authorizedSolutionId], references: [id], onDelete: Restrict)
+  customerNeeds        KnowledgeVersionNeed[]
+  facts                KnowledgeFact[]
+  conflictsAsPrimary   KnowledgeConflict[]     @relation("KnowledgeConflictPrimary")
+  conflictsAsSecondary KnowledgeConflict[]     @relation("KnowledgeConflictSecondary")
 
   @@unique([documentId, version])
   @@unique([documentId, checksum])
   @@index([status, effectiveFrom, effectiveUntil])
+  @@index([sourceType, authorityRank, currentStatus])
+  @@index([authorizedProductId, currentStatus])
+  @@index([authorizedSolutionId, currentStatus])
   @@map("knowledge_versions")
+}
+
+model KnowledgeVersionNeed {
+  versionId      String           @map("version_id") @db.Uuid
+  customerNeedId String           @map("customer_need_id") @db.Uuid
+  version        KnowledgeVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  customerNeed   CustomerNeed     @relation(fields: [customerNeedId], references: [id], onDelete: Restrict)
+
+  @@id([versionId, customerNeedId])
+  @@index([customerNeedId, versionId])
+  @@map("knowledge_version_needs")
+}
+
+model KnowledgeFact {
+  id               String           @id @default(uuid()) @db.Uuid
+  versionId        String           @map("version_id") @db.Uuid
+  claimKey         String           @map("claim_key") @db.VarChar(200)
+  subject          String           @db.VarChar(200)
+  predicate        String           @db.VarChar(160)
+  value            Json
+  productVariant   String?          @map("product_variant") @db.VarChar(120)
+  plan             String?          @db.VarChar(80)
+  conditions       Json?
+  customerSpecific Boolean          @default(false) @map("customer_specific")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  version          KnowledgeVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@unique([versionId, claimKey])
+  @@index([claimKey, customerSpecific])
+  @@map("knowledge_facts")
+}
+
+model KnowledgeConflict {
+  id                 String                  @id @default(uuid()) @db.Uuid
+  type               KnowledgeConflictType
+  status             KnowledgeConflictStatus @default(OPEN)
+  topic              String                  @db.VarChar(200)
+  primaryVersionId   String                  @map("primary_version_id") @db.Uuid
+  secondaryVersionId String?                 @map("secondary_version_id") @db.Uuid
+  details            Json
+  detectedAt         DateTime                @default(now()) @map("detected_at")
+  resolvedAt         DateTime?               @map("resolved_at")
+  primaryVersion     KnowledgeVersion        @relation("KnowledgeConflictPrimary", fields: [primaryVersionId], references: [id], onDelete: Cascade)
+  secondaryVersion   KnowledgeVersion?       @relation("KnowledgeConflictSecondary", fields: [secondaryVersionId], references: [id], onDelete: Cascade)
+
+  @@index([status, type, detectedAt])
+  @@index([primaryVersionId, status])
+  @@index([secondaryVersionId, status])
+  @@map("knowledge_conflicts")
 }
 
 model KnowledgeChunk {

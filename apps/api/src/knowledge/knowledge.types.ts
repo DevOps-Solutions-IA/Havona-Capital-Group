@@ -9,6 +9,17 @@ export type KnowledgeCitation = {
   page: number | null;
   chunkId: string;
   snippet: string;
+  sourceType: string;
+  authorityRank: number;
+  versionLabel: string | null;
+  currentStatus: string;
+  effectiveFrom: Date | null;
+  effectiveUntil: Date | null;
+  product: { id: string; name: string } | null;
+  solution: { id: string; name: string } | null;
+  customerNeeds: string[];
+  conflicts: Array<{ type: string; topic: string }>;
+  warning: string | null;
 };
 export type KnowledgeSearchResult = {
   answerStatus: 'GROUNDED' | 'INSUFFICIENT' | 'CONFLICT';

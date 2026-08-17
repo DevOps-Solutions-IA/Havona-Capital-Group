@@ -18,6 +18,20 @@ import {
 } from './knowledge.providers';
 import { KnowledgeActor, KNOWLEDGE_NOT_FOUND, KnowledgeSearchResult } from './knowledge.types';
 import { KnowledgeQueueService } from './knowledge-queue.service';
+import { canUseKnowledgeVersion, knowledgeValidityWarning } from './knowledge-governance';
+import { resolveKnowledgeGovernance, type KnowledgeGovernanceInput } from './knowledge-governance';
+
+type VersionGovernanceInput = KnowledgeGovernanceInput & {
+  versionLabel?: string;
+  documentDate?: string;
+  authorizedProductId?: string;
+  authorizedSolutionId?: string;
+  productCode?: string;
+  sourceLocator?: string;
+  country?: string;
+  notes?: string;
+  customerNeedKeys?: string[];
+};
 
 const ALLOWED_MIME = new Set([
   'application/pdf',
@@ -163,7 +177,7 @@ export class KnowledgeService {
       effectiveFrom?: string;
       effectiveUntil?: string;
       changeSummary?: string;
-    },
+    } & VersionGovernanceInput,
     file: Express.Multer.File,
     actor: KnowledgeActor,
     request?: any,
@@ -182,6 +196,7 @@ export class KnowledgeService {
     const documentId = randomUUID(),
       versionId = randomUUID(),
       storageKey = `${documentId}/${versionId}`;
+    const governance = await this.resolveVersionGovernance(input);
     await this.storage.put(storageKey, file.buffer);
     let persisted = false;
     try {
@@ -208,6 +223,7 @@ export class KnowledgeService {
               effectiveFrom: input.effectiveFrom ? new Date(input.effectiveFrom) : null,
               effectiveUntil: input.effectiveUntil ? new Date(input.effectiveUntil) : null,
               changeSummary: input.changeSummary,
+              ...governance,
               createdById: actor.id,
               ingestions: {
                 create: {
@@ -242,7 +258,7 @@ export class KnowledgeService {
 
   async addVersion(
     documentId: string,
-    input: { effectiveFrom?: string; effectiveUntil?: string; changeSummary: string },
+    input: { effectiveFrom?: string; effectiveUntil?: string; changeSummary: string } & VersionGovernanceInput,
     file: Express.Multer.File,
     actor: KnowledgeActor,
   ) {
@@ -259,6 +275,7 @@ export class KnowledgeService {
     const version = (document.versions[0]?.version ?? 0) + 1,
       id = randomUUID(),
       storageKey = `${documentId}/${id}`;
+    const governance = await this.resolveVersionGovernance(input);
     await this.storage.put(storageKey, file.buffer);
     let persisted = false;
     try {
@@ -275,6 +292,7 @@ export class KnowledgeService {
           effectiveFrom: input.effectiveFrom ? new Date(input.effectiveFrom) : null,
           effectiveUntil: input.effectiveUntil ? new Date(input.effectiveUntil) : null,
           changeSummary: input.changeSummary,
+          ...governance,
           createdById: actor.id,
           ingestions: {
             create: {
@@ -295,6 +313,132 @@ export class KnowledgeService {
       if (!persisted) await this.storage.delete(storageKey);
       throw error;
     }
+  }
+
+  private async resolveVersionGovernance(input: VersionGovernanceInput) {
+    const governance = resolveKnowledgeGovernance(input);
+    const [product, solution, needs] = await Promise.all([
+      input.authorizedProductId
+        ? this.db.authorizedProduct.findUnique({ where: { id: input.authorizedProductId } })
+        : null,
+      input.authorizedSolutionId
+        ? this.db.authorizedSolution.findUnique({
+            where: { id: input.authorizedSolutionId },
+            include: { product: true },
+          })
+        : null,
+      input.customerNeedKeys?.length
+        ? this.db.customerNeed.findMany({ where: { key: { in: input.customerNeedKeys as any } } })
+        : [],
+    ]);
+    if (input.authorizedProductId && (!product || product.carrier !== 'PAN_AMERICAN_LIFE_COLOMBIA'))
+      throw new BadRequestException('KNOWLEDGE_PRODUCT_NOT_AUTHORIZED');
+    if (input.authorizedSolutionId && !solution)
+      throw new BadRequestException('KNOWLEDGE_SOLUTION_NOT_AUTHORIZED');
+    if (
+      solution?.productId &&
+      input.authorizedProductId &&
+      solution.productId !== input.authorizedProductId
+    )
+      throw new BadRequestException('KNOWLEDGE_PRODUCT_SOLUTION_MISMATCH');
+    if (solution?.product && solution.product.carrier !== 'PAN_AMERICAN_LIFE_COLOMBIA')
+      throw new BadRequestException('KNOWLEDGE_PRODUCT_NOT_AUTHORIZED');
+    if (
+      governance.publicAllowed &&
+      ((product && product.status !== 'ACTIVE') || (solution && solution.status !== 'ACTIVE'))
+    )
+      throw new BadRequestException('KNOWLEDGE_PUBLIC_CATALOG_INACTIVE');
+    if (needs.length !== new Set(input.customerNeedKeys ?? []).size)
+      throw new BadRequestException('KNOWLEDGE_NEED_NOT_AUTHORIZED');
+    return {
+      ...governance,
+      carrier: input.carrier ?? product?.carrier ?? solution?.product?.carrier ?? null,
+      versionLabel: input.versionLabel,
+      documentDate: input.documentDate ? new Date(`${input.documentDate}T00:00:00.000Z`) : null,
+      authorizedProductId: input.authorizedProductId,
+      authorizedSolutionId: input.authorizedSolutionId,
+      productCode: input.productCode,
+      sourceLocator: input.sourceLocator,
+      country: input.country ?? 'CO',
+      notes: input.notes,
+      customerNeeds: needs.length
+        ? { create: needs.map((need) => ({ customerNeedId: need.id })) }
+        : undefined,
+    };
+  }
+
+  async addFact(
+    versionId: string,
+    input: {
+      claimKey: string;
+      subject: string;
+      predicate: string;
+      value: Prisma.InputJsonValue;
+      productVariant?: string;
+      plan?: string;
+      conditions?: Prisma.InputJsonValue;
+      customerSpecific?: boolean;
+    },
+    actor: KnowledgeActor,
+  ) {
+    this.assert('knowledge.review', actor);
+    const version = await this.db.knowledgeVersion.findUnique({ where: { id: versionId } });
+    if (!version) throw new NotFoundException('KNOWLEDGE_VERSION_NOT_FOUND');
+    const competing = await this.db.knowledgeFact.findMany({
+      where: {
+        claimKey: input.claimKey,
+        versionId: { not: versionId },
+        version: {
+          OR: [
+            { documentId: version.documentId },
+            ...(version.authorizedProductId
+              ? [{ authorizedProductId: version.authorizedProductId }]
+              : []),
+          ],
+        },
+      },
+      include: { version: true },
+    });
+    const conflicts = competing.filter(
+      (fact) => JSON.stringify(fact.value) !== JSON.stringify(input.value),
+    );
+    return this.db.$transaction(async (tx) => {
+      const fact = await tx.knowledgeFact.create({ data: { versionId, ...input } });
+      if (version.currentStatus === 'UNKNOWN') {
+        await tx.knowledgeConflict.create({
+          data: {
+            type: 'VALIDITY_UNKNOWN',
+            topic: input.claimKey,
+            primaryVersionId: versionId,
+            details: { claimKey: input.claimKey },
+          },
+        });
+      }
+      for (const conflict of conflicts) {
+        await tx.knowledgeConflict.create({
+          data: {
+            type:
+              input.customerSpecific || conflict.customerSpecific
+                ? 'CUSTOMER_SPECIFIC'
+                : conflict.version.authorityRank === version.authorityRank
+                  ? 'VERSION_CONFLICT'
+                  : 'AUTHORITY_CONFLICT',
+            topic: input.claimKey,
+            primaryVersionId: versionId,
+            secondaryVersionId: conflict.versionId,
+            details: {
+              claimKey: input.claimKey,
+              primaryAuthorityRank: version.authorityRank,
+              secondaryAuthorityRank: conflict.version.authorityRank,
+            },
+          },
+        });
+      }
+      return {
+        fact,
+        conflictsCreated: conflicts.length + (version.currentStatus === 'UNKNOWN' ? 1 : 0),
+      };
+    });
   }
 
   private async extract(buffer: Buffer, mime: string) {
@@ -546,12 +690,30 @@ export class KnowledgeService {
         },
       },
       include: {
-        version: { include: { document: { include: { collection: true, permissions: true } } } },
+        version: {
+          include: {
+            document: { include: { collection: true, permissions: true } },
+            authorizedProduct: { select: { id: true, name: true } },
+            authorizedSolution: { select: { id: true, name: true } },
+            customerNeeds: { include: { customerNeed: { select: { key: true } } } },
+            conflictsAsPrimary: {
+              where: { status: 'OPEN' },
+              select: { type: true, topic: true },
+            },
+            conflictsAsSecondary: {
+              where: { status: 'OPEN' },
+              select: { type: true, topic: true },
+            },
+          },
+        },
       },
       take: 2000,
     });
     const ranked = rows
-      .filter((row) => this.canRead(row.version.document, actor))
+      .filter(
+        (row) =>
+          this.canRead(row.version.document, actor) && canUseKnowledgeVersion(row.version, actor),
+      )
       .map((row) => {
         const vector = Array.isArray(row.embedding)
           ? row.embedding.filter((item): item is number => typeof item === 'number')
@@ -593,6 +755,20 @@ export class KnowledgeService {
         page: row.pageStart,
         chunkId: row.id,
         snippet: row.content.slice(0, 280),
+        sourceType: row.version.sourceType,
+        authorityRank: row.version.authorityRank,
+        versionLabel: row.version.versionLabel,
+        currentStatus: row.version.currentStatus,
+        effectiveFrom: row.version.effectiveFrom,
+        effectiveUntil: row.version.effectiveUntil,
+        product: row.version.authorizedProduct,
+        solution: row.version.authorizedSolution,
+        customerNeeds: row.version.customerNeeds.map((item) => item.customerNeed.key),
+        conflicts: [
+          ...row.version.conflictsAsPrimary,
+          ...row.version.conflictsAsSecondary,
+        ],
+        warning: knowledgeValidityWarning(row.version.currentStatus),
       },
     }));
     const topDocs = new Map(
@@ -603,11 +779,12 @@ export class KnowledgeService {
           { title: item.citation.title, version: item.citation.version },
         ]),
     );
-    const conflict =
-      topDocs.size > 1 &&
+    const explicitConflict = results.some((item) => item.citation.conflicts.length > 0);
+    const heuristicConflict = topDocs.size > 1 &&
       results.slice(0, 2).every((item) => item.score >= 0.65) &&
       /\b(no|prohibido|excluye)\b/i.test(results[0]!.content) !==
         /\b(no|prohibido|excluye)\b/i.test(results[1]!.content);
+    const conflict = explicitConflict || heuristicConflict;
     return {
       query,
       answerStatus: conflict ? 'CONFLICT' : 'GROUNDED',
