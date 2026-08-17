@@ -62,7 +62,7 @@ describe('Knowledge extraction report persistence', () => {
     expect(secondId).toBe(firstId);
     expect(db.knowledgeChunk.createMany).toHaveBeenCalledTimes(2);
     expect(db.knowledgeChunk.createMany).toHaveBeenLastCalledWith({
-      data: [expect.objectContaining({ versionId: 'version-1', position: 0 })],
+      data: [expect.objectContaining({ id: expect.any(String), versionId: 'version-1', position: 0 })],
     });
   });
 

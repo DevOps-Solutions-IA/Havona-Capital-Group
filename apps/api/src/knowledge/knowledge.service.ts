@@ -608,6 +608,7 @@ export class KnowledgeService {
         } })),
         ...(!failedPages && chunks.length ? [this.db.knowledgeChunk.createMany({
           data: chunks.map((item, index) => ({
+              id: randomUUID(),
               versionId,
               position: index,
               section: item.section,
