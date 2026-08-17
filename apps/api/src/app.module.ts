@@ -90,6 +90,7 @@ import { HenryMessagingOperatorService } from './henry/henry-messaging-operator.
 import { CadenceController } from './cadences/cadence.controller';
 import { CadenceService } from './cadences/cadence.service';
 import { HenryPaligConsultativeService } from './henry/henry-palig-consultative.service';
+import { HenryCommercialBehaviorService } from './henry/henry-commercial-behavior.service';
 import { KnowledgeStagingService } from './knowledge/knowledge-staging.service';
 
 @Module({
@@ -135,6 +136,7 @@ import { KnowledgeStagingService } from './knowledge/knowledge-staging.service';
     HenryContextService,
     HenryExpertCopilotService,
     HenryPaligConsultativeService,
+    HenryCommercialBehaviorService,
     ...HENRY_POLICY_PROVIDERS,
     HenryPolicyComposer,
     HenryPolicyEngine,
@@ -171,7 +173,10 @@ import { KnowledgeStagingService } from './knowledge/knowledge-staging.service';
     AnalyticsService,
     { provide: KnowledgeStorageConfig, useFactory: () => new KnowledgeStorageConfig(process.env) },
     PersistentFilesystemStorageProvider,
-    { provide: ConfiguredMalwareScanner, useFactory: () => new ConfiguredMalwareScanner(process.env) },
+    {
+      provide: ConfiguredMalwareScanner,
+      useFactory: () => new ConfiguredMalwareScanner(process.env),
+    },
     { provide: ConfiguredOcrProvider, useFactory: () => new ConfiguredOcrProvider(process.env) },
     DocumentExtractor,
     ConfiguredEmbeddingProvider,

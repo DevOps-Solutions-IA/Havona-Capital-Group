@@ -1,7 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@havona/database';
 import type { ResolvedHenryContext } from './henry-context.service';
-import type { HenryExpertMode, HenryExpertProfile, HenryReasoningType } from './policies/henry-policy.types';
+import type {
+  HenryExpertMode,
+  HenryExpertProfile,
+  HenryReasoningType,
+} from './policies/henry-policy.types';
+import type { HenryCommercialMemory } from './henry-commercial-behavior.service';
 
 type StateRecord = Record<string, Prisma.JsonValue>;
 
@@ -20,6 +25,7 @@ export type HenryCorporateMemory = {
       questionsAsked: string[];
       nextStep: string | null;
     };
+    commercial?: HenryCommercialMemory;
   };
   longTermMemoryReference: string[];
   draft: string | null;
@@ -50,12 +56,18 @@ export class HenryExpertCopilotService {
     };
   }
 
-  memory(current: Prisma.JsonValue | undefined, context: ResolvedHenryContext, profile: HenryExpertProfile): HenryCorporateMemory {
+  memory(
+    current: Prisma.JsonValue | undefined,
+    context: ResolvedHenryContext,
+    profile: HenryExpertProfile,
+  ): HenryCorporateMemory {
     const state = this.asRecord(current);
     const priorWorking = this.asRecord(state.workingMemory);
-    const knownReferences = new Set<string>(Array.isArray(priorWorking.knownReferences)
-      ? priorWorking.knownReferences.filter((item): item is string => typeof item === 'string')
-      : []);
+    const knownReferences = new Set<string>(
+      Array.isArray(priorWorking.knownReferences)
+        ? priorWorking.knownReferences.filter((item): item is string => typeof item === 'string')
+        : [],
+    );
     if (context.entity) knownReferences.add(`${context.entity.type}:${context.entity.id}`);
     const priorLongTerm = Array.isArray(state.longTermMemoryReference)
       ? state.longTermMemoryReference.filter((item): item is string => typeof item === 'string')
@@ -65,12 +77,19 @@ export class HenryExpertCopilotService {
     const contextId = context.entity
       ? `${context.page.pageType}:${context.entity.type}:${context.entity.id}`
       : `${context.page.pageType}:${context.page.section ?? 'root'}`;
-    const intention = context.page.intentHint ?? this.detectIntention(profile.objective) ?? this.stringOrNull(state.lastIntention);
+    const intention =
+      context.page.intentHint ??
+      this.detectIntention(profile.objective) ??
+      this.stringOrNull(state.lastIntention);
     return {
       contextId,
       roleContext: context.role,
       pageContext: context.page,
-      workingMemory: { objective: profile.objective, intention, knownReferences: [...knownReferences].slice(-12) },
+      workingMemory: {
+        objective: profile.objective,
+        intention,
+        knownReferences: [...knownReferences].slice(-12),
+      },
       longTermMemoryReference: [...longTerm].slice(-24),
       draft: this.stringOrNull(state.draft),
       lastIntention: intention,
@@ -79,7 +98,11 @@ export class HenryExpertCopilotService {
   }
 
   prompt(profile: HenryExpertProfile, memory: HenryCorporateMemory) {
-    const safeEvidence = profile.evidence.map((item) => ({ source: item.source, fact: item.fact, observedAt: item.observedAt }));
+    const safeEvidence = profile.evidence.map((item) => ({
+      source: item.source,
+      fact: item.fact,
+      observedAt: item.observedAt,
+    }));
     return [
       '<henry-expert-context>',
       `mode=${profile.mode}`,
@@ -112,12 +135,35 @@ export class HenryExpertCopilotService {
   }
 
   private detectMode(content: string, context: ResolvedHenryContext): HenryExpertMode {
-    if (!INTERNAL_ROLES.has(context.role)) return context.role === 'PUBLIC' ? 'PUBLIC_ADVISOR' : 'CORPORATE_ASSISTANT';
-    if (/(ens[eé][ñn]ame|expl[ií]came|paso a paso|capac[ií]tame|c[oó]mo funciona|ejemplo|mejor pr[aá]ctica)/i.test(content)) return 'TEACH_MODE';
-    if (/(prep[aá]rame|practiquemos|role ?play|objeci[oó]n|cierre|negociaci[oó]n|reuni[oó]n|llamada|visita|seguimiento)/i.test(content)) return 'SALES_COACH';
-    if (/(qu[eé] hago|siguiente (paso|acci[oó]n)|riesgo|prioridad|probabilidad|analiza|informaci[oó]n (me )?falta|tareas? vencida)/i.test(content) || context.entity) return 'CRM_INTELLIGENCE';
-    if (/(recomienda|conviene|alternativa|beneficio|decidir|decisi[oó]n)/i.test(content)) return 'DECISION_SUPPORT';
-    if (/(manual|pol[ií]tica|proceso|producto|documentaci[oó]n|arquitectura|roadmap|permiso|rol)/i.test(content)) return 'KNOWLEDGE_ASSISTANT';
+    if (!INTERNAL_ROLES.has(context.role))
+      return context.role === 'PUBLIC' ? 'PUBLIC_ADVISOR' : 'CORPORATE_ASSISTANT';
+    if (
+      /(ens[eé][ñn]ame|expl[ií]came|paso a paso|capac[ií]tame|c[oó]mo funciona|ejemplo|mejor pr[aá]ctica)/i.test(
+        content,
+      )
+    )
+      return 'TEACH_MODE';
+    if (
+      /(prep[aá]rame|practiquemos|role ?play|objeci[oó]n|cierre|negociaci[oó]n|reuni[oó]n|llamada|visita|seguimiento)/i.test(
+        content,
+      )
+    )
+      return 'SALES_COACH';
+    if (
+      /(qu[eé] hago|siguiente (paso|acci[oó]n)|riesgo|prioridad|probabilidad|analiza|informaci[oó]n (me )?falta|tareas? vencida)/i.test(
+        content,
+      ) ||
+      context.entity
+    )
+      return 'CRM_INTELLIGENCE';
+    if (/(recomienda|conviene|alternativa|beneficio|decidir|decisi[oó]n)/i.test(content))
+      return 'DECISION_SUPPORT';
+    if (
+      /(manual|pol[ií]tica|proceso|producto|documentaci[oó]n|arquitectura|roadmap|permiso|rol)/i.test(
+        content,
+      )
+    )
+      return 'KNOWLEDGE_ASSISTANT';
     return 'EXPERT_COPILOT';
   }
 
@@ -136,17 +182,34 @@ export class HenryExpertCopilotService {
   }
 
   private requestsMutation(content: string) {
-    return /(crea|registra|asigna|reasigna|actualiza|cambia|mueve|completa|cierra|agenda|programa|elimina)/i.test(content);
+    return /(crea|registra|asigna|reasigna|actualiza|cambia|mueve|completa|cierra|agenda|programa|elimina)/i.test(
+      content,
+    );
   }
 
   private detectIntention(content: string) {
-    const intents = ['pension', 'educacion', 'patrimonio', 'proteccion', 'accidentes', 'empresarios', 'socios', 'socio-unico', 'consultores'];
-    const normalized = content.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const intents = [
+      'pension',
+      'educacion',
+      'patrimonio',
+      'proteccion',
+      'accidentes',
+      'empresarios',
+      'socios',
+      'socio-unico',
+      'consultores',
+    ];
+    const normalized = content
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
     return intents.find((intent) => normalized.includes(intent)) ?? null;
   }
 
   private asRecord(value: Prisma.JsonValue | undefined): StateRecord {
-    return value && typeof value === 'object' && !Array.isArray(value) ? value as StateRecord : {};
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as StateRecord)
+      : {};
   }
 
   private stringOrNull(value: Prisma.JsonValue | undefined) {

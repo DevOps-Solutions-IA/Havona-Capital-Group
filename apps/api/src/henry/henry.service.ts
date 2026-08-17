@@ -25,6 +25,10 @@ import { HenryCorporateMemory, HenryExpertCopilotService } from './henry-expert-
 import { HenryContextAssembler } from './henry-context-assembler.service';
 import { HenryMemoryService } from '../knowledge/memory.service';
 import { HenryPaligConsultativeService } from './henry-palig-consultative.service';
+import {
+  HenryCommercialBehaviorService,
+  type HenryCommercialMemory,
+} from './henry-commercial-behavior.service';
 
 type Actor = { id: string; permissions: string[] };
 
@@ -43,6 +47,7 @@ export class HenryService {
     private readonly contextAssembler: HenryContextAssembler,
     private readonly persistentMemory: HenryMemoryService,
     private readonly paligConsultative: HenryPaligConsultativeService,
+    private readonly commercialBehavior: HenryCommercialBehaviorService,
   ) {}
 
   async reasonForAutomation(input: {
@@ -485,7 +490,37 @@ export class HenryService {
     let stage = this.readStage(conversation.state?.state);
     let prospectAssociated = Boolean(conversation.prospectId);
     const inputMessage = await this.db.message.findUniqueOrThrow({ where: { id: inputMessageId } });
-    const inputDecision = this.policyEngine.evaluateInput(inputMessage.content);
+    const commercial = this.commercialBehavior.analyze({
+      content: inputMessage.content,
+      currentStage: stage,
+      role: runtimeContext.role,
+      pageIntentHint: runtimeContext.page.intentHint,
+      prior: this.readCommercialMemory(conversation.state?.state),
+    });
+    const policyDecision = this.policyEngine.evaluateInput(inputMessage.content);
+    const inputDecision: HenryPolicyDecision = commercial.escalation
+      ? {
+          action: 'ESCALATE',
+          policyId: 'commercial-behavior',
+          ruleId: commercial.ruleId,
+          reason: commercial.escalation.reason,
+          response:
+            commercial.escalation.reason === 'UNSUPPORTED_INTENT'
+              ? 'No puedo revelar información interna o fuera de su ámbito. Si necesita ayuda legítima, puedo solicitar atención humana.'
+              : commercial.escalation.reason === 'LOW_CONFIDENCE'
+                ? 'No tengo información suficiente para resolver ese conflicto de fuentes. Solicitaré una revisión humana con evidencia autorizada.'
+                : 'Gracias por indicarlo. Registraré el contexto confirmado para que una persona del equipo continúe sin hacerle repetir lo necesario.',
+          stage: 'ESCALATION',
+        }
+      : policyDecision.action !== 'ALLOW' ||
+          ['OBJECTION', 'APPOINTMENT', 'SUPPORT'].includes(policyDecision.stage ?? '')
+        ? policyDecision
+        : {
+            action: 'ALLOW',
+            policyId: 'commercial-behavior',
+            ruleId: commercial.ruleId,
+            stage: commercial.stage,
+          };
     if (inputDecision.stage && inputDecision.stage !== stage) {
       await this.transitionState(
         conversationId,
@@ -506,6 +541,7 @@ export class HenryService {
       questionsAsked: [],
       nextStep: paligPlan.requiredTools[0] ?? null,
     };
+    memory.workingMemory.commercial = commercial.memory;
     await this.updateCorporateMemory(conversationId, memory);
     const expertAudit = this.expertCopilot.audit(expert, memory);
     const composed = this.policyComposer.compose({
@@ -532,6 +568,11 @@ export class HenryService {
       {
         kind: 'palig-consultative-governance',
         content: this.paligConsultative.prompt(paligPlan),
+        priority: 3,
+      },
+      {
+        kind: 'commercial-behavior',
+        content: this.commercialBehavior.prompt(commercial),
         priority: 3,
       },
       {
@@ -569,6 +610,7 @@ export class HenryService {
             truncated: assembled.truncated,
           },
           expert: expertAudit,
+          commercialBehavior: this.commercialBehavior.audit(commercial),
         },
       },
     });
@@ -576,7 +618,8 @@ export class HenryService {
     if (inputDecision.action === 'ESCALATE') {
       await this.tools.escalate(
         inputDecision.reason ?? 'POLICY',
-        'Escalamiento preventivo determinado por políticas de Henry.',
+        commercial.escalation?.summary ??
+          'Escalamiento preventivo determinado por políticas de Henry.',
         { conversationId, audit: context, decision: inputDecision },
       );
       const output = await this.createAssistantMessage(
@@ -585,6 +628,7 @@ export class HenryService {
         'POLICY_ESCALATION',
         inputDecision,
         expertAudit,
+        this.commercialBehavior.audit(commercial),
         channel,
       );
       await this.completeExecution(
@@ -599,11 +643,33 @@ export class HenryService {
       );
       return { data: { status: 'ESCALATED', message: this.publicMessage(output) } };
     }
+    if (commercial.nextBestAction === 'STOP_COMMERCIAL_CONVERSATION') {
+      const output = await this.createAssistantMessage(
+        conversationId,
+        'Entendido. Detendré la conversación comercial y no insistiré. Si más adelante desea retomarla, podrá hacerlo por iniciativa propia.',
+        'COMMERCIAL_STOP',
+        inputDecision,
+        expertAudit,
+        this.commercialBehavior.audit(commercial),
+        channel,
+      );
+      await this.completeExecution(
+        execution.id,
+        inputMessageId,
+        output.id,
+        started,
+        0,
+        { inputTokens: 0, outputTokens: 0, totalTokens: 0, costUsd: 0, costReported: false },
+        'SUCCEEDED',
+      );
+      return { data: { status: 'COMPLETED', message: this.publicMessage(output) } };
+    }
     if (!this.provider.isConfigured()) {
       const output = await this.createAssistantMessage(
         conversationId,
         'Henry no está disponible en este entorno porque el proveedor o modelo de inteligencia artificial no está configurado. Puede solicitar atención humana.',
         'CONFIGURATION_STATUS',
+        undefined,
         undefined,
         undefined,
         channel,
@@ -645,6 +711,7 @@ export class HenryService {
     let totalTokens = 0;
     let costUsd = 0;
     let costReported = false;
+    let authorizedProductEvidence = false;
     try {
       while (iterations <= this.config.maxToolCalls) {
         iterations += 1;
@@ -667,7 +734,17 @@ export class HenryService {
           let content = result.content?.trim();
           if (!content)
             throw new AIProviderError('AI_EMPTY_RESPONSE', 'El proveedor no devolvió contenido');
-          const outputDecision = this.policyEngine.evaluateOutput(content);
+          let outputDecision = this.policyEngine.evaluateOutput(content);
+          const commercialOutputDecision = this.commercialBehavior.evaluateOutput(
+            content,
+            authorizedProductEvidence,
+          );
+          if (outputDecision.action === 'ALLOW' && commercialOutputDecision.action === 'REJECT')
+            outputDecision = {
+              ...commercialOutputDecision,
+              reason: 'POLICY',
+              stage: 'ESCALATION',
+            };
           if (outputDecision.action === 'REJECT') {
             content = outputDecision.response!;
             await this.tools.escalate(
@@ -689,6 +766,7 @@ export class HenryService {
             'AI_PROVIDER',
             outputDecision,
             expertAudit,
+            this.commercialBehavior.audit(commercial),
             channel,
           );
           await this.completeExecution(
@@ -754,6 +832,8 @@ export class HenryService {
               decision: toolDecision,
               actor,
             });
+            if (['search_knowledge', 'list_authorized_products'].includes(call.name))
+              authorizedProductEvidence = true;
             await this.db.toolCall.update({
               where: { id: persisted.id },
               data: {
@@ -890,6 +970,7 @@ export class HenryService {
     origin: string,
     decision?: HenryPolicyDecision,
     expertAudit?: ReturnType<HenryExpertCopilotService['audit']>,
+    commercialAudit?: ReturnType<HenryCommercialBehaviorService['audit']>,
     channel: 'WEB' | 'VOICE' = 'WEB',
   ) {
     const assistant = await this.db.conversationParticipant.findFirstOrThrow({
@@ -909,6 +990,7 @@ export class HenryService {
             ? { policyId: decision.policyId, ruleId: decision.ruleId, action: decision.action }
             : {}),
           ...(expertAudit ?? {}),
+          ...(commercialAudit ? { commercialBehavior: commercialAudit } : {}),
         },
       },
     });
@@ -1061,6 +1143,16 @@ export class HenryService {
         return state.stage as HenryConversationStage;
     }
     return 'DISCOVERY';
+  }
+
+  private readCommercialMemory(state: Prisma.JsonValue | undefined) {
+    if (!state || typeof state !== 'object' || Array.isArray(state)) return undefined;
+    const working = state.workingMemory;
+    if (!working || typeof working !== 'object' || Array.isArray(working)) return undefined;
+    const commercial = working.commercial;
+    if (!commercial || typeof commercial !== 'object' || Array.isArray(commercial))
+      return undefined;
+    return commercial as unknown as Partial<HenryCommercialMemory>;
   }
 
   private async transitionState(
