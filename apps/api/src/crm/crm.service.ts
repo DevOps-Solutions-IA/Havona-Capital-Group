@@ -266,6 +266,17 @@ export class CrmService {
 
   async updateProspect(id: string, input: any, actor: Actor, request: any) {
     await this.prospect(id, actor);
+    const previous = await this.db.prospect.findUniqueOrThrow({
+      where: { id },
+      select: {
+        status: true,
+        assignments: {
+          where: { endedAt: null },
+          select: { assigneeId: true },
+          take: 1,
+        },
+      },
+    });
     const updated = await this.db.$transaction(async (tx) => {
       const row = await tx.prospect.update({ where: { id }, data: input });
       await tx.activity.create({
@@ -286,6 +297,20 @@ export class CrmService {
       );
       return row;
     });
+    if (input.status && input.status !== previous.status)
+      await this.eventBus?.publish({
+        eventId: `prospect:stage:${id}:${updated.updatedAt.toISOString()}`,
+        type: 'PROSPECT_STAGE_CHANGED',
+        entityType: 'Prospect',
+        entityId: id,
+        actorUserId: actor.id,
+        payload: {
+          prospectId: id,
+          assignedUserId: previous.assignments[0]?.assigneeId,
+          previousStatus: previous.status,
+          newStatus: updated.status,
+        },
+      });
     return updated;
   }
 
@@ -559,6 +584,7 @@ export class CrmService {
       payload: {
         opportunityId: id,
         prospectId: current.prospectId,
+        assignedUserId: current.ownerId,
         changedFields: Object.keys(context),
       },
     });
@@ -671,7 +697,12 @@ export class CrmService {
       entityType: 'Opportunity',
       entityId: id,
       actorUserId: actor.id,
-      payload: { opportunityId: id, prospectId: current.prospectId, changedFields: changes },
+      payload: {
+        opportunityId: id,
+        prospectId: current.prospectId,
+        assignedUserId: current.ownerId,
+        changedFields: changes,
+      },
     });
     return updated;
   }
@@ -777,6 +808,7 @@ export class CrmService {
       payload: {
         opportunityId: id,
         prospectId: current.prospectId,
+        assignedUserId: current.ownerId,
         previousStageId: current.stageId,
         newStageId: target.id,
         stage: target.key,
@@ -815,32 +847,54 @@ export class CrmService {
     await this.prospect(input.prospectId, actor);
     if (input.assigneeId !== actor.id && !actor.permissions.includes('crm.tasks.manage'))
       throw new ForbiddenException('No puede crear tareas para otro usuario');
-    return this.db.$transaction(async (tx) => {
-      await this.eligibleUser(input.assigneeId, tx);
-      await this.validateOpportunityLink(input.prospectId, input.opportunityId, tx);
-      const row = await tx.task.create({
-        data: { ...input, dueAt: new Date(input.dueAt), createdById: actor.id },
+    const { idempotencyKey, ...taskInput } = input;
+    if (idempotencyKey) {
+      const existing = await this.db.task.findUnique({ where: { id: idempotencyKey } });
+      if (existing) return existing;
+    }
+    try {
+      return await this.db.$transaction(async (tx) => {
+        await this.eligibleUser(taskInput.assigneeId, tx);
+        await this.validateOpportunityLink(taskInput.prospectId, taskInput.opportunityId, tx);
+        const row = await tx.task.create({
+          data: {
+            ...taskInput,
+            ...(idempotencyKey ? { id: idempotencyKey } : {}),
+            dueAt: new Date(taskInput.dueAt),
+            createdById: actor.id,
+          },
+        });
+        await tx.activity.create({
+          data: {
+            prospectId: input.prospectId,
+            opportunityId: input.opportunityId,
+            actorId: actor.id,
+            type: ActivityType.TASK_CREATED,
+            summary: `Tarea creada: ${input.title}`,
+            metadata: { taskId: row.id },
+          },
+        });
+        await this.audit.record(
+          'CRM_TASK_CREATED',
+          'Task',
+          row.id,
+          this.context(request),
+          { prospectId: input.prospectId, assigneeId: input.assigneeId },
+          tx,
+        );
+        return row;
       });
-      await tx.activity.create({
-        data: {
-          prospectId: input.prospectId,
-          opportunityId: input.opportunityId,
-          actorId: actor.id,
-          type: ActivityType.TASK_CREATED,
-          summary: `Tarea creada: ${input.title}`,
-          metadata: { taskId: row.id },
-        },
-      });
-      await this.audit.record(
-        'CRM_TASK_CREATED',
-        'Task',
-        row.id,
-        this.context(request),
-        { prospectId: input.prospectId, assigneeId: input.assigneeId },
-        tx,
-      );
-      return row;
-    });
+    } catch (error) {
+      if (
+        !idempotencyKey ||
+        !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+        error.code !== 'P2002'
+      )
+        throw error;
+      const existing = await this.db.task.findUnique({ where: { id: idempotencyKey } });
+      if (!existing) throw error;
+      return existing;
+    }
   }
   async taskStatus(id: string, status: TaskStatus, actor: Actor, request: any) {
     const task = await this.db.task.findFirst({

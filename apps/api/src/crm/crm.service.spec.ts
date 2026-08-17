@@ -72,18 +72,82 @@ describe('CrmService', () => {
     });
   });
 
+  it('emite PROSPECT_STAGE_CHANGED después de una transición válida', async () => {
+    const updatedAt = new Date('2030-01-01T10:00:00.000Z');
+    const tx: any = {
+      prospect: {
+        update: jest.fn().mockResolvedValue({ id: 'prospect', status: 'REVIEWED', updatedAt }),
+      },
+      activity: { create: jest.fn() },
+    };
+    const db: any = {
+      prospect: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'prospect' }),
+        findUniqueOrThrow: jest
+          .fn()
+          .mockResolvedValue({ status: 'NEW', assignments: [{ assigneeId: consultant.id }] }),
+      },
+      $transaction: jest.fn((operation) => operation(tx)),
+    };
+    const events = { publish: jest.fn() };
+    const service = new CrmService(db, { record: jest.fn() } as any, events as any);
+    await service.updateProspect('prospect', { status: 'REVIEWED' }, consultant, {
+      auth: { user: consultant },
+      headers: {},
+    });
+    expect(events.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventId: 'prospect:stage:prospect:2030-01-01T10:00:00.000Z',
+        type: 'PROSPECT_STAGE_CHANGED',
+        actorUserId: consultant.id,
+        payload: {
+          prospectId: 'prospect',
+          assignedUserId: consultant.id,
+          previousStatus: 'NEW',
+          newStatus: 'REVIEWED',
+        },
+      }),
+    );
+  });
+
+  it('reutiliza una tarea existente con idempotencyKey interno', async () => {
+    const task = {
+      id: '00000000-0000-4000-8000-000000000099',
+      prospectId: 'prospect',
+      assigneeId: consultant.id,
+    };
+    const db: any = {
+      prospect: { findFirst: jest.fn().mockResolvedValue({ id: 'prospect' }) },
+      task: { findUnique: jest.fn().mockResolvedValue(task) },
+      $transaction: jest.fn(),
+    };
+    const service = new CrmService(db, { record: jest.fn() } as any);
+    await expect(
+      service.createTask(
+        {
+          idempotencyKey: task.id,
+          prospectId: 'prospect',
+          assigneeId: consultant.id,
+          title: 'Seguimiento',
+          dueAt: new Date(),
+        },
+        consultant,
+        {},
+      ),
+    ).resolves.toBe(task);
+    expect(db.$transaction).not.toHaveBeenCalled();
+  });
+
   it('exige permiso específico para cerrar una oportunidad', async () => {
     const db = {
       opportunity: {
-        findFirst: jest
-          .fn()
-          .mockResolvedValue({
-            id: 'opp',
-            prospectId: 'prospect',
-            stageId: 'old',
-            status: 'OPEN',
-            stage: { key: 'new' },
-          }),
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'opp',
+          prospectId: 'prospect',
+          stageId: 'old',
+          status: 'OPEN',
+          stage: { key: 'new' },
+        }),
       },
       pipelineStage: {
         findFirst: jest.fn().mockResolvedValue({ id: 'closed', key: 'closed', name: 'Cerrado' }),
@@ -131,13 +195,11 @@ describe('CrmService', () => {
     };
     const tx: any = {
       opportunity: {
-        update: jest
-          .fn()
-          .mockImplementation(({ data }) => ({
-            ...current,
-            ...data,
-            updatedAt: new Date('2026-08-06T12:00:00Z'),
-          })),
+        update: jest.fn().mockImplementation(({ data }) => ({
+          ...current,
+          ...data,
+          updatedAt: new Date('2026-08-06T12:00:00Z'),
+        })),
       },
       opportunityFinancialHistory: { create: jest.fn().mockResolvedValue({}) },
     };
@@ -256,14 +318,12 @@ describe('CrmService', () => {
         findFirst: jest.fn().mockResolvedValue({ id: 'need', key: 'FAMILY_PROTECTION' }),
       },
       authorizedSolution: {
-        findFirst: jest
-          .fn()
-          .mockResolvedValue({
-            id: 'solution',
-            productId: 'product',
-            product: { id: 'product', carrier: 'PAN_AMERICAN_LIFE_COLOMBIA', status: 'ACTIVE' },
-            needMappings: [{ customerNeedId: 'need' }],
-          }),
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'solution',
+          productId: 'product',
+          product: { id: 'product', carrier: 'PAN_AMERICAN_LIFE_COLOMBIA', status: 'ACTIVE' },
+          needMappings: [{ customerNeedId: 'need' }],
+        }),
       },
     };
     db.$transaction = jest.fn(async (callback: (client: any) => unknown) => callback(db));

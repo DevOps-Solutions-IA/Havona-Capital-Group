@@ -150,10 +150,13 @@ export class CommunicationsService {
         'La comunicación comercial requiere consentimiento vigente',
         409,
       );
-    if (input.generatedByHenry && ['PAUSED', 'CLOSED'].includes(thread.handlingMode))
+    if (
+      (input.generatedByHenry || input.generatedByAutomation) &&
+      ['HUMAN', 'PAUSED', 'CLOSED'].includes(thread.handlingMode)
+    )
       throw new CommunicationError(
         'COMMUNICATION_FORBIDDEN',
-        'Henry no puede enviar en un hilo pausado o cerrado',
+        'La automatización no puede enviar durante atención humana o en un hilo pausado',
         409,
       );
     const config =
@@ -218,9 +221,7 @@ export class CommunicationsService {
               }
             : {}),
           ...(input.subject ? { subject: input.subject } : {}),
-          ...(messageClassification
-            ? { messageClassification }
-            : {}),
+          ...(messageClassification ? { messageClassification } : {}),
           ...(input.templateMetadata ?? {}),
           commercialContext,
         },
@@ -380,7 +381,13 @@ export class CommunicationsService {
         entityType: 'CommunicationThread',
         entityId: threadId,
         actorUserId: actor.id,
-        payload: { threadId, previousMode: thread.handlingMode, mode },
+        payload: {
+          threadId,
+          prospectId: thread.prospectId,
+          assignedUserId: thread.assignedUserId,
+          previousMode: thread.handlingMode,
+          mode,
+        },
       });
     return updated;
   }
@@ -401,7 +408,7 @@ export class CommunicationsService {
     return updated;
   }
   async close(actor: Actor, threadId: string, ctx: AuditContext) {
-    await this.get(actor, threadId);
+    const thread = await this.get(actor, threadId);
     const updated = await this.db.communicationThread.update({
       where: { id: threadId },
       data: { status: 'CLOSED', handlingMode: 'CLOSED', closedAt: new Date() },
@@ -413,12 +420,21 @@ export class CommunicationsService {
       entityType: 'CommunicationThread',
       entityId: threadId,
       actorUserId: actor.id,
-      payload: { threadId },
+      payload: {
+        threadId,
+        prospectId: thread.prospectId,
+        opportunityId: thread.opportunityId,
+        assignedUserId: thread.assignedUserId,
+      },
     });
     return updated;
   }
   async suppressByInstruction(threadId: string, text: string, source: string) {
     if (!OPT_OUT.test(text)) return false;
+    const thread = await this.db.communicationThread.findUniqueOrThrow({
+      where: { id: threadId },
+      select: { prospectId: true, opportunityId: true, assignedUserId: true },
+    });
     await this.db.$transaction([
       this.db.communicationConsent.upsert({
         where: { threadId },
@@ -447,7 +463,13 @@ export class CommunicationsService {
       type: 'COMMUNICATION_OPT_OUT',
       entityType: 'CommunicationThread',
       entityId: threadId,
-      payload: { threadId, source },
+      payload: {
+        threadId,
+        prospectId: thread.prospectId,
+        opportunityId: thread.opportunityId,
+        assignedUserId: thread.assignedUserId,
+        source,
+      },
       occurredAt: new Date(),
     });
     return true;
@@ -530,6 +552,7 @@ export class CommunicationsService {
         threadId: thread.id,
         messageId: message.id,
         prospectId: thread.prospectId,
+        assignedUserId: thread.assignedUserId,
         channel: thread.channel,
       },
       occurredAt: input.providerCreatedAt ?? new Date(),

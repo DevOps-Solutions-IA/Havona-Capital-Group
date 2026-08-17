@@ -4,6 +4,7 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { Prisma } from '@havona/database';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
@@ -15,6 +16,7 @@ import {
   CalendarRelations,
 } from '../calendar/calendar-access.service';
 import { PrismaService } from '../common/prisma.service';
+import { AutomationEventBus } from '../automations/automation-event-bus.service';
 import { MeetingConfig } from './meeting-config';
 import {
   MEETING_PROVIDER,
@@ -49,6 +51,7 @@ export class MeetingService {
     private audit: AuditService,
     private config: MeetingConfig,
     @Inject(MEETING_PROVIDER) private provider: MeetingProvider,
+    @Optional() private eventBus?: AutomationEventBus,
   ) {}
   async list(actor: Actor, q: any = {}) {
     const owner = q.ownerUserId ?? actor.id;
@@ -323,7 +326,7 @@ export class MeetingService {
       throw new MeetingError('MEETING_TOKEN_INVALID', 'Webhook inválido', 401);
     const meeting = await this.db.meeting.findUnique({ where: { id: input.meetingId } });
     if (!meeting) throw new NotFoundException('Reunión no encontrada');
-    await this.db.meetingAttendanceEvent.upsert({
+    const attendance = await this.db.meetingAttendanceEvent.upsert({
       where: { providerEventId: input.providerEventId },
       update: {},
       create: {
@@ -338,6 +341,32 @@ export class MeetingService {
       await this.db.meeting.update({ where: { id: meeting.id }, data: { status: 'ACTIVE' } });
     if (input.type === 'ENDED')
       await this.db.meeting.update({ where: { id: meeting.id }, data: { status: 'COMPLETED' } });
+    await this.audit.record(
+      'MEETING_PROVIDER_EVENT_RECORDED',
+      'Meeting',
+      meeting.id,
+      {},
+      {
+        attendanceEventId: attendance.id,
+        attendanceType: input.type,
+      },
+    );
+    await this.eventBus?.publish({
+      eventId: `meeting:${input.type.toLowerCase()}:${input.providerEventId}`,
+      type: input.type === 'ENDED' ? 'MEETING_ENDED' : 'MEETING_ATTENDANCE_RECORDED',
+      entityType: 'Meeting',
+      entityId: meeting.id,
+      payload: {
+        meetingId: meeting.id,
+        prospectId: meeting.prospectId,
+        opportunityId: meeting.opportunityId,
+        assignedUserId: meeting.assignedConsultantId ?? meeting.ownerUserId,
+        attendanceEventId: attendance.id,
+        attendanceType: input.type,
+        occurredAt: new Date(input.occurredAt).toISOString(),
+      },
+      occurredAt: new Date(input.occurredAt),
+    });
     return { accepted: true };
   }
   private async authorized(actor: Actor, id: string, manage = false) {

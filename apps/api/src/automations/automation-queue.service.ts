@@ -52,6 +52,24 @@ export class AutomationQueueService implements OnModuleInit, OnApplicationShutdo
       },
     );
   }
+  scheduleOperationalScan() {
+    const interval = Math.max(
+      60_000,
+      Number(process.env.AUTOMATIONS_OPERATIONAL_SCAN_INTERVAL_MS ?? 15 * 60_000),
+    );
+    return this.activeQueue.add(
+      'automation.operational-scan',
+      {},
+      {
+        jobId: toBullMqJobId('operational-scan'),
+        repeat: { every: interval },
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 1500 },
+        removeOnComplete: 100,
+        removeOnFail: 500,
+      },
+    );
+  }
   scheduleWorkflow(
     scheduleId: string,
     workflowId: string,

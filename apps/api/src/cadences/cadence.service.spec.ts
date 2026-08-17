@@ -55,7 +55,7 @@ describe('HAVONA Enterprise Cadences', () => {
       payload: {},
     });
     db.cadenceEnrollment.findMany.mockResolvedValue([
-      { id: 'enrollment', version: { stopConditions: ['OPT_OUT'] } },
+      { id: 'enrollment', version: { stopConditions: [] } },
     ]);
     db.cadenceEnrollment.update.mockResolvedValue({});
     db.cadenceStepExecution.updateMany.mockResolvedValue({ count: 2 });
@@ -63,6 +63,26 @@ describe('HAVONA Enterprise Cadences', () => {
     expect(db.cadenceStepExecution.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ status: 'CANCELLED', failureCode: 'OPT_OUT' }),
+      }),
+    );
+  });
+
+  it('pausa toda cadencia relacionada durante takeover humano', async () => {
+    db.automationEvent.findUnique.mockResolvedValue({
+      type: 'COMMUNICATION_HUMAN_ESCALATION',
+      entityType: 'CommunicationThread',
+      entityId: 'thread',
+      payload: {},
+    });
+    db.cadenceEnrollment.findMany.mockResolvedValue([
+      { id: 'enrollment', version: { stopConditions: [] } },
+    ]);
+    db.cadenceEnrollment.update.mockResolvedValue({ id: 'enrollment', status: 'PAUSED' });
+    db.cadenceStepExecution.updateMany.mockResolvedValue({ count: 1 });
+    await expect(service.handleDomainEvent('event:takeover')).resolves.toEqual({ stopped: 1 });
+    expect(db.cadenceEnrollment.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'PAUSED', stopReason: 'HUMAN_TAKEOVER' }),
       }),
     );
   });
@@ -111,7 +131,9 @@ describe('HAVONA Enterprise Cadences', () => {
 
   it('revalida un prospecto vigente con email normalizado antes del dispatch', async () => {
     const contactDb: any = {
-      prospect: { findUnique: jest.fn().mockResolvedValue({ normalizedEmail: 'valid@example.com' }) },
+      prospect: {
+        findUnique: jest.fn().mockResolvedValue({ normalizedEmail: 'valid@example.com' }),
+      },
       communicationThread: {
         findUnique: jest.fn().mockResolvedValue({
           prospectId: 'prospect',
@@ -227,7 +249,9 @@ describe('HAVONA Enterprise Cadences', () => {
     const item = { status: 'SCHEDULED', enrollment: { status: 'ACTIVE' } };
     jest.spyOn(raceService as any, 'loadStep').mockResolvedValue(item);
     jest.spyOn(raceService as any, 'revalidate').mockResolvedValue(undefined);
-    const perform = jest.spyOn(raceService as any, 'perform').mockResolvedValue({ status: 'QUEUED' });
+    const perform = jest
+      .spyOn(raceService as any, 'perform')
+      .mockResolvedValue({ status: 'QUEUED' });
 
     await expect(raceService.executeStep('execution')).resolves.toEqual({ ignored: true });
     expect(perform).not.toHaveBeenCalled();
@@ -237,9 +261,7 @@ describe('HAVONA Enterprise Cadences', () => {
     const classify = (service as any).failure.bind(service);
     expect(
       classify(
-        new Error(
-          'Invalid findUnique invocation near: if (!prospect.email) throw CONTACT_INVALID',
-        ),
+        new Error('Invalid findUnique invocation near: if (!prospect.email) throw CONTACT_INVALID'),
       ),
     ).toEqual({ code: 'POLICY_BLOCK', retryable: false });
   });

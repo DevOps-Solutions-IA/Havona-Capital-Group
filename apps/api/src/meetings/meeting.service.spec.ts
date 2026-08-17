@@ -7,7 +7,9 @@ describe('MeetingService RBAC y dominio', () => {
       findUnique: jest.fn(),
       findFirst: jest.fn(),
       create: jest.fn(),
+      update: jest.fn(),
     },
+    meetingAttendanceEvent: { upsert: jest.fn() },
     calendarEventLink: { findUnique: jest.fn() },
     meetingParticipant: { findUnique: jest.fn() },
     meetingInvitation: { findUnique: jest.fn() },
@@ -31,6 +33,37 @@ describe('MeetingService RBAC y dominio', () => {
     access.assertUserScope.mockReset().mockResolvedValue(undefined);
     access.authorizeRelations.mockReset().mockResolvedValue(undefined);
     access.resolveAssignedConsultant.mockReset().mockResolvedValue(undefined);
+  });
+  it('publica MEETING_ENDED con eventId del webhook idempotente', async () => {
+    const eventBus = { publish: jest.fn() };
+    const localConfig: any = { prefix: 'havona', webhookSecret: 'webhook-secret' };
+    const local = new MeetingService(db, access, audit, localConfig, provider, eventBus as any);
+    db.meeting.findUnique.mockResolvedValue({
+      id: '00000000-0000-4000-8000-000000000001',
+      prospectId: '00000000-0000-4000-8000-000000000002',
+      opportunityId: null,
+      ownerUserId: '00000000-0000-4000-8000-000000000003',
+      assignedConsultantId: null,
+    });
+    db.meetingAttendanceEvent.upsert.mockResolvedValue({
+      id: '00000000-0000-4000-8000-000000000004',
+    });
+    db.meeting.update.mockResolvedValue({});
+    await local.providerEvent('webhook-secret', {
+      meetingId: '00000000-0000-4000-8000-000000000001',
+      providerEventId: 'provider-event-ended',
+      type: 'ENDED',
+      occurredAt: '2030-01-01T10:00:00.000Z',
+    });
+    expect(eventBus.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventId: 'meeting:ended:provider-event-ended',
+        type: 'MEETING_ENDED',
+        payload: expect.objectContaining({
+          assignedUserId: '00000000-0000-4000-8000-000000000003',
+        }),
+      }),
+    );
   });
   it('CONSULTOR no puede leer calendario de otro consultor', async () => {
     access.assertUserScope.mockRejectedValue(new ForbiddenException());

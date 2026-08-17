@@ -1,4 +1,4 @@
-import { toBullMqJobId } from './automation-job-id';
+import { toBullMqJobId, toDeterministicUuid } from './automation-job-id';
 
 describe('toBullMqJobId', () => {
   it.each(['outbox-prospect:assigned:prospect-id:assignment-id', 'event:with:multiple:colons'])(
@@ -21,5 +21,12 @@ describe('toBullMqJobId', () => {
   it('conserva identificadores ya válidos y limita la longitud', () => {
     expect(toBullMqJobId('execution-uuid-1')).toBe('execution-uuid-1');
     expect(toBullMqJobId(`outbox:${'segment'.repeat(40)}`)).toHaveLength(128);
+  });
+
+  it('genera UUID determinístico para mutaciones CRM reintentables', () => {
+    expect(toDeterministicUuid('execution:action')).toBe(toDeterministicUuid('execution:action'));
+    expect(toDeterministicUuid('execution:action')).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-8[0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
   });
 });

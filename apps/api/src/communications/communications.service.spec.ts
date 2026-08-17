@@ -86,6 +86,26 @@ describe('HAVONA Communications Core', () => {
     ).rejects.toMatchObject({ code: 'CONTACT_SUPPRESSED' });
     expect(queue.enqueueSend).not.toHaveBeenCalled();
   });
+  it('bloquea outbound automatizado durante takeover humano', async () => {
+    db.communicationThread.findFirst.mockResolvedValue({
+      id: 'thread',
+      channel: 'EMAIL',
+      status: 'OPEN',
+      handlingMode: 'HUMAN',
+      contactIdentity: 'person@example.com',
+      consent: { commercialStatus: 'OPTED_IN' },
+      messages: [],
+    });
+    await expect(
+      service.send(
+        { id: 'self', permissions: [] },
+        'thread',
+        { text: 'seguimiento', generatedByAutomation: true },
+        {},
+      ),
+    ).rejects.toMatchObject({ code: 'COMMUNICATION_FORBIDDEN' });
+    expect(queue.enqueueSend).not.toHaveBeenCalled();
+  });
   it('exige opt-in para clasificación comercial', async () => {
     db.communicationThread.findFirst.mockResolvedValue({
       id: 'thread',

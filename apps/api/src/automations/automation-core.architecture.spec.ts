@@ -24,7 +24,10 @@ describe('Arquitectura transversal de Automations Core', () => {
   it('reclama cada evento outbox de forma atómica antes de despacharlo', () => {
     const service = readFileSync(join(__dirname, 'automation.service.ts'), 'utf8');
     expect(service).toContain("status: { in: ['PENDING', 'FAILED'] }");
-    expect(service).toContain("data: { status: 'PROCESSING', attempts: { increment: 1 } }");
+    expect(service).toContain("status: 'PROCESSING'");
+    expect(service).toContain("attempts: { increment: 1 }");
+    expect(service).toContain('availableAt: new Date(Date.now() + 5 * 60_000)');
+    expect(service).toContain('AUTOMATION_RECOVERY_PENDING');
     expect(service).toContain("status: 'FAILED'");
   });
   it('centraliza todos los identificadores de transporte BullMQ', () => {

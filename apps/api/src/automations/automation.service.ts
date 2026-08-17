@@ -16,6 +16,7 @@ import { EmailTemplateService } from '../email-templates/email-template.service'
 import { HenryService } from '../henry/henry.service';
 import { AutomationQueueService } from './automation-queue.service';
 import { AutomationEventBus } from './automation-event-bus.service';
+import { toDeterministicUuid } from './automation-job-id';
 import { CadenceService } from '../cadences/cadence.service';
 import {
   AutomationActor,
@@ -317,6 +318,7 @@ export class AutomationService {
       payload: {
         scheduleId: schedule.id,
         workflowId: schedule.workflowId,
+        ownerUserId: schedule.workflow.ownerUserId ?? schedule.workflow.createdById,
         occurrence: occurrence.toISOString(),
       },
       occurredAt: occurrence,
@@ -332,8 +334,16 @@ export class AutomationService {
     const outbox = await this.dbx.domainOutboxEvent.findUnique({ where: { eventId } });
     if (!outbox || outbox.status === 'PROCESSED') return { processed: true, executions: 0 };
     const claimed = await this.dbx.domainOutboxEvent.updateMany({
-      where: { eventId, status: { in: ['PENDING', 'FAILED'] } },
-      data: { status: 'PROCESSING', attempts: { increment: 1 } },
+      where: {
+        eventId,
+        status: { in: ['PENDING', 'FAILED'] },
+        availableAt: { lte: new Date() },
+      },
+      data: {
+        status: 'PROCESSING',
+        attempts: { increment: 1 },
+        availableAt: new Date(Date.now() + 5 * 60_000),
+      },
     });
     // Webhook retries, recovery and the BullMQ worker may observe the same outbox
     // event concurrently. Only the process that atomically claims it may dispatch.
@@ -347,6 +357,7 @@ export class AutomationService {
       let executions = 0;
       for (const trigger of triggers) {
         if (!this.matchesDefinition(trigger.definition, event)) continue;
+        if (!(await this.matchesWorkflowScope(trigger.workflow, event))) continue;
         const perDayLimit = Math.min(
           100,
           Math.max(
@@ -366,7 +377,16 @@ export class AutomationService {
             createdAt: { gte: new Date(Date.now() - 86_400_000) },
           },
         });
-        if (recent >= perDayLimit) continue;
+        if (recent >= perDayLimit) {
+          await this.audit.record(
+            'AUTOMATION_EXECUTION_LIMIT_BLOCKED',
+            event.entityType,
+            event.entityId,
+            {},
+            { workflowId: trigger.workflowId, eventId: event.eventId, perDayLimit },
+          );
+          continue;
+        }
         const key = this.executionKey(
           event.eventId,
           trigger.workflowId,
@@ -418,13 +438,18 @@ export class AutomationService {
         where: { eventId },
         data: {
           status: 'FAILED',
-          errorCode: error instanceof AutomationError ? error.code : 'AUTOMATION_ACTION_FAILED',
+          availableAt: new Date(),
+          failureCode: error instanceof AutomationError ? error.code : 'AUTOMATION_ACTION_FAILED',
         },
       });
       throw error;
     }
   }
   async recoverPending() {
+    await this.dbx.domainOutboxEvent.updateMany({
+      where: { status: 'PROCESSING', availableAt: { lte: new Date() } },
+      data: { status: 'FAILED', failureCode: 'AUTOMATION_RECOVERY_PENDING' },
+    });
     const outbox = await this.dbx.domainOutboxEvent.findMany({
       where: { status: { in: ['PENDING', 'FAILED'] }, availableAt: { lte: new Date() } },
       take: 500,
@@ -441,13 +466,283 @@ export class AutomationService {
         schedule.cron ?? undefined,
         schedule.timezone,
       );
+    await this.queue.scheduleOperationalScan();
     return { outbox: outbox.length, schedules: schedules.length };
+  }
+  async scanOperationalSignals(now = new Date()) {
+    const inactiveDays = Math.max(1, Number(process.env.AUTOMATIONS_PROSPECT_INACTIVE_DAYS ?? 14));
+    const noReplyHours = Math.max(1, Number(process.env.AUTOMATIONS_NO_REPLY_HOURS ?? 48));
+    const inactiveCutoff = new Date(now.getTime() - inactiveDays * 86_400_000);
+    const noReplyCutoff = new Date(now.getTime() - noReplyHours * 3_600_000);
+    const beforeWindow = new Date(now.getTime() + 30 * 60_000);
+    const afterWindow = new Date(now.getTime() - 24 * 3_600_000);
+    const recoverableOutbox = await this.dbx.domainOutboxEvent.findMany({
+      where: { status: { in: ['PENDING', 'FAILED'] }, availableAt: { lte: now } },
+      select: { eventId: true },
+      take: 500,
+    });
+    for (const event of recoverableOutbox) await this.queue.enqueueOutbox(event.eventId);
+
+    const [overdueTasks, prospectCandidates, beforeAppointments, afterAppointments, outbound] =
+      await Promise.all([
+        this.dbx.task.findMany({
+          where: { status: { in: ['PENDING', 'IN_PROGRESS'] }, dueAt: { lt: now } },
+          select: {
+            id: true,
+            prospectId: true,
+            opportunityId: true,
+            assigneeId: true,
+            dueAt: true,
+          },
+          take: 500,
+        }),
+        this.dbx.prospect.findMany({
+          where: { status: { not: 'ARCHIVED' }, updatedAt: { lte: inactiveCutoff } },
+          select: {
+            id: true,
+            createdAt: true,
+            updatedAt: true,
+            lastCapturedAt: true,
+            assignments: {
+              where: { endedAt: null },
+              select: { assigneeId: true },
+              take: 1,
+            },
+            interactions: {
+              orderBy: { occurredAt: 'desc' },
+              select: { occurredAt: true },
+              take: 1,
+            },
+            activities: { orderBy: { createdAt: 'desc' }, select: { createdAt: true }, take: 1 },
+            communicationThreads: {
+              orderBy: { lastMessageAt: 'desc' },
+              select: { lastMessageAt: true },
+              take: 1,
+            },
+            tasks: {
+              where: { status: { in: ['PENDING', 'IN_PROGRESS'] }, dueAt: { gte: now } },
+              select: { id: true },
+              take: 1,
+            },
+            calendarEvents: {
+              where: { status: { not: 'CANCELLED' }, startAt: { gte: now } },
+              select: { id: true },
+              take: 1,
+            },
+            cadenceEnrollments: {
+              where: { status: 'ACTIVE', nextStepAt: { gte: now } },
+              select: { id: true },
+              take: 1,
+            },
+          },
+          take: 500,
+        }),
+        this.dbx.calendarEventLink.findMany({
+          where: {
+            status: { not: 'CANCELLED' },
+            startAt: { gt: now, lte: beforeWindow },
+          },
+          select: {
+            id: true,
+            prospectId: true,
+            opportunityId: true,
+            assignedConsultantId: true,
+            startAt: true,
+            endAt: true,
+          },
+          take: 500,
+        }),
+        this.dbx.calendarEventLink.findMany({
+          where: {
+            status: { not: 'CANCELLED' },
+            endAt: { gt: afterWindow, lte: now },
+          },
+          select: {
+            id: true,
+            prospectId: true,
+            opportunityId: true,
+            assignedConsultantId: true,
+            startAt: true,
+            endAt: true,
+          },
+          take: 500,
+        }),
+        this.dbx.communicationMessage.findMany({
+          where: {
+            direction: 'OUTBOUND',
+            createdAt: { lte: noReplyCutoff },
+            thread: {
+              status: 'OPEN',
+              handlingMode: 'HENRY',
+              cadenceEnrollments: { none: { status: 'ACTIVE' } },
+              consent: { is: { commercialStatus: 'OPTED_IN' } },
+              OR: [
+                { prospectId: null },
+                {
+                  prospect: {
+                    is: {
+                      tasks: { none: { status: { in: ['PENDING', 'IN_PROGRESS'] } } },
+                    },
+                  },
+                },
+              ],
+            },
+          },
+          select: {
+            id: true,
+            threadId: true,
+            createdAt: true,
+            thread: { select: { prospectId: true, opportunityId: true, assignedUserId: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 200,
+        }),
+      ]);
+
+    const events: DomainEventInput[] = overdueTasks.map((task: any) => ({
+      eventId: `task:overdue:${task.id}:${new Date(task.dueAt).toISOString()}`,
+      type: 'TASK_OVERDUE',
+      entityType: 'Task',
+      entityId: task.id,
+      actorUserId: task.assigneeId,
+      payload: {
+        taskId: task.id,
+        prospectId: task.prospectId,
+        opportunityId: task.opportunityId,
+        assignedUserId: task.assigneeId,
+        dueAt: new Date(task.dueAt).toISOString(),
+      },
+      occurredAt: now,
+    }));
+
+    for (const prospect of prospectCandidates as any[]) {
+      if (
+        prospect.tasks.length ||
+        prospect.calendarEvents.length ||
+        prospect.cadenceEnrollments.length
+      )
+        continue;
+      const lastActivityAt = [
+        prospect.createdAt,
+        prospect.updatedAt,
+        prospect.lastCapturedAt,
+        prospect.interactions[0]?.occurredAt,
+        prospect.activities[0]?.createdAt,
+        prospect.communicationThreads[0]?.lastMessageAt,
+      ]
+        .filter(Boolean)
+        .map((value) => new Date(value))
+        .sort((a, b) => b.getTime() - a.getTime())[0];
+      if (!lastActivityAt || lastActivityAt > inactiveCutoff) continue;
+      events.push({
+        eventId: `prospect:inactive:${prospect.id}:${lastActivityAt.toISOString()}`,
+        type: 'PROSPECT_INACTIVE',
+        entityType: 'Prospect',
+        entityId: prospect.id,
+        actorUserId: prospect.assignments[0]?.assigneeId,
+        payload: {
+          prospectId: prospect.id,
+          assignedUserId: prospect.assignments[0]?.assigneeId,
+          lastActivityAt: lastActivityAt.toISOString(),
+          inactiveDays,
+        },
+        occurredAt: now,
+      });
+    }
+
+    for (const appointment of beforeAppointments as any[])
+      events.push(this.appointmentSignal('CALENDAR_BEFORE_APPOINTMENT', appointment, now));
+    for (const appointment of afterAppointments as any[])
+      events.push(this.appointmentSignal('CALENDAR_AFTER_APPOINTMENT', appointment, now));
+
+    const evaluatedNoReplyThreads = new Set<string>();
+    for (const message of outbound as any[]) {
+      if (evaluatedNoReplyThreads.has(message.threadId)) continue;
+      evaluatedNoReplyThreads.add(message.threadId);
+      const reply = await this.dbx.communicationMessage.findFirst({
+        where: {
+          threadId: message.threadId,
+          direction: 'INBOUND',
+          createdAt: { gt: message.createdAt },
+        },
+        select: { id: true },
+      });
+      if (reply) continue;
+      events.push({
+        eventId: `communication:no-reply:${message.id}`,
+        type: 'COMMUNICATION_NO_REPLY',
+        entityType: 'CommunicationThread',
+        entityId: message.threadId,
+        actorUserId: message.thread.assignedUserId,
+        payload: {
+          threadId: message.threadId,
+          prospectId: message.thread.prospectId,
+          opportunityId: message.thread.opportunityId,
+          outboundMessageId: message.id,
+          waitHours: noReplyHours,
+        },
+        occurredAt: now,
+      });
+    }
+
+    const results = [];
+    for (const event of events) results.push(await this.eventBus.publish(event));
+    return {
+      evaluated: {
+        overdueTasks: overdueTasks.length,
+        prospectCandidates: prospectCandidates.length,
+        beforeAppointments: beforeAppointments.length,
+        afterAppointments: afterAppointments.length,
+        outboundNoReplyCandidates: outbound.length,
+      },
+      published: results.filter((item) => !item.duplicate).length,
+      duplicates: results.filter((item) => item.duplicate).length,
+    };
+  }
+
+  private appointmentSignal(
+    type: 'CALENDAR_BEFORE_APPOINTMENT' | 'CALENDAR_AFTER_APPOINTMENT',
+    appointment: any,
+    occurredAt: Date,
+  ): DomainEventInput {
+    return {
+      eventId: `calendar:${type.toLowerCase()}:${appointment.id}:${new Date(appointment.startAt).toISOString()}`,
+      type,
+      entityType: 'CalendarEventLink',
+      entityId: appointment.id,
+      actorUserId: appointment.assignedConsultantId,
+      payload: {
+        calendarEventId: appointment.id,
+        prospectId: appointment.prospectId,
+        opportunityId: appointment.opportunityId,
+        assignedUserId: appointment.assignedConsultantId,
+        startAt: new Date(appointment.startAt).toISOString(),
+        endAt: new Date(appointment.endAt).toISOString(),
+      },
+      occurredAt,
+    };
   }
   private matchesDefinition(definition: any, event: any) {
     return (
       !definition?.entityType ||
       String(definition.entityType).toLowerCase() === String(event.entityType).toLowerCase()
     );
+  }
+  private async matchesWorkflowScope(workflow: any, event: any) {
+    if (workflow.scope === 'GLOBAL') return true;
+    const ownerId = workflow.ownerUserId ?? workflow.createdById;
+    const payload = (event.payload ?? {}) as Record<string, unknown>;
+    const assignedUserId = String(payload.assignedUserId ?? payload.ownerUserId ?? '');
+    if (!assignedUserId) return false;
+    if (assignedUserId === ownerId) return true;
+    if (workflow.scope !== 'TEAM') return false;
+    const actor = await this.executionActor(ownerId);
+    if (!actor.permissions.includes('automations.manage_team')) return false;
+    const members = await this.access.teamMembers({
+      ...actor,
+      permissions: [...actor.permissions, 'calendar.manage_team'],
+    });
+    return members.some((member: { id: string }) => member.id === assignedUserId);
   }
   private executionKey(eventId: string, workflowId: string, entityId: string, version: number) {
     return createHash('sha256')
@@ -633,6 +928,7 @@ export class AutomationService {
       ).toISOString();
       const task = await this.crm.createTask(
         {
+          idempotencyKey: toDeterministicUuid(`automation:${execution.id}:${action.id}`),
           prospectId,
           opportunityId: context.opportunityId,
           assigneeId: action.definition.assigneeId ?? context.assignedUserId ?? actor.id,
@@ -719,6 +1015,7 @@ export class AutomationService {
             action.type === 'SEND_WHATSAPP_TEMPLATE' ? action.definition.templateName : undefined,
           templateLanguage: action.definition.templateLanguage,
           templateParameters: action.definition.templateParameters,
+          generatedByAutomation: true,
           idempotencyKey: createHash('sha256')
             .update(`${execution.id}:${action.id}`)
             .digest('hex')
@@ -816,10 +1113,16 @@ export class AutomationService {
       );
     if (approval.expiresAt <= new Date())
       throw new AutomationError('AUTOMATION_APPROVAL_EXPIRED', 'La aprobación expiró', 409);
-    await this.dbx.automationApproval.update({
-      where: { id },
+    const claimed = await this.dbx.automationApproval.updateMany({
+      where: { id, status: 'PENDING', expiresAt: { gt: new Date() } },
       data: { status: decision, resolutionNote: note, resolvedAt: new Date() },
     });
+    if (claimed.count !== 1)
+      throw new AutomationError(
+        'AUTOMATION_APPROVAL_EXPIRED',
+        'La aprobación fue resuelta en otra operación',
+        409,
+      );
     await this.audit.record(`AUTOMATION_APPROVAL_${decision}`, 'AutomationApproval', id, ctx, {
       executionId: approval.executionId,
       stepOrder: approval.stepOrder,
