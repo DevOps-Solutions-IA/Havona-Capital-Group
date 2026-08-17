@@ -34,6 +34,7 @@ import {
 import { useAuth } from '@/lib/auth';
 import { BrandMark } from './brand-mark';
 import { HenryGlobalAssistant } from './henry/henry-global-assistant';
+import type { HenryExperienceRole } from '@/lib/henry';
 const links = [
   { href: '/dashboard', label: 'Resumen', icon: LayoutDashboard },
   {
@@ -105,6 +106,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     );
   if (!user) return null;
   const nav = links.filter((item) => !item.permission || can(item.permission));
+  const roleNames = user.roles.map((role) => (typeof role === 'string' ? role : role.name));
+  const henryRole: HenryExperienceRole = roleNames.includes('SUPER_ADMIN')
+    ? 'SUPER_ADMIN'
+    : roleNames.includes('ADMIN')
+      ? 'ADMIN'
+      : roleNames.includes('GERENTE')
+        ? 'MANAGER'
+        : roleNames.includes('CONSULTOR')
+          ? 'CONSULTANT'
+          : 'CLIENT';
   return (
     <div className="min-h-screen lg:grid lg:grid-cols-[270px_1fr]">
       <button
@@ -191,7 +202,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
         <main className="mx-auto max-w-[1500px] p-5 pt-8 lg:p-8">{children}</main>
-        <HenryGlobalAssistant internal storageScope={`internal_${user.id}`} />
+        <HenryGlobalAssistant internal storageScope={`internal_${user.id}`} role={henryRole} />
       </div>
     </div>
   );
