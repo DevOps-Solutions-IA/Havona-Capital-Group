@@ -28,6 +28,18 @@ describe('Markdown canonical ingestion', () => {
     expect(list?.content).toContain('- Plan B');
   });
 
+  it.each([
+    ['H1 seguido directamente por H3', '# Producto\n### Condición\nContenido', ['Producto', 'Condición']],
+    ['documento que comienza en H2', '## Condición\nContenido', ['Condición']],
+  ])('normaliza headingPath JSON-safe para %s', (_name, body, expected) => {
+    const document = canonical('heading-gap.md', 'Heading gap', 'Material de capacitación.', body);
+    const headingPath = document.chunks[0]?.headingPath;
+    expect(headingPath).toEqual(expected);
+    expect(Object.keys(headingPath ?? {})).toHaveLength(headingPath?.length ?? 0);
+    expect(headingPath?.every((heading) => typeof heading === 'string')).toBe(true);
+    expect(JSON.stringify(headingPath)).not.toContain('null');
+  });
+
   it('es determinista, usa hash server-side y conserva UNKNOWN', () => {
     const buffer = Buffer.from('---\ndocument_title: "Vida Flex MAX"\n---\n# Vida Flex MAX\nContenido');
     const first = parseCanonicalMarkdown('vida.md', buffer);

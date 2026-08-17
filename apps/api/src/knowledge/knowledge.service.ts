@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { createHash, randomUUID } from 'node:crypto';
@@ -62,6 +63,70 @@ const ROLE_CLASSIFICATIONS: Record<string, string[]> = {
     'TECHNOLOGY',
   ],
 };
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function assertJsonSafe(value: unknown, field: string): void {
+  if (value === undefined) throw new Error(`${field}:UNDEFINED`);
+  if (typeof value === 'number' && !Number.isFinite(value)) throw new Error(`${field}:NON_FINITE_NUMBER`);
+  if (typeof value === 'bigint' || typeof value === 'function' || typeof value === 'symbol')
+    throw new Error(`${field}:NON_JSON_TYPE`);
+  if (Array.isArray(value)) {
+    if (Object.keys(value).length !== value.length) throw new Error(`${field}:SPARSE_ARRAY`);
+    value.forEach((item, index) => assertJsonSafe(item, `${field}[${index}]`));
+    return;
+  }
+  if (value && typeof value === 'object') {
+    if (value instanceof Date) {
+      if (Number.isNaN(value.getTime())) throw new Error(`${field}:INVALID_DATE`);
+      return;
+    }
+    for (const [key, item] of Object.entries(value)) assertJsonSafe(item, `${field}.${key}`);
+  }
+}
+
+export function validateKnowledgeChunkCreateManyPayload(
+  rows: Prisma.KnowledgeChunkCreateManyInput[],
+  expectedDimension: number,
+) {
+  rows.forEach((row, chunkIndex) => {
+    const fail = (field: string, reason: string): never => {
+      throw new Error(`KNOWLEDGE_CHUNK_PAYLOAD_INVALID:chunk=${chunkIndex}:field=${field}:reason=${reason}`);
+    };
+    if (typeof row.id !== 'string' || !UUID_PATTERN.test(row.id)) fail('id', 'UUID');
+    if (!UUID_PATTERN.test(row.versionId)) fail('versionId', 'UUID');
+    if (!Number.isInteger(row.position) || row.position < 0) fail('position', 'INTEGER');
+    if (row.section && row.section.length > 300) fail('section', 'MAX_LENGTH_300');
+    if (typeof row.structuralType !== 'string' || !['TEXT', 'TABLE', 'MIXED'].includes(row.structuralType))
+      fail('structuralType', 'ENUM');
+    if (!row.textHash || row.textHash.length !== 64) fail('textHash', 'SHA256');
+    if (!Number.isInteger(row.tokenEstimate) || row.tokenEstimate < 0) fail('tokenEstimate', 'INTEGER');
+    if (row.embeddingModel && row.embeddingModel.length > 160) fail('embeddingModel', 'MAX_LENGTH_160');
+    if (row.embeddingDimension !== expectedDimension) fail('embeddingDimension', 'DIMENSION');
+    if (!(row.embeddedAt instanceof Date) || Number.isNaN(row.embeddedAt.getTime())) fail('embeddedAt', 'DATE');
+    for (const field of ['headingPath', 'extractionMethods', 'extractionWarnings', 'structure', 'embedding'] as const) {
+      try { assertJsonSafe(row[field], field); } catch (error) {
+        fail(field, error instanceof Error ? error.message : 'JSON');
+      }
+    }
+    const embedding = row.embedding as unknown;
+    if (!Array.isArray(embedding) || embedding.length !== expectedDimension) fail('embedding', 'VECTOR_DIMENSION');
+  });
+}
+
+function safePrismaDiagnostic(error: unknown) {
+  const candidate = error as { name?: string; code?: string; meta?: unknown; clientVersion?: string; message?: string };
+  const message = candidate.message ?? String(error);
+  const terminal = message.match(/\n(?:Argument|Invalid value|Unknown argument|Error parsing)[\s\S]*$/)?.[0]?.trim();
+  return {
+    name: candidate.name ?? 'UnknownError',
+    code: candidate.code ?? null,
+    meta: candidate.meta ?? null,
+    clientVersion: candidate.clientVersion ?? null,
+    message: terminal ?? message.replace(/(\bdata:\s*)[\s\S]*/m, '$1[PAYLOAD_REDACTED]'),
+    messageHash: createHash('sha256').update(message).digest('hex'),
+  };
+}
 const normalizedWords = (value: string) =>
   new Set(
     value
@@ -82,6 +147,7 @@ const injectionPattern =
 
 @Injectable()
 export class KnowledgeService {
+  private readonly logger = new Logger(KnowledgeService.name);
   constructor(
     private readonly db: PrismaService,
     private readonly audit: AuditService,
@@ -540,6 +606,7 @@ export class KnowledgeService {
   }
   async processVersion(versionId: string) {
     const processStartedAt = new Date();
+    let attemptedChunkCount = 0;
     const version = await this.db.knowledgeVersion.findUnique({
       where: { id: versionId },
       include: { ingestions: { orderBy: { startedAt: 'desc' }, take: 1 }, document: true },
@@ -556,6 +623,7 @@ export class KnowledgeService {
         ? parseCanonicalMarkdown(version.originalName, buffer)
         : undefined;
       const chunks = this.chunks(extracted, markdown);
+      attemptedChunkCount = chunks.length;
       const failedPages = extracted.pages.filter((page) => page.extractionStatus === 'FAILED').length;
       const charactersExtracted = extracted.pageCount === null
         ? extracted.documentText?.length ?? 0
@@ -564,6 +632,27 @@ export class KnowledgeService {
         throw new Error('KNOWLEDGE_EXTRACTION_EMPTY');
       log.push({ stage: 'CHUNKING', at: new Date().toISOString() });
       const vectors = failedPages ? [] : await this.embeddings.embed(chunks.map((item) => item.content));
+      const chunkRows: Prisma.KnowledgeChunkCreateManyInput[] = (!failedPages ? chunks : []).map((item, index) => ({
+        id: randomUUID(),
+        versionId,
+        position: index,
+        section: item.section,
+        headingPath: item.headingPath,
+        pageStart: item.pageStart,
+        pageEnd: item.pageEnd,
+        structuralType: item.structuralType,
+        extractionMethods: item.extractionMethods,
+        extractionWarnings: item.warnings,
+        structure: item.structure ?? Prisma.JsonNull,
+        content: item.content,
+        textHash: createHash('sha256').update(item.content).digest('hex'),
+        tokenEstimate: Math.ceil(item.content.length / 4),
+        embedding: vectors[index] ?? [],
+        embeddingModel: this.embeddings.model,
+        embeddingDimension: this.embeddings.dimension,
+        embeddedAt: new Date(),
+      }));
+      validateKnowledgeChunkCreateManyPayload(chunkRows, this.embeddings.dimension);
       const existingReport = await this.db.knowledgeExtractionReport.findUnique({ where: { versionId } });
       const reportId = existingReport?.id ?? randomUUID();
       const reportData = {
@@ -606,28 +695,7 @@ export class KnowledgeService {
           blocks: page.blocks as unknown as Prisma.InputJsonValue,
           tables: page.tables as unknown as Prisma.InputJsonValue,
         } })),
-        ...(!failedPages && chunks.length ? [this.db.knowledgeChunk.createMany({
-          data: chunks.map((item, index) => ({
-              id: randomUUID(),
-              versionId,
-              position: index,
-              section: item.section,
-              headingPath: item.headingPath,
-              pageStart: item.pageStart,
-              pageEnd: item.pageEnd,
-              structuralType: item.structuralType,
-              extractionMethods: item.extractionMethods,
-              extractionWarnings: item.warnings,
-              structure: item.structure ?? Prisma.JsonNull,
-              content: item.content,
-              textHash: createHash('sha256').update(item.content).digest('hex'),
-              tokenEstimate: Math.ceil(item.content.length / 4),
-              embedding: vectors[index] ?? [],
-              embeddingModel: this.embeddings.model,
-              embeddingDimension: this.embeddings.dimension,
-              embeddedAt: new Date(),
-            })),
-        })] : []),
+        ...(!failedPages && chunkRows.length ? [this.db.knowledgeChunk.createMany({ data: chunkRows })] : []),
         this.db.knowledgeVersion.update({ where: { id: versionId }, data: { status: failedPages ? 'FAILED' : 'REVIEW' } }),
         this.db.knowledgeDocument.update({
           where: { id: version.documentId },
@@ -649,8 +717,20 @@ export class KnowledgeService {
       if (failedPages) throw new BadRequestException('KNOWLEDGE_EXTRACTION_PAGE_FAILED');
       return { chunks: chunks.length, status: 'REVIEW' };
     } catch (error) {
-      const code =
-        error instanceof Error ? error.message.slice(0, 100) : 'KNOWLEDGE_INGESTION_FAILED';
+      const diagnostic = safePrismaDiagnostic(error);
+      this.logger.error({
+        event: 'knowledge.ingestion.prisma_or_pipeline_failure',
+        operation: 'KnowledgeChunk.createMany',
+        versionId,
+        documentId: version.documentId,
+        chunkCount: attemptedChunkCount,
+        error: diagnostic,
+      });
+      const code = diagnostic.code
+        ? `PRISMA_${diagnostic.code}`
+        : diagnostic.message.startsWith('KNOWLEDGE_')
+          ? diagnostic.message.split(':')[0]!.slice(0, 100)
+          : 'KNOWLEDGE_INGESTION_FAILED';
       const report = await this.db.knowledgeExtractionReport.findUnique({ where: { versionId } });
       if (!report) await this.db.knowledgeExtractionReport.create({
         data: {
@@ -665,6 +745,10 @@ export class KnowledgeService {
           extractionCompletedAt: new Date(),
         },
       });
+      const failureStageLog = [
+        ...log,
+        { stage: 'FAILED', at: new Date().toISOString(), diagnostic },
+      ] as unknown as Prisma.InputJsonValue;
       await this.db.$transaction([
         this.db.knowledgeVersion.update({ where: { id: versionId }, data: { status: 'FAILED' } }),
         this.db.knowledgeDocument.update({
@@ -676,9 +760,9 @@ export class KnowledgeService {
           data: {
             status: 'FAILED',
             errorCode: code,
-            errorMessage: 'La ingesta falló; consulte observabilidad técnica.',
+            errorMessage: diagnostic.message.slice(0, 500),
             attempts: { increment: 1 },
-            stageLog: log,
+            stageLog: failureStageLog,
             completedAt: new Date(),
           },
         }),

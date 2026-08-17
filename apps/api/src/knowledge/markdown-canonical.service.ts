@@ -57,6 +57,11 @@ export type MarkdownCanonicalDocument = {
 
 type Block = { type: 'TEXT' | 'TABLE'; lines: string[]; headings: string[] };
 
+function denseHeadingPath(headings: Array<string | undefined>) {
+  return headings.filter((heading): heading is string =>
+    typeof heading === 'string' && heading.trim().length > 0);
+}
+
 function parseFrontmatter(source: string) {
   if (!source.startsWith('---\n')) return { metadata: {} as Record<string, string>, body: source, warnings: ['MARKDOWN_FRONTMATTER_MISSING'] };
   const end = source.indexOf('\n---\n', 4);
@@ -81,7 +86,7 @@ function tokenizeMarkdown(body: string): Block[] {
   let text: string[] = [];
   const flushText = () => {
     const normalized = text.join('\n').trim();
-    if (normalized) blocks.push({ type: 'TEXT', lines: normalized.split('\n'), headings: [...headings] });
+    if (normalized) blocks.push({ type: 'TEXT', lines: normalized.split('\n'), headings: denseHeadingPath(headings) });
     text = [];
   };
   for (let index = 0; index < lines.length; index += 1) {
@@ -104,7 +109,7 @@ function tokenizeMarkdown(body: string): Block[] {
         index += 1;
       }
       index -= 1;
-      blocks.push({ type: 'TABLE', lines: table, headings: [...headings] });
+      blocks.push({ type: 'TABLE', lines: table, headings: denseHeadingPath(headings) });
       continue;
     }
     if (!line.trim() && text.length && !text[text.length - 1]!.trim()) flushText();

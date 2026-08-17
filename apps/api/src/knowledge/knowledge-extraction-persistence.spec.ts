@@ -1,4 +1,6 @@
-import { KnowledgeService } from './knowledge.service';
+import { KnowledgeService, validateKnowledgeChunkCreateManyPayload } from './knowledge.service';
+
+const VERSION_ID = 'db0efdb7-bc56-47d5-b229-329f6b73ff9e';
 
 const extracted = (status: 'EXTRACTED_NATIVE' | 'FAILED' = 'EXTRACTED_NATIVE') => ({
   mimeType: 'application/pdf', pageCount: 1, documentText: null, documentWarnings: [],
@@ -16,13 +18,26 @@ const extracted = (status: 'EXTRACTED_NATIVE' | 'FAILED' = 'EXTRACTED_NATIVE') =
 });
 
 describe('Knowledge extraction report persistence', () => {
+  it('bloquea headingPath con undefined antes de invocar Prisma e identifica chunk/campo', () => {
+    const row: any = {
+      id: '04d1d0a6-f3b5-4dd2-947f-58c8fbbda421', versionId: 'db0efdb7-bc56-47d5-b229-329f6b73ff9e',
+      position: 2, section: 'Objetivo', headingPath: ['Objetivo', undefined, 'Frase'], pageStart: null,
+      pageEnd: null, structuralType: 'TEXT', extractionMethods: ['NATIVE'], extractionWarnings: [],
+      structure: null, content: 'Contenido', textHash: 'a'.repeat(64), tokenEstimate: 3,
+      embedding: [0.1, 0.2], embeddingModel: 'test', embeddingDimension: 2, embeddedAt: new Date(),
+    };
+    expect(() => validateKnowledgeChunkCreateManyPayload([row], 2)).toThrow(
+      'KNOWLEDGE_CHUNK_PAYLOAD_INVALID:chunk=0:field=headingPath:reason=headingPath[1]:UNDEFINED',
+    );
+  });
+
   function setup(result = extracted()) {
     let report: any = null;
     const operation = () => jest.fn(async () => ({}));
     const db: any = {
       knowledgeVersion: {
         findUnique: jest.fn(async () => ({
-          id: 'version-1', documentId: 'document-1', storageKey: 'originals/hash', mimeType: 'application/pdf',
+          id: VERSION_ID, documentId: 'document-1', storageKey: 'originals/hash', mimeType: 'application/pdf',
           ingestions: [{ id: 'ingestion-1' }], document: { id: 'document-1' },
         })),
         update: operation(),
@@ -52,8 +67,8 @@ describe('Knowledge extraction report persistence', () => {
 
   it('reintento reemplaza páginas/chunks y reutiliza un solo reporte', async () => {
     const { service, db } = setup();
-    await service.processVersion('version-1');
-    await service.processVersion('version-1');
+    await service.processVersion(VERSION_ID);
+    await service.processVersion(VERSION_ID);
     expect(db.knowledgeChunk.deleteMany).toHaveBeenCalledTimes(2);
     expect(db.knowledgePageExtraction.deleteMany).toHaveBeenCalledTimes(2);
     expect(db.knowledgeExtractionReport.upsert).toHaveBeenCalledTimes(2);
@@ -62,13 +77,13 @@ describe('Knowledge extraction report persistence', () => {
     expect(secondId).toBe(firstId);
     expect(db.knowledgeChunk.createMany).toHaveBeenCalledTimes(2);
     expect(db.knowledgeChunk.createMany).toHaveBeenLastCalledWith({
-      data: [expect.objectContaining({ id: expect.any(String), versionId: 'version-1', position: 0 })],
+      data: [expect.objectContaining({ id: expect.any(String), versionId: VERSION_ID, position: 0 })],
     });
   });
 
   it('persiste reporte FAILED y no crea chunks cuando una página falla', async () => {
     const { service, db } = setup(extracted('FAILED'));
-    await expect(service.processVersion('version-1')).rejects.toThrow('KNOWLEDGE_EXTRACTION_PAGE_FAILED');
+    await expect(service.processVersion(VERSION_ID)).rejects.toThrow('KNOWLEDGE_EXTRACTION_PAGE_FAILED');
     expect(db.knowledgeExtractionReport.upsert).toHaveBeenCalledWith(expect.objectContaining({
       create: expect.objectContaining({ status: 'FAILED', failedPages: 1 }),
     }));
