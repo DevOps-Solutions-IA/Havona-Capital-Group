@@ -168,7 +168,7 @@ import { KnowledgeStagingService } from './knowledge/knowledge-staging.service';
     AutomationService,
     AutomationProcessorService,
     AnalyticsService,
-    KnowledgeStorageConfig,
+    { provide: KnowledgeStorageConfig, useFactory: () => new KnowledgeStorageConfig(process.env) },
     PersistentFilesystemStorageProvider,
     ConfiguredMalwareScanner,
     ConfiguredEmbeddingProvider,
