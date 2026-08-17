@@ -6,6 +6,10 @@
 
 > Los originales de Knowledge usan `StorageProvider` y filesystem persistente content-addressed en producción. El staging calcula SHA-256 server-side, deduplica, aplica scan/review y solo entonces alimenta el pipeline existente; nunca publica automáticamente. Henry no conoce paths ni storage keys.
 
+> Las validaciones semánticas previas a publicación usan colecciones `henryEnabled=false` y versiones
+> `REVIEW`. Henry solo recupera `PUBLISHED` desde colecciones `henryEnabled=true`; el QA privado
+> reutiliza el mismo ranking bajo permiso administrativo sin abrir una ruta de consumo para Henry.
+
 ## 1. Enfoque
 
 HAVONA CAPITAL GROUP se construirá como un monorepo con monolito modular, preparado para separar servicios cuando el crecimiento lo requiera.

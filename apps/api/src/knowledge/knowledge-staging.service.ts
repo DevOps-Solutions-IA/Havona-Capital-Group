@@ -140,6 +140,7 @@ export class KnowledgeStagingService {
     id: string,
     input: { title: string; collectionId: string; classification: any; description?: string },
     actor: KnowledgeActor,
+    processingMode: 'QUEUE' | 'MANUAL' = 'QUEUE',
   ) {
     const staged = await this.db.knowledgeStagedAsset.findUnique({ where: { id } });
     if (!staged) throw new NotFoundException('KNOWLEDGE_STAGING_NOT_FOUND');
@@ -191,7 +192,7 @@ export class KnowledgeStagingService {
     }, {
       buffer, size: buffer.length, mimetype: staged.mimeType,
       originalname: staged.originalFilename,
-    } as Express.Multer.File, actor);
+    } as Express.Multer.File, actor, undefined, processingMode);
     await this.db.knowledgeStagedAsset.update({
       where: { id }, data: { status: 'PROMOTED', promotedDocumentId: document.id },
     });

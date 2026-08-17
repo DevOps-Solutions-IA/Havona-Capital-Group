@@ -2338,12 +2338,14 @@ model KnowledgeCollection {
   description      String?             @db.VarChar(600)
   allowedRoles     Json                @map("allowed_roles")
   isActive         Boolean             @default(true) @map("is_active")
+  henryEnabled     Boolean             @default(true) @map("henry_enabled")
   createdAt        DateTime            @default(now()) @map("created_at")
   updatedAt        DateTime            @updatedAt @map("updated_at")
   documents        KnowledgeDocument[]
   trainingPrograms TrainingProgram[]
 
   @@map("knowledge_collections")
+  @@index([henryEnabled, isActive])
 }
 
 model KnowledgeDocument {

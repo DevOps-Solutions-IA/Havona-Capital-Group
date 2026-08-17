@@ -124,3 +124,20 @@ o un año en el nombre no demuestra vigencia.
 El Golden Retrieval Gate es una validación local sobre los chunks efímeros: comprueba fuente,
 sección, tipo estructural, prioridad de autoridad, aislamiento de productos y conflicto entre
 versiones. Aprobar el gate no promueve, publica, indexa ni expone contenido a Henry.
+
+## PALIG Private QA
+
+La validación semántica real usa la colección reservada `palig-private-qa`. Esta colección queda
+`isActive=false`, `henryEnabled=false`, limitada a `SUPER_ADMIN`; sus versiones permanecen en
+`REVIEW`, con `currentStatus=UNKNOWN`, `publicAllowed=false` y sin fechas de efectividad inferidas.
+El retrieval ordinario de Knowledge/Henry exige simultáneamente una versión `PUBLISHED` y una
+colección `henryEnabled=true`. El comando administrativo QA reutiliza el mismo proveedor de
+embeddings, búsqueda híbrida, ranking y filtros de governance, pero solo admite una colección
+privada inactiva.
+
+`knowledge:private-qa -- /mnt/d/Herry/archivos.md` aplica el flujo oficial staging → scan → review
+→ promoción privada → extracción → chunking → embedding. La promoción en este contexto significa
+persistencia interna para QA, nunca publicación. El checksum evita recrear documentos, versiones,
+chunks o embeddings en una segunda ejecución. Los embeddings externos se envían por lotes
+configurables mediante `EMBEDDING_BATCH_SIZE`; el proveedor determinista continúa restringido a
+tests. El reporte técnico queda fuera de Git en `/tmp/havona-palig-private-qa-report.json`.

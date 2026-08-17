@@ -91,6 +91,7 @@ import { CadenceController } from './cadences/cadence.controller';
 import { CadenceService } from './cadences/cadence.service';
 import { HenryPaligConsultativeService } from './henry/henry-palig-consultative.service';
 import { KnowledgeStagingService } from './knowledge/knowledge-staging.service';
+import { KnowledgePrivateQaService } from './knowledge/knowledge-private-qa.service';
 
 @Module({
   imports: [
@@ -182,6 +183,7 @@ import { KnowledgeStagingService } from './knowledge/knowledge-staging.service';
     HenryMemoryService,
     KnowledgeService,
     KnowledgeStagingService,
+    KnowledgePrivateQaService,
     KnowledgeQueueService,
     KnowledgeProcessorService,
     RagOrchestratorService,

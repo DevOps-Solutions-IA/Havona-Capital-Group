@@ -11,7 +11,8 @@
     "test": "jest --runInBand",
     "test:integration": "pnpm --filter '@havona/api^...' build && jest --config jest.integration.json --runInBand",
     "knowledge:palig-dry-run": "node -r ts-node/register scripts/palig-ingestion-dry-run.ts",
-    "knowledge:markdown-dry-run": "node -r ts-node/register scripts/markdown-canonical-dry-run.ts"
+    "knowledge:markdown-dry-run": "node -r ts-node/register scripts/markdown-canonical-dry-run.ts",
+    "knowledge:private-qa": "node -r ts-node/register scripts/palig-private-qa.ts"
   },
   "dependencies": {
     "@havona/auth": "workspace:*",

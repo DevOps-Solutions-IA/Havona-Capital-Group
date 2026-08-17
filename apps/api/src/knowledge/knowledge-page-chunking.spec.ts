@@ -1,4 +1,5 @@
 import { KnowledgeService } from './knowledge.service';
+import { parseCanonicalMarkdown } from './markdown-canonical.service';
 
 describe('Knowledge page-aware chunking', () => {
   const service = new KnowledgeService(
@@ -38,5 +39,18 @@ describe('Knowledge page-aware chunking', () => {
       pageCount: null, pages: [], documentText: 'Contenido DOCX completo', documentWarnings: [],
     });
     expect(chunks[0]).toMatchObject({ pageStart: null, pageEnd: null, structuralType: 'TEXT' });
+  });
+
+  it('Markdown canónico conserva headingPath, tablas atómicas y páginas nulas', () => {
+    const markdown = parseCanonicalMarkdown('fixture.md', Buffer.from(
+      '# Producto\n## Tarifas\n- Nota uno\n- Nota dos\n\n| Plan | Prima |\n| --- | --- |\n| A | 100 |',
+    ));
+    const chunks = (service as any).chunks({
+      pageCount: null, pages: [], documentText: 'fallback no utilizado', documentWarnings: [],
+    }, markdown);
+    expect(chunks).toHaveLength(2);
+    expect(chunks[0]).toMatchObject({ headingPath: ['Producto', 'Tarifas'], pageStart: null, pageEnd: null });
+    expect(chunks[1]).toMatchObject({ structuralType: 'TABLE', headingPath: ['Producto', 'Tarifas'] });
+    expect(chunks[1].content).toContain('| A | 100 |');
   });
 });

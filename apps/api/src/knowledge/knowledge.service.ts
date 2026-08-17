@@ -27,6 +27,7 @@ import {
   DocumentExtractor,
   type ExtractedDocument,
 } from './document-extraction.service';
+import { parseCanonicalMarkdown, type MarkdownCanonicalDocument } from './markdown-canonical.service';
 
 type VersionGovernanceInput = KnowledgeGovernanceInput & {
   versionLabel?: string;
@@ -197,6 +198,7 @@ export class KnowledgeService {
     file: Express.Multer.File,
     actor: KnowledgeActor,
     request?: any,
+    processingMode: 'QUEUE' | 'MANUAL' = 'QUEUE',
   ) {
     this.assert('knowledge.upload', actor);
     this.validateFile(file);
@@ -255,7 +257,7 @@ export class KnowledgeService {
         include: { versions: true },
       });
       persisted = true;
-      await this.queue.enqueue(versionId);
+      if (processingMode === 'QUEUE') await this.queue.enqueue(versionId);
       await this.audit.record(
         'KNOWLEDGE_DOCUMENT_UPLOADED',
         'KnowledgeDocument',
@@ -461,7 +463,7 @@ export class KnowledgeService {
     });
   }
 
-  private chunks(extracted: ExtractedDocument) {
+  private chunks(extracted: ExtractedDocument, markdown?: MarkdownCanonicalDocument) {
     const chunks: Array<{
       section: string | null;
       content: string;
@@ -471,7 +473,23 @@ export class KnowledgeService {
       extractionMethods: string[];
       warnings: string[];
       structure: Prisma.InputJsonValue | null;
+      headingPath: string[];
     }> = [];
+    if (markdown) {
+      return markdown.chunks.map((chunk) => ({
+        section: chunk.section,
+        content: chunk.content,
+        pageStart: null,
+        pageEnd: null,
+        structuralType: chunk.structuralType,
+        extractionMethods: ['NATIVE'],
+        warnings: chunk.warnings,
+        structure: chunk.structuralType === 'TABLE'
+          ? ({ markdown: chunk.content, headingPath: chunk.headingPath } as Prisma.InputJsonValue)
+          : null,
+        headingPath: chunk.headingPath,
+      }));
+    }
     const appendText = (
       text: string,
       metadata: Omit<(typeof chunks)[number], 'content'>,
@@ -491,6 +509,7 @@ export class KnowledgeService {
         section: null, pageStart: null, pageEnd: null, structuralType: 'TEXT',
         extractionMethods: ['NATIVE'], warnings: extracted.documentWarnings,
         structure: null,
+        headingPath: [],
       });
       return chunks;
     }
@@ -503,6 +522,7 @@ export class KnowledgeService {
         extractionMethods: [page.extractionMethod],
         warnings: page.warnings,
         structure: null,
+        headingPath: page.section ? [page.section] : [],
       });
       for (const table of page.tables) chunks.push({
         section: page.section,
@@ -513,6 +533,7 @@ export class KnowledgeService {
         extractionMethods: [page.extractionMethod],
         warnings: table.warnings,
         structure: table as unknown as Prisma.InputJsonValue,
+        headingPath: page.section ? [page.section] : [],
       });
     }
     return chunks;
@@ -531,7 +552,10 @@ export class KnowledgeService {
       const buffer = await this.storage.get(version.storageKey);
       const extracted = await this.extractor.extract(buffer, version.mimeType);
       log.push({ stage: 'EXTRACTION', at: new Date().toISOString() });
-      const chunks = this.chunks(extracted);
+      const markdown = version.mimeType === 'text/markdown'
+        ? parseCanonicalMarkdown(version.originalName, buffer)
+        : undefined;
+      const chunks = this.chunks(extracted, markdown);
       const failedPages = extracted.pages.filter((page) => page.extractionStatus === 'FAILED').length;
       const charactersExtracted = extracted.pageCount === null
         ? extracted.documentText?.length ?? 0
@@ -553,12 +577,12 @@ export class KnowledgeService {
         failedPages,
         pagesWithWarnings: extracted.pages.filter((page) => page.warnings.length).length,
         charactersExtracted,
-        tablesDetected: extracted.pages.reduce((total, page) => total + page.tables.length, 0),
-        documentWarnings: extracted.documentWarnings as Prisma.InputJsonValue,
-        extractorVersion: extracted.extractionMetadata.extractorVersion,
+        tablesDetected: markdown?.manifest.tableCount ?? extracted.pages.reduce((total, page) => total + page.tables.length, 0),
+        documentWarnings: (markdown?.manifest.warnings ?? extracted.documentWarnings) as Prisma.InputJsonValue,
+        extractorVersion: markdown ? 'markdown-structural-v1' : extracted.extractionMetadata.extractorVersion,
         ocrProvider: extracted.extractionMetadata.ocrProvider,
         ocrVersion: extracted.extractionMetadata.ocrVersion,
-        chunkerVersion: CHUNKER_VERSION,
+        chunkerVersion: markdown ? 'markdown-structural-v1' : CHUNKER_VERSION,
         extractionStartedAt: extracted.extractionMetadata.startedAt,
         extractionCompletedAt: extracted.extractionMetadata.completedAt,
       };
@@ -588,6 +612,7 @@ export class KnowledgeService {
               versionId,
               position: index,
               section: item.section,
+              headingPath: item.headingPath,
               pageStart: item.pageStart,
               pageEnd: item.pageEnd,
               structuralType: item.structuralType,
@@ -786,13 +811,40 @@ export class KnowledgeService {
     actor: KnowledgeActor,
     options?: { historicalAt?: string; collectionId?: string; limit?: number },
   ): Promise<KnowledgeSearchResult> {
+    return this.searchScoped(query, actor, options, {
+      statuses: options?.historicalAt ? ['PUBLISHED', 'DEPRECATED'] : ['PUBLISHED'],
+      henryEnabled: true,
+      recordGap: true,
+    });
+  }
+
+  async searchPrivateQa(
+    query: string,
+    actor: KnowledgeActor,
+    options: { collectionId: string; limit?: number },
+  ): Promise<KnowledgeSearchResult> {
+    this.assert('knowledge.admin', actor);
+    const collection = await this.db.knowledgeCollection.findUnique({ where: { id: options.collectionId } });
+    if (!collection || collection.henryEnabled || collection.isActive)
+      throw new ForbiddenException('KNOWLEDGE_PRIVATE_QA_COLLECTION_REQUIRED');
+    return this.searchScoped(query, actor, options, {
+      statuses: ['REVIEW'], henryEnabled: false, recordGap: false,
+    });
+  }
+
+  private async searchScoped(
+    query: string,
+    actor: KnowledgeActor,
+    options: { historicalAt?: string; collectionId?: string; limit?: number } | undefined,
+    scope: { statuses: Array<'PUBLISHED' | 'DEPRECATED' | 'REVIEW'>; henryEnabled: boolean; recordGap: boolean },
+  ): Promise<KnowledgeSearchResult> {
     this.assert('knowledge.read', actor);
     const queryVector = (await this.embeddings.embed([query]))[0] ?? [];
     const now = options?.historicalAt ? new Date(options.historicalAt) : new Date();
     const rows = await this.db.knowledgeChunk.findMany({
       where: {
         version: {
-          status: options?.historicalAt ? { in: ['PUBLISHED', 'DEPRECATED'] } : 'PUBLISHED',
+          status: { in: scope.statuses },
           AND: [
             { OR: [{ effectiveFrom: null }, { effectiveFrom: { lte: now } }] },
             { OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: now } }] },
@@ -800,6 +852,7 @@ export class KnowledgeService {
           document: {
             ...(options?.collectionId ? { collectionId: options.collectionId } : {}),
             classification: { in: this.classifications(actor) as any },
+            collection: { henryEnabled: scope.henryEnabled },
           },
         },
       },
@@ -837,10 +890,10 @@ export class KnowledgeService {
         return { row, score: semantic * 0.55 + keyword * 0.45 };
       })
       .filter((item) => item.score >= Number(process.env.RAG_MIN_SCORE ?? 0.18))
-      .sort((a, b) => b.score - a.score)
+      .sort((a, b) => b.score - a.score || a.row.version.authorityRank - b.row.version.authorityRank)
       .slice(0, Math.min(options?.limit ?? 6, Number(process.env.RAG_MAX_CHUNKS ?? 8)));
     if (!ranked.length) {
-      await this.recordGap(query, actor);
+      if (scope.recordGap) await this.recordGap(query, actor);
       return {
         query,
         answerStatus: 'INSUFFICIENT',

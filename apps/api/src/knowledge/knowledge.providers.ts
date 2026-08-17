@@ -270,25 +270,33 @@ export class ConfiguredEmbeddingProvider implements EmbeddingProvider {
     const apiKey = process.env.EMBEDDING_API_KEY || process.env.OPENROUTER_API_KEY;
     if (!provider || !baseUrl || !apiKey || !this.model || !this.dimension)
       throw new ServiceUnavailableException('KNOWLEDGE_EMBEDDING_CONFIGURATION_REQUIRED');
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), Number(process.env.EMBEDDING_REQUEST_TIMEOUT_MS ?? 30_000));
-    try {
-      const response = await fetch(`${baseUrl}/embeddings`, {
-        method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify({ model: this.model, input: texts }), signal: controller.signal,
-      });
-      if (!response.ok)
-        throw new ServiceUnavailableException(`KNOWLEDGE_EMBEDDING_PROVIDER_${response.status}`);
-      const payload = (await response.json()) as { data?: Array<{ index: number; embedding: number[] }> };
-      const vectors = [...(payload.data ?? [])].sort((a, b) => a.index - b.index).map((item) => item.embedding);
-      if (vectors.length !== texts.length || vectors.some((item) => item.length !== this.dimension))
-        throw new ServiceUnavailableException('KNOWLEDGE_EMBEDDING_RESPONSE_INVALID');
-      return vectors;
-    } catch (error) {
-      if (error instanceof ServiceUnavailableException) throw error;
-      throw new ServiceUnavailableException(error instanceof Error && error.name === 'AbortError'
-        ? 'KNOWLEDGE_EMBEDDING_TIMEOUT' : 'KNOWLEDGE_EMBEDDING_PROVIDER_UNAVAILABLE');
-    } finally { clearTimeout(timer); }
+    const batchSize = Number(process.env.EMBEDDING_BATCH_SIZE ?? 64);
+    if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > 128)
+      throw new ServiceUnavailableException('KNOWLEDGE_EMBEDDING_BATCH_SIZE_INVALID');
+    const output: number[][] = [];
+    for (let offset = 0; offset < texts.length; offset += batchSize) {
+      const batch = texts.slice(offset, offset + batchSize);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), Number(process.env.EMBEDDING_REQUEST_TIMEOUT_MS ?? 30_000));
+      try {
+        const response = await fetch(`${baseUrl}/embeddings`, {
+          method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
+          body: JSON.stringify({ model: this.model, input: batch }), signal: controller.signal,
+        });
+        if (!response.ok)
+          throw new ServiceUnavailableException(`KNOWLEDGE_EMBEDDING_PROVIDER_${response.status}`);
+        const payload = (await response.json()) as { data?: Array<{ index: number; embedding: number[] }> };
+        const vectors = [...(payload.data ?? [])].sort((a, b) => a.index - b.index).map((item) => item.embedding);
+        if (vectors.length !== batch.length || vectors.some((item) => item.length !== this.dimension))
+          throw new ServiceUnavailableException('KNOWLEDGE_EMBEDDING_RESPONSE_INVALID');
+        output.push(...vectors);
+      } catch (error) {
+        if (error instanceof ServiceUnavailableException) throw error;
+        throw new ServiceUnavailableException(error instanceof Error && error.name === 'AbortError'
+          ? 'KNOWLEDGE_EMBEDDING_TIMEOUT' : 'KNOWLEDGE_EMBEDDING_PROVIDER_UNAVAILABLE');
+      } finally { clearTimeout(timer); }
+    }
+    return output;
   }
 }
 
