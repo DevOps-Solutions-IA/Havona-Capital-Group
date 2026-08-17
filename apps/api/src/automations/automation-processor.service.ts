@@ -60,6 +60,8 @@ export class AutomationProcessorService implements OnModuleInit, OnApplicationSh
       return this.moduleRef
         .get(CadenceService, { strict: false })
         .executeStep(z.string().uuid().parse(job.data?.stepExecutionId));
+    if (job.name === 'automation.operational-scan')
+      return this.automations.scanOperationalSignals();
     throw new Error('AUTOMATION_INVALID_TRIGGER');
   }
   async onApplicationShutdown() {

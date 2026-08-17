@@ -13,6 +13,7 @@ import { CommunicationsService } from '../communications/communications.service'
 import { CrmService } from '../crm/crm.service';
 import { EmailTemplateService } from '../email-templates/email-template.service';
 import { AutomationQueueService } from '../automations/automation-queue.service';
+import { toDeterministicUuid } from '../automations/automation-job-id';
 import {
   CadenceActor,
   createCadenceSchema,
@@ -480,6 +481,7 @@ export class CadenceService {
     if (step.type === 'CREATE_TASK') {
       const task = await this.crm.createTask(
         {
+          idempotencyKey: toDeterministicUuid(`cadence:${item.idempotencyKey}`),
           prospectId: e.prospectId,
           opportunityId: e.opportunityId,
           title: String((step.definition as any).title ?? 'Seguimiento de cadencia'),
@@ -590,6 +592,13 @@ export class CadenceService {
   async resume(actor: CadenceActor, id: string, ctx: AuditContext) {
     const e = await this.owned(actor, id);
     if (e.status !== 'PAUSED') throw new BadRequestException('CADENCE_NOT_PAUSED');
+    if (e.communicationThreadId) {
+      const thread = await this.dbx.communicationThread.findUnique({
+        where: { id: e.communicationThreadId },
+        include: { consent: true },
+      });
+      this.assertThread(thread);
+    }
     const pending = e.steps.find((s: any) => ['SCHEDULED', 'CANCELLED'].includes(s.status));
     if (!pending) throw new BadRequestException('CADENCE_NO_PENDING_STEP');
     const at = this.nextAllowed(
@@ -667,6 +676,19 @@ export class CadenceService {
     );
     return row;
   }
+  private async pauseSystem(id: string, reason: string) {
+    await this.queue.cancelCadenceEnrollment(id);
+    await this.dbx.cadenceStepExecution.updateMany({
+      where: { enrollmentId: id, status: { in: ['SCHEDULED', 'CLAIMED'] } },
+      data: { status: 'CANCELLED', failureCode: reason },
+    });
+    const row = await this.dbx.cadenceEnrollment.update({
+      where: { id },
+      data: { status: 'PAUSED', stopReason: reason, pausedAt: new Date(), nextStepAt: null },
+    });
+    await this.audit.record('CADENCE_SYSTEM_PAUSED', 'CadenceEnrollment', id, {}, { reason });
+    return row;
+  }
   async handleDomainEvent(eventId: string) {
     const event = await this.dbx.automationEvent.findUnique({ where: { eventId } });
     const payload = event?.payload as any;
@@ -690,11 +712,15 @@ export class CadenceService {
     const where: any = { status: 'ACTIVE', OR: relations };
     const rows = await this.dbx.cadenceEnrollment.findMany({ where, include: { version: true } });
     let stopped = 0;
-    for (const row of rows)
-      if (row.version.stopConditions.includes(reason)) {
+    for (const row of rows) {
+      if (reason === 'HUMAN_TAKEOVER') {
+        await this.pauseSystem(row.id, reason);
+        stopped++;
+      } else if (reason === 'OPT_OUT' || row.version.stopConditions.includes(reason)) {
         await this.stopSystem(row.id, reason);
         stopped++;
       }
+    }
     return { stopped };
   }
   private async assertEvidence(key: string, input: any) {
