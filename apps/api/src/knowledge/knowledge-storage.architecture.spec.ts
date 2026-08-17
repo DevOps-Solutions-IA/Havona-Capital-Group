@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 describe('Knowledge persistent storage architecture', () => {
   const root = resolve(__dirname, '../../../..');
   const compose = readFileSync(resolve(root, 'docker-compose.yml'), 'utf8');
+  const apiDockerfile = readFileSync(resolve(root, 'infrastructure/docker/api.Dockerfile'), 'utf8');
 
   it('monta storage persistente solo en API y no publica puertos de storage', () => {
     const api = compose.slice(compose.indexOf('\n  api:'), compose.indexOf('\n  worker:'));
@@ -28,5 +29,10 @@ describe('Knowledge persistent storage architecture', () => {
     expect(api).toContain('KNOWLEDGE_OCR_PROVIDER');
     expect(api).toContain('KNOWLEDGE_OCR_TIMEOUT_MS');
     expect(api).toContain('clamav: { condition: service_healthy }');
+  });
+
+  it('incluye OCR local con idiomas y fuente para rasterizar PDFs de forma verificable', () => {
+    expect(apiDockerfile).toContain('font-dejavu poppler-utils tesseract-ocr');
+    expect(apiDockerfile).toContain('tesseract-ocr-data-spa tesseract-ocr-data-eng');
   });
 });

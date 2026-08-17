@@ -14,7 +14,7 @@ FROM node:22-alpine AS production
 ENV NODE_ENV=production
 ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH
 WORKDIR /app
-RUN apk add --no-cache poppler-utils tesseract-ocr tesseract-ocr-data-spa tesseract-ocr-data-eng \
+RUN apk add --no-cache font-dejavu poppler-utils tesseract-ocr tesseract-ocr-data-spa tesseract-ocr-data-eng \
     && corepack enable && addgroup -S havona && adduser -S havona -G havona
 COPY --from=build --chown=havona:havona /app /app
 USER havona
