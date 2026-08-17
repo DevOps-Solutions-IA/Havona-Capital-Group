@@ -103,3 +103,24 @@ Los scripts rechazan paths relativos/root, restore no sobrescribe un destino no 
 7. Aprobar Knowledge Version.
 8. Publicar únicamente mediante permiso y decisión humana separada.
 9. Ejecutar retrieval/citations por rol y backup posterior.
+
+## Markdown canonical dry-run
+
+`knowledge:markdown-dry-run` inspecciona exclusivamente el directorio local autorizado
+`/mnt/d/Herry/archivos.md`. No recorre el directorio padre, no escribe en PostgreSQL, no usa
+staging y no registra el parser en Henry. El resultado se guarda con modo `0600` en
+`/tmp/havona-markdown-canonical-manifest.json`.
+
+El parser conserva encabezados H1/H2/H3 como ruta jerárquica, mantiene listas dentro de su
+sección y convierte cada tabla Markdown en un chunk atómico. Los bloques de texto extensos se
+dividen sin perder `section`, `subsection` ni `headingPath`; una tabla nunca se corta por longitud.
+SHA-256 e identificadores de chunks se calculan localmente de forma determinista.
+
+El manifest aplica governance existente: autoridad contractual general, técnica oficial,
+capacitación o comercial según evidencia explícita del frontmatter. Toda versión permanece
+`UNKNOWN`, con fechas de efectividad nulas y `publicAllowed=false` implícito. Una fecha documental
+o un año en el nombre no demuestra vigencia.
+
+El Golden Retrieval Gate es una validación local sobre los chunks efímeros: comprueba fuente,
+sección, tipo estructural, prioridad de autoridad, aislamiento de productos y conflicto entre
+versiones. Aprobar el gate no promueve, publica, indexa ni expone contenido a Henry.

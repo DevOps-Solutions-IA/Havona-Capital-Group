@@ -10,7 +10,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "jest --runInBand",
     "test:integration": "pnpm --filter '@havona/api^...' build && jest --config jest.integration.json --runInBand",
-    "knowledge:palig-dry-run": "node -r ts-node/register scripts/palig-ingestion-dry-run.ts"
+    "knowledge:palig-dry-run": "node -r ts-node/register scripts/palig-ingestion-dry-run.ts",
+    "knowledge:markdown-dry-run": "node -r ts-node/register scripts/markdown-canonical-dry-run.ts"
   },
   "dependencies": {
     "@havona/auth": "workspace:*",
