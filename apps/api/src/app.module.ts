@@ -170,7 +170,7 @@ import { KnowledgeStagingService } from './knowledge/knowledge-staging.service';
     AnalyticsService,
     { provide: KnowledgeStorageConfig, useFactory: () => new KnowledgeStorageConfig(process.env) },
     PersistentFilesystemStorageProvider,
-    ConfiguredMalwareScanner,
+    { provide: ConfiguredMalwareScanner, useFactory: () => new ConfiguredMalwareScanner(process.env) },
     ConfiguredEmbeddingProvider,
     { provide: STORAGE_PROVIDER, useExisting: PersistentFilesystemStorageProvider },
     { provide: MALWARE_SCANNER, useExisting: ConfiguredMalwareScanner },
