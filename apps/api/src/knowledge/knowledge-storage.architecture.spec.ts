@@ -20,7 +20,8 @@ describe('Knowledge persistent storage architecture', () => {
     const api = compose.slice(compose.indexOf('\n  api:'), compose.indexOf('\n  worker:'));
     expect(clamav).toContain('clamav/clamav-debian:1.5.3');
     expect(clamav).toContain('clamav_signatures:/var/lib/clamav');
-    expect(clamav).toContain('networks: [backend]');
+    expect(clamav).toContain('networks: [backend, clamav_updates]');
+    expect(compose).toMatch(/clamav_updates:\s*$/m);
     expect(clamav).not.toContain('ports:');
     expect(clamav).not.toContain('/var/lib/havona/knowledge');
     expect(api).toContain('CLAMAV_HOST');

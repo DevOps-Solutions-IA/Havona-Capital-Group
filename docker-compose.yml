@@ -87,7 +87,7 @@ services:
       timeout: 10s
       retries: 10
       start_period: 360s
-    networks: [backend]
+    networks: [backend, clamav_updates]
     security_opt: [no-new-privileges:true]
     mem_limit: ${CLAMAV_MEMORY_LIMIT:-2g}
     mem_reservation: ${CLAMAV_MEMORY_RESERVATION:-1g}
@@ -302,6 +302,7 @@ networks:
   frontend:
   backend:
     internal: true
+  clamav_updates:
 
 volumes:
   postgres_data:
