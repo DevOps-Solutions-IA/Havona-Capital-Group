@@ -142,6 +142,26 @@ const keywordScore = (query: string, content: string) => {
   if (!terms.size) return 0;
   return [...terms].filter((term) => words.has(term)).length / terms.size;
 };
+const tableQueryPattern =
+  /\b(tabla|tarif(?:a|as|ario)|prima(?:s)?|plan(?:es)?|edad(?:es)?|ingreso|permanencia|valor(?:es)? asegurad(?:o|os|a|as)|suma(?:s)? asegurad(?:a|as))\b/i;
+
+export const hybridKnowledgeScore = (input: {
+  query: string;
+  content: string;
+  title: string;
+  section: string | null;
+  headingPath: unknown;
+  structuralType: 'TEXT' | 'TABLE' | 'MIXED';
+  semantic: number;
+}) => {
+  const headingPath = Array.isArray(input.headingPath)
+    ? input.headingPath.filter((item): item is string => typeof item === 'string').join(' ')
+    : '';
+  const context = [input.title, input.section ?? '', headingPath].join(' ');
+  const structural = tableQueryPattern.test(input.query) && input.structuralType === 'TABLE' ? 1 : 0;
+  return input.semantic * 0.48 + keywordScore(input.query, input.content) * 0.3 +
+    keywordScore(input.query, context) * 0.14 + structural * 0.08;
+};
 const injectionPattern =
   /(ignore|ignora).{0,30}(instructions|instrucciones)|system prompt|execute[_ ]sql|api[_ ]key/i;
 
@@ -968,9 +988,19 @@ export class KnowledgeService {
         const vector = Array.isArray(row.embedding)
           ? row.embedding.filter((item): item is number => typeof item === 'number')
           : [];
-        const semantic = cosineSimilarity(queryVector, vector),
-          keyword = keywordScore(query, row.content);
-        return { row, score: semantic * 0.55 + keyword * 0.45 };
+        const semantic = cosineSimilarity(queryVector, vector);
+        return {
+          row,
+          score: hybridKnowledgeScore({
+            query,
+            content: row.content,
+            title: row.version.document.title,
+            section: row.section,
+            headingPath: row.headingPath,
+            structuralType: row.structuralType,
+            semantic,
+          }),
+        };
       })
       .filter((item) => item.score >= Number(process.env.RAG_MIN_SCORE ?? 0.18))
       .sort((a, b) => b.score - a.score || a.row.version.authorityRank - b.row.version.authorityRank)
