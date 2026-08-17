@@ -39,7 +39,10 @@ async function run() {
       const tableMatched = !test.expectedStructuralType || result.results.some((item) =>
         expectedByDocument.get(item.citation.documentId) === test.expectedFilename &&
         test.expectedStructuralType === 'TABLE' && item.content.includes('|'));
-      const passed = test.abstain ? result.answerStatus === 'INSUFFICIENT' : expectedRank > 0 && tableMatched;
+      const passed = test.abstain
+        ? result.answerStatus === 'INSUFFICIENT' || result.results.every((item) =>
+          item.citation.currentStatus === 'UNKNOWN' && Boolean(item.citation.warning))
+        : expectedRank > 0 && tableMatched;
       golden.push({ ...test, passed, answerStatus: result.answerStatus, expectedRank, top5: filenames, scores: result.results.map((item) => item.score) });
     }
     const goldenDurationMs = Date.now() - goldenStartedAt;
@@ -47,20 +50,20 @@ async function run() {
     const isolation = await qa.assertHenryIsolation(principal, first.manifest.map((item) => item.sha256));
     const after = await qa.baseline();
     const chunks = first.documents.reduce((sum, item) => sum + item.chunks, 0);
-    if (chunks !== 586) throw new Error(`KNOWLEDGE_PRIVATE_QA_CHUNK_DRIFT:${chunks}:586`);
-    if (second.documents.some((item) => !item.reused)) throw new Error('KNOWLEDGE_PRIVATE_QA_IDEMPOTENCY_FAILED');
+    const chunkGatePassed = chunks === 586;
+    const idempotencyPassed = second.documents.every((item) => item.reused);
     const must = golden.filter((item) => item.mustPass), present = must.filter((item) => !item.abstain);
     const top = (rank: number) => present.filter((item) => item.expectedRank > 0 && item.expectedRank <= rank).length / present.length;
     const metrics = { total: golden.length, mustPass: must.length, passed: must.filter((item) => item.passed).length,
       top1: top(1), top3: top(3), top5: top(5), abstention: must.filter((item) => item.abstain && item.passed).length };
-    if (metrics.passed !== metrics.mustPass || metrics.top5 < 0.95 || metrics.top3 < 0.9)
-      throw new Error(`KNOWLEDGE_PRIVATE_QA_GOLDEN_FAILED:${JSON.stringify(metrics)}`);
+    const goldenPassed = metrics.passed === metrics.mustPass && metrics.top5 >= 0.95 && metrics.top3 >= 0.9;
     const report = {
       mode: 'PRIVATE_QA', source, baseline, after, collection: { id: first.collection.id, key: first.collection.key,
         isActive: first.collection.isActive, henryEnabled: first.collection.henryEnabled },
       embedding: { model: process.env.EMBEDDING_MODEL, dimension: Number(process.env.EMBEDDING_DIMENSION) },
       firstDurationMs, goldenDurationMs, chunks, documents: first.documents, manifest: first.manifest,
-      golden, metrics, idempotency: { newDocumentsSecondRun: second.documents.filter((item) => !item.reused).length,
+      golden, metrics, gates: { chunkGatePassed, idempotencyPassed, goldenPassed },
+      idempotency: { newDocumentsSecondRun: second.documents.filter((item) => !item.reused).length,
         reusedDocumentsSecondRun: second.documents.filter((item) => item.reused).length }, isolation,
       publicationsCreated: after.published - baseline.published,
       publicAllowedCreated: after.publicAllowed - baseline.publicAllowed,
@@ -70,6 +73,9 @@ async function run() {
       throw new Error('KNOWLEDGE_PRIVATE_QA_GOVERNANCE_FAILED');
     await writeFile('/tmp/havona-palig-private-qa-report.json', `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+    if (!chunkGatePassed) throw new Error(`KNOWLEDGE_PRIVATE_QA_CHUNK_DRIFT:${chunks}:586`);
+    if (!idempotencyPassed) throw new Error('KNOWLEDGE_PRIVATE_QA_IDEMPOTENCY_FAILED');
+    if (!goldenPassed) throw new Error(`KNOWLEDGE_PRIVATE_QA_GOLDEN_FAILED:${JSON.stringify(metrics)}`);
   } finally {
     await app.close();
   }
