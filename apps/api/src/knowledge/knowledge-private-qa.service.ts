@@ -62,7 +62,16 @@ export class KnowledgePrivateQaService {
       });
       if (existing) {
         const chunks = await this.db.knowledgeChunk.count({ where: { versionId: existing.id } });
-        results.push({ filename: canonical.manifest.filename, documentId: existing.documentId, versionId: existing.id, chunks, reused: true });
+        if (existing.status === 'REVIEW' && chunks === canonical.manifest.chunkCount) {
+          results.push({ filename: canonical.manifest.filename, documentId: existing.documentId, versionId: existing.id, chunks, reused: true });
+          continue;
+        }
+        const processed = await this.knowledge.processVersion(existing.id);
+        await this.db.knowledgeDocument.update({
+          where: { id: existing.documentId },
+          data: { tags: this.manifestMetadata(canonical) },
+        });
+        results.push({ filename: canonical.manifest.filename, documentId: existing.documentId, versionId: existing.id, chunks: processed.chunks, reused: false });
         continue;
       }
       const file = await this.file(source, canonical);

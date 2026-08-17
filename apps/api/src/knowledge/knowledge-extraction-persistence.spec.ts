@@ -29,7 +29,7 @@ describe('Knowledge extraction report persistence', () => {
       },
       knowledgeDocument: { update: operation() },
       knowledgeIngestion: { update: operation() },
-      knowledgeChunk: { deleteMany: operation(), create: operation() },
+      knowledgeChunk: { deleteMany: operation(), createMany: operation() },
       knowledgePageExtraction: { deleteMany: operation(), create: operation() },
       knowledgeExtractionReport: {
         findUnique: jest.fn(async () => report),
@@ -60,7 +60,10 @@ describe('Knowledge extraction report persistence', () => {
     const firstId = db.knowledgeExtractionReport.upsert.mock.calls[0][0].create.id;
     const secondId = db.knowledgeExtractionReport.upsert.mock.calls[1][0].create.id;
     expect(secondId).toBe(firstId);
-    expect(db.knowledgeChunk.create).toHaveBeenCalledTimes(2);
+    expect(db.knowledgeChunk.createMany).toHaveBeenCalledTimes(2);
+    expect(db.knowledgeChunk.createMany).toHaveBeenLastCalledWith({
+      data: [expect.objectContaining({ versionId: 'version-1', position: 0 })],
+    });
   });
 
   it('persiste reporte FAILED y no crea chunks cuando una página falla', async () => {
@@ -69,6 +72,6 @@ describe('Knowledge extraction report persistence', () => {
     expect(db.knowledgeExtractionReport.upsert).toHaveBeenCalledWith(expect.objectContaining({
       create: expect.objectContaining({ status: 'FAILED', failedPages: 1 }),
     }));
-    expect(db.knowledgeChunk.create).not.toHaveBeenCalled();
+    expect(db.knowledgeChunk.createMany).not.toHaveBeenCalled();
   });
 });

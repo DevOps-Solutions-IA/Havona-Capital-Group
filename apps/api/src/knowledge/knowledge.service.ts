@@ -606,9 +606,8 @@ export class KnowledgeService {
           blocks: page.blocks as unknown as Prisma.InputJsonValue,
           tables: page.tables as unknown as Prisma.InputJsonValue,
         } })),
-        ...(!failedPages ? chunks : []).map((item, index) =>
-          this.db.knowledgeChunk.create({
-            data: {
+        ...(!failedPages && chunks.length ? [this.db.knowledgeChunk.createMany({
+          data: chunks.map((item, index) => ({
               versionId,
               position: index,
               section: item.section,
@@ -626,9 +625,8 @@ export class KnowledgeService {
               embeddingModel: this.embeddings.model,
               embeddingDimension: this.embeddings.dimension,
               embeddedAt: new Date(),
-            },
-          }),
-        ),
+            })),
+        })] : []),
         this.db.knowledgeVersion.update({ where: { id: versionId }, data: { status: failedPages ? 'FAILED' : 'REVIEW' } }),
         this.db.knowledgeDocument.update({
           where: { id: version.documentId },
