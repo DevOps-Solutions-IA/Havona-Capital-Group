@@ -33,13 +33,35 @@ Mismo hash reutiliza el objeto y conserva otra fila `DUPLICATE`; mismo filename 
 
 `MalwareScanner` retorna `PENDING_SCAN`, `CLEAN`, `QUARANTINED` o `SCAN_FAILED`. `ConfiguredMalwareScanner` valida el modo al iniciar; `noop-test` solo puede producir `CLEAN` en `NODE_ENV=test`. En producción, scanner ausente retorna explícitamente `PENDING_SCAN`; direct upload queda bloqueado y staging permanece en quarantine. Nunca se afirma una inspección inexistente.
 
-`ClamAvMalwareScanner` usa el protocolo TCP `zINSTREAM` de `clamd`: envía chunks con longitud big-endian, no ejecuta shell, no utiliza filename y no comparte el filesystem. Solo `stream: OK` produce `CLEAN`; `FOUND` produce `QUARANTINED`. Timeout, conexión, respuesta incompleta/malformada, archivo vacío o sobre el límite producen `SCAN_FAILED`. El servicio `clamav/clamav-debian:1.5.3` vive únicamente en la red interna `backend`, no publica 3310, conserva firmas en `clamav_signatures` y expone un healthcheck de clamd. API es el único consumidor.
+`ClamAvMalwareScanner` usa el protocolo TCP `zINSTREAM` de `clamd`: envía chunks con longitud big-endian, no ejecuta shell, no utiliza filename y no comparte el filesystem. Solo `stream: OK` produce `CLEAN`; `FOUND` produce `QUARANTINED`. Timeout, conexión, respuesta incompleta/malformada, archivo vacío o sobre el límite producen `SCAN_FAILED`. El servicio `clamav/clamav-debian:1.5.3` atiende a API por la red interna `backend`, usa `clamav_updates` únicamente para FreshClam, no publica 3310, conserva firmas en `clamav_signatures` y expone un healthcheck de clamd. API es el único consumidor.
 
 Compose reserva de forma configurable 1 GiB y limita ClamAV a 2 GiB por defecto. Estos valores son guardrails, no prueba de capacidad: antes de habilitarlo en el VPS deben medirse memoria, swap y load antes/después. Si desestabiliza API, Worker o PostgreSQL, se mantiene la ingesta bloqueada y ClamAV requiere capacidad separada.
 
 ## Retención y errores
 
 Deprecar es lógico y no borra evidencia. Los objetos content-addressed pueden compartirse entre receipts/versiones; un delete físico futuro debe comprobar todas las referencias. Si falla la creación de staging después de un objeto nuevo, se intenta cleanup y se registra fallo seguro sin contenido/path. Los retries de extracción usan el mismo objeto inmutable.
+
+## Knowledge Document Integrity Engine
+
+`DocumentExtractor` reemplaza la extracción plana. PDF se procesa página por página conservando número, líneas posicionadas, texto nativo, método de extracción, warnings, sección sustentada y tablas heurísticas. DOCX conserva estructura documental sin inventar páginas. `KnowledgeChunk` nunca cruza páginas PDF y registra `pageStart/pageEnd`, tipo `TEXT|TABLE|MIXED`, métodos y warnings.
+
+El OCR está detrás de `OcrProvider`. Producción puede seleccionar `tesseract`; Poppler rasteriza exclusivamente la página solicitada y Tesseract usa español/inglés. Se activa solo bajo `KNOWLEDGE_OCR_MIN_NATIVE_CHARS`. Los procesos usan argumentos fijos, directorio temporal restringido, DPI/timeout limitados y cleanup obligatorio. Provider ausente, timeout, error o una página sin texto recuperado producen `FAILED`; nunca fail-open ni `EMPTY_CONFIRMED` automático.
+
+`KnowledgeExtractionReport` y `KnowledgePageExtraction` registran cobertura, páginas nativas/OCR/mixtas/fallidas, caracteres, tablas, warnings, versiones de extractor/OCR/chunker y timestamps. Un retry reutiliza el reporte, reemplaza páginas/chunks dentro del mismo ciclo transaccional y no marca `COMPLETED` antes de verificar todas las páginas.
+
+Publication exige reporte `COMPLETED`, cero páginas fallidas y consistencia entre checksums de staging y versión. `UNKNOWN` no impide extracción/publicación interna, pero continúa generando warning de vigencia y `publicAllowed=false` mantiene bloqueado al actor PUBLIC.
+
+Una referencia `DUPLICATE` aprobada se enlaza al `KnowledgeDocument` del staging canónico ya promovido. Conserva su fila y auditoría, pero no relee el binario ni crea chunks/embeddings duplicados.
+
+Configuración OCR:
+
+- `KNOWLEDGE_OCR_PROVIDER=tesseract|unavailable`
+- `KNOWLEDGE_OCR_TIMEOUT_MS=45000`
+- `KNOWLEDGE_OCR_DPI=200`
+- `KNOWLEDGE_OCR_MIN_NATIVE_CHARS=40`
+- `KNOWLEDGE_OCR_VERSION=tesseract-cli`
+
+Tesseract/Poppler son on-demand y no agregan un daemon residente. La detección de tablas preserva filas/celdas y siempre adjunta `TABLE_STRUCTURE_HEURISTIC_REVIEW_REQUIRED`: es una ayuda de recuperación, no certificación automática de estructura contractual.
 
 ## Backup y restore
 

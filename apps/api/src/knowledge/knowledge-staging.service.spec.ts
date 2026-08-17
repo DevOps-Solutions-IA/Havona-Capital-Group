@@ -20,8 +20,9 @@ describe('Knowledge PALIG ingestion staging', () => {
       findMany: jest.fn(), findUnique: jest.fn(), update: jest.fn(),
     } };
     const scanner = { scan: jest.fn(async () => ({ status: scanStatus, scanner: 'test', ...(scanStatus === 'PENDING_SCAN' ? { errorCode: 'SCANNER_UNAVAILABLE' } : {}) })) };
-    const service = new KnowledgeStagingService(db, { record: jest.fn() } as any, {} as any, storage as any, scanner as any);
-    return { service, db, storage, scanner, rows };
+    const audit = { record: jest.fn() };
+    const service = new KnowledgeStagingService(db, audit as any, {} as any, storage as any, scanner as any);
+    return { service, db, storage, scanner, rows, audit };
   }
 
   it('calcula hash server-side y usa defaults UNKNOWN/no público', async () => {
@@ -101,6 +102,43 @@ describe('Knowledge PALIG ingestion staging', () => {
     expect(knowledge.createDocument).toHaveBeenCalledTimes(1);
     expect(knowledge.approve).toBeUndefined();
     expect(knowledge.publish).toBeUndefined();
+  });
+
+  it('vincula un duplicado al documento canónico sin duplicar contenido ni embeddings', async () => {
+    const { service, db, storage, audit } = setup();
+    db.knowledgeStagedAsset.findUnique
+      .mockResolvedValueOnce({
+        id: 'duplicate', duplicateOfId: 'canonical', sha256: 'a'.repeat(64),
+        scanStatus: 'CLEAN', reviewStatus: 'APPROVED', status: 'DUPLICATE',
+      })
+      .mockResolvedValueOnce({
+        sha256: 'a'.repeat(64), promotedDocumentId: 'document-1', status: 'PROMOTED',
+      });
+    db.knowledgeStagedAsset.update.mockResolvedValue({});
+    await expect(service.promote('duplicate', {
+      title: 'Referencia duplicada', collectionId: 'collection-1', classification: 'GENERAL',
+    }, actor)).resolves.toEqual({
+      stagingId: 'duplicate', documentId: 'document-1', status: 'CANONICAL_LINKED',
+    });
+    expect(storage.get).not.toHaveBeenCalled();
+    expect((service as any).knowledge.createDocument).toBeUndefined();
+    expect(audit.record).toHaveBeenCalledWith(
+      'KNOWLEDGE_STAGING_CANONICAL_LINKED', 'KnowledgeStagedAsset', 'duplicate',
+      { actorUserId: actor.id }, expect.objectContaining({ canonicalStagingId: 'canonical' }),
+    );
+  });
+
+  it('bloquea duplicado cuando el canónico aún no fue promovido', async () => {
+    const { service, db } = setup();
+    db.knowledgeStagedAsset.findUnique
+      .mockResolvedValueOnce({
+        id: 'duplicate', duplicateOfId: 'canonical', sha256: 'a'.repeat(64),
+        scanStatus: 'CLEAN', reviewStatus: 'APPROVED', status: 'DUPLICATE',
+      })
+      .mockResolvedValueOnce({ sha256: 'a'.repeat(64), promotedDocumentId: null, status: 'READY_FOR_REVIEW' });
+    await expect(service.promote('duplicate', {
+      title: 'Referencia', collectionId: 'collection-1', classification: 'GENERAL',
+    }, actor)).rejects.toThrow('KNOWLEDGE_CANONICAL_NOT_PROMOTED');
   });
 
   it('limpia el objeto nuevo si falla persistencia de staging', async () => {

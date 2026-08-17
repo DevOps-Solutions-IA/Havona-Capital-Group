@@ -65,6 +65,7 @@ import { AnalyticsService } from './analytics/analytics.service';
 import { KnowledgeController } from './knowledge/knowledge.controller';
 import { HenryMemoryController } from './knowledge/memory.controller';
 import { KnowledgeService } from './knowledge/knowledge.service';
+import { ConfiguredOcrProvider, DocumentExtractor } from './knowledge/document-extraction.service';
 import { RagOrchestratorService } from './knowledge/rag-orchestrator.service';
 import { KnowledgeQueueService } from './knowledge/knowledge-queue.service';
 import { KnowledgeProcessorService } from './knowledge/knowledge-processor.service';
@@ -171,6 +172,8 @@ import { KnowledgeStagingService } from './knowledge/knowledge-staging.service';
     { provide: KnowledgeStorageConfig, useFactory: () => new KnowledgeStorageConfig(process.env) },
     PersistentFilesystemStorageProvider,
     { provide: ConfiguredMalwareScanner, useFactory: () => new ConfiguredMalwareScanner(process.env) },
+    { provide: ConfiguredOcrProvider, useFactory: () => new ConfiguredOcrProvider(process.env) },
+    DocumentExtractor,
     ConfiguredEmbeddingProvider,
     { provide: STORAGE_PROVIDER, useExisting: PersistentFilesystemStorageProvider },
     { provide: MALWARE_SCANNER, useExisting: ConfiguredMalwareScanner },

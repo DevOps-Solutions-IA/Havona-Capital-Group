@@ -25,6 +25,8 @@ describe('Knowledge persistent storage architecture', () => {
     expect(clamav).not.toContain('ports:');
     expect(clamav).not.toContain('/var/lib/havona/knowledge');
     expect(api).toContain('CLAMAV_HOST');
+    expect(api).toContain('KNOWLEDGE_OCR_PROVIDER');
+    expect(api).toContain('KNOWLEDGE_OCR_TIMEOUT_MS');
     expect(api).toContain('clamav: { condition: service_healthy }');
   });
 });

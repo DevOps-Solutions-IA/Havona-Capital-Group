@@ -146,6 +146,25 @@ export class KnowledgeStagingService {
     if (staged.scanStatus !== 'CLEAN' || staged.reviewStatus !== 'APPROVED')
       throw new BadRequestException('KNOWLEDGE_STAGING_NOT_APPROVED');
     if (staged.status === 'PROMOTED') throw new BadRequestException('KNOWLEDGE_STAGING_ALREADY_PROMOTED');
+    if (staged.duplicateOfId) {
+      const canonical = await this.db.knowledgeStagedAsset.findUnique({
+        where: { id: staged.duplicateOfId },
+        select: { sha256: true, promotedDocumentId: true, status: true },
+      });
+      if (!canonical || canonical.sha256 !== staged.sha256)
+        throw new BadRequestException('KNOWLEDGE_CANONICAL_CONSISTENCY_FAILED');
+      if (!canonical.promotedDocumentId || canonical.status !== 'PROMOTED')
+        throw new BadRequestException('KNOWLEDGE_CANONICAL_NOT_PROMOTED');
+      await this.db.knowledgeStagedAsset.update({
+        where: { id }, data: { status: 'PROMOTED', promotedDocumentId: canonical.promotedDocumentId },
+      });
+      await this.audit.record(
+        'KNOWLEDGE_STAGING_CANONICAL_LINKED', 'KnowledgeStagedAsset', id,
+        { actorUserId: actor.id },
+        { canonicalStagingId: staged.duplicateOfId, documentId: canonical.promotedDocumentId },
+      );
+      return { stagingId: id, documentId: canonical.promotedDocumentId, status: 'CANONICAL_LINKED' };
+    }
     const buffer = await this.storage.get(staged.storageKey);
     const checksum = createHash('sha256').update(buffer).digest('hex');
     if (checksum !== staged.sha256 || buffer.length !== staged.fileSize)

@@ -2289,6 +2289,26 @@ enum KnowledgeStagingReviewStatus {
   REJECTED
 }
 
+enum KnowledgeExtractionStatus {
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum KnowledgePageExtractionStatus {
+  EXTRACTED_NATIVE
+  EXTRACTED_OCR
+  EXTRACTED_MIXED
+  EMPTY_CONFIRMED
+  FAILED
+}
+
+enum KnowledgeChunkStructuralType {
+  TEXT
+  TABLE
+  MIXED
+}
+
 enum TrainingEnrollmentStatus {
   ASSIGNED
   IN_PROGRESS
@@ -2353,51 +2373,52 @@ model KnowledgeDocument {
 }
 
 model KnowledgeVersion {
-  id                   String                  @id @default(uuid()) @db.Uuid
-  documentId           String                  @map("document_id") @db.Uuid
+  id                   String                     @id @default(uuid()) @db.Uuid
+  documentId           String                     @map("document_id") @db.Uuid
   version              Int
-  status               KnowledgeDocumentStatus @default(PROCESSING)
-  checksum             String                  @db.Char(64)
-  storageKey           String?                 @map("storage_key") @db.VarChar(500)
-  originalName         String                  @map("original_name") @db.VarChar(255)
-  mimeType             String                  @map("mime_type") @db.VarChar(120)
-  fileSize             Int                     @map("file_size")
-  effectiveFrom        DateTime?               @map("effective_from")
-  effectiveUntil       DateTime?               @map("effective_until")
-  changeSummary        String?                 @map("change_summary") @db.VarChar(1000)
-  versionLabel         String?                 @map("version_label") @db.VarChar(120)
-  sourceType           KnowledgeSourceType     @default(CORPORATIVO) @map("source_type")
-  authorityLevel       KnowledgeAuthorityLevel @default(OFFICIAL_TECHNICAL) @map("authority_level")
-  authorityRank        Int                     @default(4) @map("authority_rank")
-  documentDate         DateTime?               @map("document_date") @db.Date
-  currentStatus        KnowledgeCurrentStatus  @default(UNKNOWN) @map("current_status")
-  publicAllowed        Boolean                 @default(false) @map("public_allowed")
-  consultantAllowed    Boolean                 @default(true) @map("consultant_allowed")
-  managerAllowed       Boolean                 @default(true) @map("manager_allowed")
-  trainingAllowed      Boolean                 @default(false) @map("training_allowed")
+  status               KnowledgeDocumentStatus    @default(PROCESSING)
+  checksum             String                     @db.Char(64)
+  storageKey           String?                    @map("storage_key") @db.VarChar(500)
+  originalName         String                     @map("original_name") @db.VarChar(255)
+  mimeType             String                     @map("mime_type") @db.VarChar(120)
+  fileSize             Int                        @map("file_size")
+  effectiveFrom        DateTime?                  @map("effective_from")
+  effectiveUntil       DateTime?                  @map("effective_until")
+  changeSummary        String?                    @map("change_summary") @db.VarChar(1000)
+  versionLabel         String?                    @map("version_label") @db.VarChar(120)
+  sourceType           KnowledgeSourceType        @default(CORPORATIVO) @map("source_type")
+  authorityLevel       KnowledgeAuthorityLevel    @default(OFFICIAL_TECHNICAL) @map("authority_level")
+  authorityRank        Int                        @default(4) @map("authority_rank")
+  documentDate         DateTime?                  @map("document_date") @db.Date
+  currentStatus        KnowledgeCurrentStatus     @default(UNKNOWN) @map("current_status")
+  publicAllowed        Boolean                    @default(false) @map("public_allowed")
+  consultantAllowed    Boolean                    @default(true) @map("consultant_allowed")
+  managerAllowed       Boolean                    @default(true) @map("manager_allowed")
+  trainingAllowed      Boolean                    @default(false) @map("training_allowed")
   carrier              PaligCarrier?
-  authorizedProductId  String?                 @map("authorized_product_id") @db.Uuid
-  authorizedSolutionId String?                 @map("authorized_solution_id") @db.Uuid
-  productCode          String?                 @map("product_code") @db.VarChar(100)
-  sourceLocator        String?                 @map("source_locator") @db.VarChar(500)
-  country              String                  @default("CO") @db.VarChar(2)
-  notes                String?                 @db.VarChar(1000)
-  createdById          String                  @map("created_by_id") @db.Uuid
-  approvedById         String?                 @map("approved_by_id") @db.Uuid
-  approvedAt           DateTime?               @map("approved_at")
-  publishedAt          DateTime?               @map("published_at")
-  createdAt            DateTime                @default(now()) @map("created_at")
-  document             KnowledgeDocument       @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  createdBy            User                    @relation("KnowledgeVersionCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  approvedBy           User?                   @relation("KnowledgeVersionApprover", fields: [approvedById], references: [id], onDelete: Restrict)
+  authorizedProductId  String?                    @map("authorized_product_id") @db.Uuid
+  authorizedSolutionId String?                    @map("authorized_solution_id") @db.Uuid
+  productCode          String?                    @map("product_code") @db.VarChar(100)
+  sourceLocator        String?                    @map("source_locator") @db.VarChar(500)
+  country              String                     @default("CO") @db.VarChar(2)
+  notes                String?                    @db.VarChar(1000)
+  createdById          String                     @map("created_by_id") @db.Uuid
+  approvedById         String?                    @map("approved_by_id") @db.Uuid
+  approvedAt           DateTime?                  @map("approved_at")
+  publishedAt          DateTime?                  @map("published_at")
+  createdAt            DateTime                   @default(now()) @map("created_at")
+  document             KnowledgeDocument          @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  createdBy            User                       @relation("KnowledgeVersionCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  approvedBy           User?                      @relation("KnowledgeVersionApprover", fields: [approvedById], references: [id], onDelete: Restrict)
   chunks               KnowledgeChunk[]
   ingestions           KnowledgeIngestion[]
-  authorizedProduct    AuthorizedProduct?      @relation(fields: [authorizedProductId], references: [id], onDelete: Restrict)
-  authorizedSolution   AuthorizedSolution?     @relation(fields: [authorizedSolutionId], references: [id], onDelete: Restrict)
+  authorizedProduct    AuthorizedProduct?         @relation(fields: [authorizedProductId], references: [id], onDelete: Restrict)
+  authorizedSolution   AuthorizedSolution?        @relation(fields: [authorizedSolutionId], references: [id], onDelete: Restrict)
   customerNeeds        KnowledgeVersionNeed[]
   facts                KnowledgeFact[]
-  conflictsAsPrimary   KnowledgeConflict[]     @relation("KnowledgeConflictPrimary")
-  conflictsAsSecondary KnowledgeConflict[]     @relation("KnowledgeConflictSecondary")
+  conflictsAsPrimary   KnowledgeConflict[]        @relation("KnowledgeConflictPrimary")
+  conflictsAsSecondary KnowledgeConflict[]        @relation("KnowledgeConflictSecondary")
+  extractionReport     KnowledgeExtractionReport?
 
   @@unique([documentId, version])
   @@unique([documentId, checksum])
@@ -2505,26 +2526,81 @@ model KnowledgeStagedAsset {
 }
 
 model KnowledgeChunk {
-  id                 String           @id @default(uuid()) @db.Uuid
-  versionId          String           @map("version_id") @db.Uuid
+  id                 String                       @id @default(uuid()) @db.Uuid
+  versionId          String                       @map("version_id") @db.Uuid
   position           Int
-  section            String?          @db.VarChar(300)
-  headingPath        Json?            @map("heading_path")
-  pageStart          Int?             @map("page_start")
-  pageEnd            Int?             @map("page_end")
-  content            String           @db.Text
-  textHash           String           @map("text_hash") @db.Char(64)
-  tokenEstimate      Int              @map("token_estimate")
+  section            String?                      @db.VarChar(300)
+  headingPath        Json?                        @map("heading_path")
+  pageStart          Int?                         @map("page_start")
+  pageEnd            Int?                         @map("page_end")
+  structuralType     KnowledgeChunkStructuralType @default(TEXT) @map("structural_type")
+  extractionMethods  Json?                        @map("extraction_methods")
+  extractionWarnings Json?                        @map("extraction_warnings")
+  structure          Json?
+  content            String                       @db.Text
+  textHash           String                       @map("text_hash") @db.Char(64)
+  tokenEstimate      Int                          @map("token_estimate")
   embedding          Json?
-  embeddingModel     String?          @map("embedding_model") @db.VarChar(160)
-  embeddingDimension Int?             @map("embedding_dimension")
-  embeddedAt         DateTime?        @map("embedded_at")
-  createdAt          DateTime         @default(now()) @map("created_at")
-  version            KnowledgeVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  embeddingModel     String?                      @map("embedding_model") @db.VarChar(160)
+  embeddingDimension Int?                         @map("embedding_dimension")
+  embeddedAt         DateTime?                    @map("embedded_at")
+  createdAt          DateTime                     @default(now()) @map("created_at")
+  version            KnowledgeVersion             @relation(fields: [versionId], references: [id], onDelete: Cascade)
 
   @@unique([versionId, position])
   @@index([versionId, position])
   @@map("knowledge_chunks")
+}
+
+model KnowledgeExtractionReport {
+  id                    String                    @id @default(uuid()) @db.Uuid
+  versionId             String                    @unique @map("version_id") @db.Uuid
+  status                KnowledgeExtractionStatus @default(PROCESSING)
+  mimeType              String                    @map("mime_type") @db.VarChar(120)
+  totalPages            Int?                      @map("total_pages")
+  nativePages           Int                       @default(0) @map("native_pages")
+  ocrPages              Int                       @default(0) @map("ocr_pages")
+  mixedPages            Int                       @default(0) @map("mixed_pages")
+  emptyConfirmedPages   Int                       @default(0) @map("empty_confirmed_pages")
+  failedPages           Int                       @default(0) @map("failed_pages")
+  pagesWithWarnings     Int                       @default(0) @map("pages_with_warnings")
+  charactersExtracted   Int                       @default(0) @map("characters_extracted")
+  tablesDetected        Int                       @default(0) @map("tables_detected")
+  documentWarnings      Json?                     @map("document_warnings")
+  extractorVersion      String                    @map("extractor_version") @db.VarChar(80)
+  ocrProvider           String?                   @map("ocr_provider") @db.VarChar(80)
+  ocrVersion            String?                   @map("ocr_version") @db.VarChar(80)
+  chunkerVersion        String                    @map("chunker_version") @db.VarChar(80)
+  extractionStartedAt   DateTime                  @map("extraction_started_at")
+  extractionCompletedAt DateTime?                 @map("extraction_completed_at")
+  createdAt             DateTime                  @default(now()) @map("created_at")
+  updatedAt             DateTime                  @updatedAt @map("updated_at")
+  version               KnowledgeVersion          @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  pages                 KnowledgePageExtraction[]
+
+  @@index([status, updatedAt])
+  @@map("knowledge_extraction_reports")
+}
+
+model KnowledgePageExtraction {
+  id               String                        @id @default(uuid()) @db.Uuid
+  reportId         String                        @map("report_id") @db.Uuid
+  pageNumber       Int                           @map("page_number")
+  status           KnowledgePageExtractionStatus
+  extractionMethod String                        @map("extraction_method") @db.VarChar(40)
+  nativeCharacters Int                           @default(0) @map("native_characters")
+  finalCharacters  Int                           @default(0) @map("final_characters")
+  tablesDetected   Int                           @default(0) @map("tables_detected")
+  warnings         Json?
+  blocks           Json?
+  tables           Json?
+  createdAt        DateTime                      @default(now()) @map("created_at")
+  updatedAt        DateTime                      @updatedAt @map("updated_at")
+  report           KnowledgeExtractionReport     @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@unique([reportId, pageNumber])
+  @@index([status, updatedAt])
+  @@map("knowledge_page_extractions")
 }
 
 model KnowledgeIngestion {
