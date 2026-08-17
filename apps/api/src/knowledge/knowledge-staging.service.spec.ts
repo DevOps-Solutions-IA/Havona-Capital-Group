@@ -8,7 +8,7 @@ describe('Knowledge PALIG ingestion staging', () => {
     size: Buffer.byteLength(content),
   } as Express.Multer.File);
 
-  function setup(scanStatus: 'CLEAN' | 'PENDING_SCAN' | 'QUARANTINED' = 'CLEAN') {
+  function setup(scanStatus: 'CLEAN' | 'PENDING_SCAN' | 'QUARANTINED' | 'SCAN_FAILED' = 'CLEAN') {
     const rows: any[] = [];
     const storage = {
       exists: jest.fn(async () => false), put: jest.fn(async () => undefined),
@@ -60,6 +60,18 @@ describe('Knowledge PALIG ingestion staging', () => {
     db.knowledgeStagedAsset.findUnique.mockResolvedValue({ id: 'q', scanStatus: 'QUARANTINED' });
     await expect(service.review('q', { approved: true }, actor)).rejects.toThrow('KNOWLEDGE_STAGING_SCAN_BLOCKED');
     await expect(service.promote('q', { title: 'Doc', collectionId: 'c', classification: 'GENERAL' }, actor))
+      .rejects.toThrow('KNOWLEDGE_STAGING_NOT_APPROVED');
+  });
+
+  it('scan fallido queda bloqueado para revisión y promoción', async () => {
+    const { service, db } = setup('SCAN_FAILED');
+    await expect(service.stage(file('failed.pdf', 'x'), {}, actor)).resolves.toMatchObject({
+      status: 'STAGED', scanStatus: 'SCAN_FAILED', proposedPublicAllowed: false,
+    });
+    db.knowledgeStagedAsset.findUnique.mockResolvedValue({ id: 'f', scanStatus: 'SCAN_FAILED' });
+    await expect(service.review('f', { approved: true }, actor))
+      .rejects.toThrow('KNOWLEDGE_STAGING_SCAN_BLOCKED');
+    await expect(service.promote('f', { title: 'Doc', collectionId: 'c', classification: 'GENERAL' }, actor))
       .rejects.toThrow('KNOWLEDGE_STAGING_NOT_APPROVED');
   });
 

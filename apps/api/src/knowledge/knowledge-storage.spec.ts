@@ -48,16 +48,16 @@ describe('PersistentFilesystemStorageProvider', () => {
   );
 
   it('scanner inexistente nunca reporta CLEAN', async () => {
-    const priorNode = process.env.NODE_ENV;
-    const priorScanner = process.env.KNOWLEDGE_MALWARE_SCANNER;
-    process.env.NODE_ENV = 'production';
-    process.env.KNOWLEDGE_MALWARE_SCANNER = 'unavailable';
-    await expect(new ConfiguredMalwareScanner().scan(Buffer.from('x'), {
+    await expect(new ConfiguredMalwareScanner({
+      NODE_ENV: 'production', KNOWLEDGE_MALWARE_SCANNER: 'unavailable',
+    }).scan(Buffer.from('x'), {
       mimeType: 'text/plain', sha256: 'a'.repeat(64),
     })).resolves.toMatchObject({ status: 'PENDING_SCAN' });
-    if (priorNode === undefined) delete process.env.NODE_ENV;
-    else process.env.NODE_ENV = priorNode;
-    if (priorScanner === undefined) delete process.env.KNOWLEDGE_MALWARE_SCANNER;
-    else process.env.KNOWLEDGE_MALWARE_SCANNER = priorScanner;
+    expect(() => new ConfiguredMalwareScanner({
+      NODE_ENV: 'production', KNOWLEDGE_MALWARE_SCANNER: 'noop-test',
+    })).toThrow('KNOWLEDGE_MALWARE_NOOP_TEST_FORBIDDEN');
+    expect(() => new ConfiguredMalwareScanner({
+      NODE_ENV: 'production', KNOWLEDGE_MALWARE_SCANNER: 'invented',
+    })).toThrow('KNOWLEDGE_MALWARE_SCANNER_INVALID');
   });
 });

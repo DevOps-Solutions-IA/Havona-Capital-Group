@@ -14,4 +14,16 @@ describe('Knowledge persistent storage architecture', () => {
     expect(worker).not.toContain('/var/lib/havona/knowledge');
     expect(api).not.toMatch(/ports:[\s\S]*knowledge/);
   });
+
+  it('conecta ClamAV solo por red interna, sin storage ni puerto de host', () => {
+    const clamav = compose.slice(compose.indexOf('\n  clamav:'), compose.indexOf('\n  api:'));
+    const api = compose.slice(compose.indexOf('\n  api:'), compose.indexOf('\n  worker:'));
+    expect(clamav).toContain('clamav/clamav-debian:1.5.3');
+    expect(clamav).toContain('clamav_signatures:/var/lib/clamav');
+    expect(clamav).toContain('networks: [backend]');
+    expect(clamav).not.toContain('ports:');
+    expect(clamav).not.toContain('/var/lib/havona/knowledge');
+    expect(api).toContain('CLAMAV_HOST');
+    expect(api).toContain('clamav: { condition: service_healthy }');
+  });
 });

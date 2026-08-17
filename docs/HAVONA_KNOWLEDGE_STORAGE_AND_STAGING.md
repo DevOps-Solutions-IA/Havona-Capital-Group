@@ -11,7 +11,8 @@ Configuración:
 - `KNOWLEDGE_STORAGE_PROVIDER=filesystem`
 - `KNOWLEDGE_STORAGE_PATH=/var/lib/havona/knowledge`
 - `KNOWLEDGE_STORAGE_HOST_PATH=/opt/havona/data/knowledge` (solo Compose/host)
-- `KNOWLEDGE_MALWARE_SCANNER=unavailable` hasta configurar un scanner real.
+- `KNOWLEDGE_MALWARE_SCANNER=clamav` para escaneo real, o `unavailable` para bloqueo explícito.
+- `CLAMAV_HOST=clamav`, `CLAMAV_PORT=3310` y `CLAMAV_TIMEOUT_MS=15000` (valores operativos configurables).
 
 Producción rechaza cualquier provider distinto de `filesystem`, path ausente/relativo o root `/`. Test/desarrollo pueden seleccionar `temp`; nunca existe fallback productivo a `/tmp`.
 
@@ -30,7 +31,11 @@ Mismo hash reutiliza el objeto y conserva otra fila `DUPLICATE`; mismo filename 
 
 ## Malware contract
 
-`MalwareScanner` retorna `PENDING_SCAN`, `CLEAN`, `QUARANTINED` o `SCAN_FAILED`. `noop-test` solo puede producir `CLEAN` en `NODE_ENV=test`. En producción, scanner ausente retorna explícitamente `PENDING_SCAN`; direct upload queda bloqueado y staging permanece en quarantine. Nunca se afirma una inspección inexistente.
+`MalwareScanner` retorna `PENDING_SCAN`, `CLEAN`, `QUARANTINED` o `SCAN_FAILED`. `ConfiguredMalwareScanner` valida el modo al iniciar; `noop-test` solo puede producir `CLEAN` en `NODE_ENV=test`. En producción, scanner ausente retorna explícitamente `PENDING_SCAN`; direct upload queda bloqueado y staging permanece en quarantine. Nunca se afirma una inspección inexistente.
+
+`ClamAvMalwareScanner` usa el protocolo TCP `zINSTREAM` de `clamd`: envía chunks con longitud big-endian, no ejecuta shell, no utiliza filename y no comparte el filesystem. Solo `stream: OK` produce `CLEAN`; `FOUND` produce `QUARANTINED`. Timeout, conexión, respuesta incompleta/malformada, archivo vacío o sobre el límite producen `SCAN_FAILED`. El servicio `clamav/clamav-debian:1.5.3` vive únicamente en la red interna `backend`, no publica 3310, conserva firmas en `clamav_signatures` y expone un healthcheck de clamd. API es el único consumidor.
+
+Compose reserva de forma configurable 1 GiB y limita ClamAV a 2 GiB por defecto. Estos valores son guardrails, no prueba de capacidad: antes de habilitarlo en el VPS deben medirse memoria, swap y load antes/después. Si desestabiliza API, Worker o PostgreSQL, se mantiene la ingesta bloqueada y ClamAV requiere capacidad separada.
 
 ## Retención y errores
 
