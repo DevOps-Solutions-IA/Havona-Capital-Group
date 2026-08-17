@@ -1076,7 +1076,6 @@ export class HenryToolsService {
       case 'get_prospect_context':
         return this.getProspectContext(context.conversationId);
       case 'list_authorized_products': {
-        this.requireActor(context);
         const needs = await this.db.customerNeed.findMany({
           where: {
             status: 'ACTIVE',
@@ -1321,7 +1320,9 @@ export class HenryToolsService {
       case 'search_knowledge':
         return (await this.rag.retrieve(
           input.query,
-          this.requireKnowledgeActor(context),
+          context.actor
+            ? this.requireKnowledgeActor(context)
+            : { id: 'public', roles: ['PUBLIC'], permissions: ['knowledge.read'] },
           input,
         )) as unknown as Record<string, unknown>;
       case 'get_knowledge_document':

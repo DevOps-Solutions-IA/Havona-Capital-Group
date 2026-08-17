@@ -9,7 +9,18 @@ export type HenryCorporateMemory = {
   contextId: string;
   roleContext: ResolvedHenryContext['role'];
   pageContext: ResolvedHenryContext['page'];
-  workingMemory: { objective: string; intention: string | null; knownReferences: string[] };
+  workingMemory: {
+    objective: string;
+    intention: string | null;
+    knownReferences: string[];
+    consultative?: {
+      detectedNeed: string | null;
+      mode: string;
+      pendingData: string[];
+      questionsAsked: string[];
+      nextStep: string | null;
+    };
+  };
   longTermMemoryReference: string[];
   draft: string | null;
   lastIntention: string | null;

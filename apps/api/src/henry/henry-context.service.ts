@@ -23,6 +23,8 @@ export type ResolvedHenryContext = {
 
 const PUBLIC_PAGES = new Set(['public-home', 'public-solution', 'henry-full', 'other']);
 const PUBLIC_TOOLS = [
+  'search_knowledge',
+  'list_authorized_products',
   'create_or_update_prospect',
   'register_interaction',
   'create_crm_activity',
@@ -91,6 +93,7 @@ const CONSULTANT_TOOLS = [
   'resume_cadence',
   'stop_cadence',
   'explain_cadence',
+  'list_authorized_products',
 ];
 const MANAGER_TOOLS = [
   ...CONSULTANT_TOOLS,

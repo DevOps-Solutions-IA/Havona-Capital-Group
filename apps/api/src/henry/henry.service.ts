@@ -24,6 +24,7 @@ import { HenryActor, HenryContextService } from './henry-context.service';
 import { HenryCorporateMemory, HenryExpertCopilotService } from './henry-expert-copilot.service';
 import { HenryContextAssembler } from './henry-context-assembler.service';
 import { HenryMemoryService } from '../knowledge/memory.service';
+import { HenryPaligConsultativeService } from './henry-palig-consultative.service';
 
 type Actor = { id: string; permissions: string[] };
 
@@ -41,6 +42,7 @@ export class HenryService {
     private readonly expertCopilot: HenryExpertCopilotService,
     private readonly contextAssembler: HenryContextAssembler,
     private readonly persistentMemory: HenryMemoryService,
+    private readonly paligConsultative: HenryPaligConsultativeService,
   ) {}
 
   async reasonForAutomation(input: {
@@ -495,7 +497,15 @@ export class HenryService {
       stage = inputDecision.stage;
     }
     const expert = this.expertCopilot.analyze(inputMessage.content, runtimeContext);
+    const paligPlan = this.paligConsultative.analyze(inputMessage.content);
     const memory = this.expertCopilot.memory(conversation.state?.state, runtimeContext, expert);
+    memory.workingMemory.consultative = {
+      detectedNeed: paligPlan.detectedNeed,
+      mode: paligPlan.mode,
+      pendingData: paligPlan.nextQuestions,
+      questionsAsked: [],
+      nextStep: paligPlan.requiredTools[0] ?? null,
+    };
     await this.updateCorporateMemory(conversationId, memory);
     const expertAudit = this.expertCopilot.audit(expert, memory);
     const composed = this.policyComposer.compose({
@@ -517,6 +527,11 @@ export class HenryService {
       {
         kind: 'conversation-working-memory',
         content: this.expertCopilot.prompt(expert, memory),
+        priority: 3,
+      },
+      {
+        kind: 'palig-consultative-governance',
+        content: this.paligConsultative.prompt(paligPlan),
         priority: 3,
       },
       {

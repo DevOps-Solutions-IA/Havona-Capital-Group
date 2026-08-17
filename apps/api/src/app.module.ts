@@ -85,6 +85,7 @@ import { EmailTemplateRenderer } from './email-templates/email-template.renderer
 import { HenryMessagingOperatorService } from './henry/henry-messaging-operator.service';
 import { CadenceController } from './cadences/cadence.controller';
 import { CadenceService } from './cadences/cadence.service';
+import { HenryPaligConsultativeService } from './henry/henry-palig-consultative.service';
 
 @Module({
   imports: [
@@ -128,6 +129,7 @@ import { CadenceService } from './cadences/cadence.service';
     { provide: AI_PROVIDER, useExisting: OpenRouterProvider },
     HenryContextService,
     HenryExpertCopilotService,
+    HenryPaligConsultativeService,
     ...HENRY_POLICY_PROVIDERS,
     HenryPolicyComposer,
     HenryPolicyEngine,
