@@ -3,9 +3,26 @@
 import { usePathname } from 'next/navigation';
 import { HenryGlobalAssistant } from './henry-global-assistant';
 
-const INTERNAL_ROOTS = ['/dashboard','/crm','/administracion-henry','/usuarios','/roles','/auditoria','/configuracion','/perfil'];
+const PUBLIC_HENRY_ROOTS = new Set([
+  'pension',
+  'educacion',
+  'patrimonio',
+  'proteccion',
+  'accidentes',
+  'empresarios',
+  'socios',
+  'socio-unico',
+  'consultores',
+]);
+
+export function shouldShowPublicHenry(pathname: string) {
+  if (pathname === '/') return true;
+  const [root] = pathname.split('/').filter(Boolean);
+  return Boolean(root && PUBLIC_HENRY_ROOTS.has(root));
+}
+
 export function GlobalHenryLayer() {
   const pathname = usePathname();
-  if (pathname === '/henry' || pathname.startsWith('/login') || INTERNAL_ROOTS.some((root) => pathname.startsWith(root))) return null;
-  return <HenryGlobalAssistant />;
+  if (!shouldShowPublicHenry(pathname)) return null;
+  return <HenryGlobalAssistant role="PUBLIC" />;
 }

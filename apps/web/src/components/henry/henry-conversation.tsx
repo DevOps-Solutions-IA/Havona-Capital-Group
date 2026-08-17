@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { FormEvent, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { FormEvent } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   ArrowUpRight,
@@ -22,37 +23,40 @@ import {
   escalateHenry,
   getHenryConversation,
   getHenrySpeech,
-  HenryMessage,
-  HenrySession,
+  henryContextLabel,
+  henryStarters,
   pageContextFromPath,
   sendHenryMessage,
   sendHenryVoice,
+} from '@/lib/henry';
+import type {
+  HenryActivityStatus,
+  HenryExperienceRole,
+  HenryMessage,
+  HenrySession,
 } from '@/lib/henry';
 import { messageOf } from '@/lib/api';
 import { HenryMessageContent } from './henry-message-content';
 import { HenryEmailOperationCard } from './henry-email-operation-card';
 
-const intents = [
-  'Quiero revisar mi pensión',
-  'Quiero proteger a mi familia',
-  'Quiero construir patrimonio',
-  'Quiero proteger mi empresa',
-];
-
 export function HenryConversation({
   variant,
   internal,
   storageScope,
+  role,
   onActivity,
 }: {
   variant: 'full' | 'global';
   internal: boolean;
   storageScope: string;
-  onActivity?: (state: 'online' | 'thinking' | 'action' | 'escalating') => void;
+  role: HenryExperienceRole;
+  onActivity?: (state: HenryActivityStatus) => void;
 }) {
   const pathname = usePathname();
   const reduced = useReducedMotion();
   const context = pageContextFromPath(pathname);
+  const starters = henryStarters(context, role);
+  const contextLabel = henryContextLabel(context);
   const sessionKey = `havona_henry_session_v2_${storageScope}`;
   const draftKey = `havona_henry_draft_v2_${storageScope}`;
   const [session, setSession] = useState<HenrySession>();
@@ -108,6 +112,7 @@ export function HenryConversation({
     setSending(true);
     onActivity?.('thinking');
     setError('');
+    let failed = false;
     try {
       const { data } = await createHenryConversation(
         internal ? 'henry-copilot' : (context.section ?? 'henry-web'),
@@ -120,11 +125,13 @@ export function HenryConversation({
       setMessages(data.messages);
       if (initial) await submitMessage(next, initial, data.messages);
     } catch (reason) {
+      failed = true;
       setError(messageOf(reason));
+      onActivity?.('error');
     } finally {
       setSending(false);
       setLoading(false);
-      onActivity?.('online');
+      if (!failed) onActivity?.('online');
     }
   }
 
@@ -143,6 +150,8 @@ export function HenryConversation({
     setSending(true);
     onActivity?.('thinking');
     setError('');
+    let failed = false;
+    let becameEscalated = false;
     try {
       const { data } = await sendHenryMessage(active, content, messageId, context, internal);
       setMessages((items) => [
@@ -150,17 +159,20 @@ export function HenryConversation({
         ...(data.message ? [data.message] : []),
       ]);
       if (data.status === 'ESCALATED') {
+        becameEscalated = true;
         setEscalated(true);
         onActivity?.('escalating');
       }
     } catch (reason) {
+      failed = true;
       setMessages((items) => items.filter((item) => item.id !== messageId));
       setDraft(content);
       localStorage.setItem(draftKey, content);
       setError(`${messageOf(reason)} Su mensaje quedó guardado en este dispositivo.`);
+      onActivity?.('error');
     } finally {
       setSending(false);
-      onActivity?.('online');
+      if (!failed && !becameEscalated) onActivity?.('online');
     }
   }
 
@@ -177,14 +189,18 @@ export function HenryConversation({
     setSending(true);
     onActivity?.('escalating');
     setError('');
+    let failed = false;
     try {
       await escalateHenry(session);
       setEscalated(true);
+      onActivity?.('escalating');
     } catch (reason) {
+      failed = true;
       setError(messageOf(reason));
+      onActivity?.('error');
     } finally {
       setSending(false);
-      onActivity?.('online');
+      if (!failed && !escalated) onActivity?.('escalating');
     }
   }
 
@@ -229,8 +245,9 @@ export function HenryConversation({
         const audio = new Blob(chunks.current, { type: next.mimeType || 'audio/webm' });
         setVoiceState('processing');
         setSending(true);
-        onActivity?.('thinking');
+        onActivity?.('action');
         setError('');
+        let failed = false;
         try {
           const { data } = await sendHenryVoice(
             session,
@@ -268,15 +285,18 @@ export function HenryConversation({
               playing.current = null;
               setVoiceState('idle');
               setError('La respuesta textual está disponible, pero el audio no pudo reproducirse.');
+              onActivity?.('error');
             };
             await player.play();
           } else setVoiceState('idle');
         } catch (reason) {
+          failed = true;
           setVoiceState('idle');
           setError(`${messageOf(reason)} Puede continuar por texto.`);
+          onActivity?.('error');
         } finally {
           setSending(false);
-          onActivity?.('online');
+          if (!failed) onActivity?.('online');
         }
       };
       next.start(250);
@@ -286,6 +306,7 @@ export function HenryConversation({
         'No fue posible acceder al micrófono. Revise el permiso del navegador o continúe por texto.',
       );
       setVoiceState('idle');
+      onActivity?.('error');
     }
   }
 
@@ -314,7 +335,7 @@ export function HenryConversation({
           </div>
         </div>
         <i className={session ? 'is-online' : ''}>
-          {session ? 'Sesión activa' : 'Listo para conversar'}
+          {session ? `${contextLabel} · sesión activa` : `${contextLabel} · listo`}
         </i>
       </header>
       {!session ? (
@@ -347,14 +368,7 @@ export function HenryConversation({
             {internal ? 'Puede comenzar con una solicitud:' : 'Puede iniciar por una intención:'}
           </p>
           <div className="henry-starters">
-            {(internal
-              ? [
-                  '¿Qué información me falta?',
-                  'Prepárame para esta conversación',
-                  'Sugiere mi siguiente pregunta',
-                ]
-              : intents
-            ).map((intent) => (
+            {starters.map((intent) => (
               <button
                 type="button"
                 key={intent}
@@ -368,44 +382,66 @@ export function HenryConversation({
           </div>
         </div>
       ) : (
-        <div
-          className="henry-transcript"
-          ref={transcript}
-          role="log"
-          aria-live="polite"
-          aria-label="Mensajes de la conversación"
-        >
-          <AnimatePresence initial={false}>
-            {messages
-              .filter((message) => ['USER', 'ASSISTANT'].includes(message.role))
-              .map((message) => (
-                <motion.article
-                  key={message.id}
-                  className={`henry-message ${message.role === 'USER' ? 'is-user' : 'is-henry'}`}
-                  initial={reduced ? false : { opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
+        <>
+          <div
+            className="henry-context-suggestions"
+            aria-label={`Sugerencias para ${contextLabel}`}
+          >
+            <span>{contextLabel}</span>
+            <div>
+              {starters.slice(0, 3).map((starter) => (
+                <button
+                  type="button"
+                  key={starter}
+                  onClick={() => setDraft(starter)}
+                  disabled={sending}
                 >
-                  <span>{message.role === 'USER' ? <UserRound /> : 'H'}</span>
-                  <div>
-                    <small>{message.role === 'USER' ? 'Usted' : 'Henry · asistente virtual'}</small>
-                    <HenryMessageContent content={message.content} />
-                  </div>
-                </motion.article>
+                  {starter}
+                </button>
               ))}
-          </AnimatePresence>
-          {internal && session && (
-            <HenryEmailOperationCard session={session} revision={messages.length} />
-          )}
-          {sending && (
-            <div className="henry-thinking" role="status">
-              <Sparkles />
-              <span>Henry está procesando el contexto autorizado</span>
-              <i />
-              <i />
-              <i />
             </div>
-          )}
-        </div>
+          </div>
+          <div
+            className="henry-transcript"
+            ref={transcript}
+            role="log"
+            aria-live="polite"
+            aria-label="Mensajes de la conversación"
+          >
+            <AnimatePresence initial={false}>
+              {messages
+                .filter((message) => ['USER', 'ASSISTANT'].includes(message.role))
+                .map((message) => (
+                  <motion.article
+                    key={message.id}
+                    className={`henry-message ${message.role === 'USER' ? 'is-user' : 'is-henry'}`}
+                    initial={reduced ? false : { opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                  >
+                    <span>{message.role === 'USER' ? <UserRound /> : 'H'}</span>
+                    <div>
+                      <small>
+                        {message.role === 'USER' ? 'Usted' : 'Henry · asistente virtual'}
+                      </small>
+                      <HenryMessageContent content={message.content} />
+                    </div>
+                  </motion.article>
+                ))}
+            </AnimatePresence>
+            {internal && session && (
+              <HenryEmailOperationCard session={session} revision={messages.length} />
+            )}
+            {sending && (
+              <div className="henry-thinking" role="status">
+                <Sparkles />
+                <span>Henry está procesando el contexto autorizado</span>
+                <i />
+                <i />
+                <i />
+              </div>
+            )}
+          </div>
+        </>
       )}
       {error && (
         <p className="henry-error" role="alert">
