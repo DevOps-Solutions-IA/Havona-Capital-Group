@@ -13,6 +13,8 @@ import {
   cosineSimilarity,
   EMBEDDING_PROVIDER,
   EmbeddingProvider,
+  MALWARE_SCANNER,
+  MalwareScanner,
   STORAGE_PROVIDER,
   StorageProvider,
 } from './knowledge.providers';
@@ -80,6 +82,7 @@ export class KnowledgeService {
     private readonly queue: KnowledgeQueueService,
     @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
     @Inject(EMBEDDING_PROVIDER) private readonly embeddings: EmbeddingProvider,
+    @Inject(MALWARE_SCANNER) private readonly scanner: MalwareScanner,
   ) {}
 
   private classifications(actor: KnowledgeActor) {
@@ -167,6 +170,13 @@ export class KnowledgeService {
       throw new BadRequestException('KNOWLEDGE_FILE_DANGEROUS');
   }
 
+  private async assertClean(file: Express.Multer.File, checksum: string) {
+    const result = await this.scanner.scan(file.buffer, { mimeType: file.mimetype, sha256: checksum });
+    if (result.status !== 'CLEAN') {
+      throw new BadRequestException(result.errorCode ?? `KNOWLEDGE_SCAN_${result.status}`);
+    }
+  }
+
   async createDocument(
     input: {
       title: string;
@@ -189,15 +199,17 @@ export class KnowledgeService {
     });
     if (!collection) throw new NotFoundException('KNOWLEDGE_COLLECTION_NOT_FOUND');
     const checksum = createHash('sha256').update(file.buffer).digest('hex');
+    await this.assertClean(file, checksum);
     const existing = await this.db.knowledgeVersion.findFirst({
       where: { checksum, document: { collectionId: input.collectionId } },
     });
     if (existing) throw new BadRequestException('KNOWLEDGE_DUPLICATE_CHECKSUM');
     const documentId = randomUUID(),
       versionId = randomUUID(),
-      storageKey = `${documentId}/${versionId}`;
+      storageKey = `originals/${checksum}`;
     const governance = await this.resolveVersionGovernance(input);
-    await this.storage.put(storageKey, file.buffer);
+    const storageCreated = !(await this.storage.exists(storageKey));
+    if (storageCreated) await this.storage.put(storageKey, file.buffer);
     let persisted = false;
     try {
       const document = await this.db.knowledgeDocument.create({
@@ -251,7 +263,7 @@ export class KnowledgeService {
       );
       return this.getDocument(documentId, actor);
     } catch (error) {
-      if (!persisted) await this.storage.delete(storageKey);
+      if (!persisted && storageCreated) await this.storage.delete(storageKey);
       throw error;
     }
   }
@@ -270,13 +282,15 @@ export class KnowledgeService {
     });
     if (!document) throw new NotFoundException('KNOWLEDGE_DOCUMENT_NOT_FOUND');
     const checksum = createHash('sha256').update(file.buffer).digest('hex');
+    await this.assertClean(file, checksum);
     if (await this.db.knowledgeVersion.findFirst({ where: { documentId, checksum } }))
       throw new BadRequestException('KNOWLEDGE_DUPLICATE_CHECKSUM');
     const version = (document.versions[0]?.version ?? 0) + 1,
       id = randomUUID(),
-      storageKey = `${documentId}/${id}`;
+      storageKey = `originals/${checksum}`;
     const governance = await this.resolveVersionGovernance(input);
-    await this.storage.put(storageKey, file.buffer);
+    const storageCreated = !(await this.storage.exists(storageKey));
+    if (storageCreated) await this.storage.put(storageKey, file.buffer);
     let persisted = false;
     try {
       const row = await this.db.knowledgeVersion.create({
@@ -310,7 +324,7 @@ export class KnowledgeService {
       await this.queue.enqueue(row.id);
       return row;
     } catch (error) {
-      if (!persisted) await this.storage.delete(storageKey);
+      if (!persisted && storageCreated) await this.storage.delete(storageKey);
       throw error;
     }
   }

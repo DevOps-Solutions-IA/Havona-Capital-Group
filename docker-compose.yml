@@ -96,6 +96,9 @@ services:
       RESEND_WEBHOOK_SECRET: ${RESEND_WEBHOOK_SECRET:-}
       RESEND_WEBHOOK_URL: ${RESEND_WEBHOOK_URL:-}
       RESEND_REQUEST_TIMEOUT_MS: ${RESEND_REQUEST_TIMEOUT_MS:-15000}
+      KNOWLEDGE_STORAGE_PROVIDER: ${KNOWLEDGE_STORAGE_PROVIDER:-filesystem}
+      KNOWLEDGE_STORAGE_PATH: ${KNOWLEDGE_STORAGE_PATH:-/var/lib/havona/knowledge}
+      KNOWLEDGE_MALWARE_SCANNER: ${KNOWLEDGE_MALWARE_SCANNER:-unavailable}
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -107,6 +110,8 @@ services:
       start_period: 30s
     networks: [backend, frontend]
     security_opt: [no-new-privileges:true]
+    volumes:
+      - ${KNOWLEDGE_STORAGE_HOST_PATH:-/opt/havona/data/knowledge}:/var/lib/havona/knowledge
 
   worker:
     build:

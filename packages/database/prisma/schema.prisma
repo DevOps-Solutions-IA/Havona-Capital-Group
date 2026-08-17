@@ -58,6 +58,8 @@ model User {
   knowledgeDocumentsOwned        KnowledgeDocument[]           @relation("KnowledgeDocumentOwner")
   knowledgeVersionsCreated       KnowledgeVersion[]            @relation("KnowledgeVersionCreator")
   knowledgeVersionsApproved      KnowledgeVersion[]            @relation("KnowledgeVersionApprover")
+  knowledgeStagedAssetsCreated   KnowledgeStagedAsset[]        @relation("KnowledgeStagedAssetCreator")
+  knowledgeStagedAssetsReviewed  KnowledgeStagedAsset[]        @relation("KnowledgeStagedAssetReviewer")
   trainingProgramsCreated        TrainingProgram[]             @relation("TrainingProgramCreator")
   trainingEnrollments            TrainingEnrollment[]
   trainingAttempts               TrainingAttempt[]
@@ -398,35 +400,37 @@ model CustomerNeed {
 }
 
 model AuthorizedProduct {
-  id                String               @id @default(uuid()) @db.Uuid
-  key               String               @unique @db.VarChar(80)
-  name              String               @db.VarChar(160)
-  carrier           PaligCarrier
-  status            PaligCatalogStatus   @default(DRAFT)
-  reviewNote        String?              @map("review_note") @db.VarChar(500)
-  createdAt         DateTime             @default(now()) @map("created_at")
-  updatedAt         DateTime             @updatedAt @map("updated_at")
-  solutions         AuthorizedSolution[]
-  opportunities     Opportunity[]
-  knowledgeVersions KnowledgeVersion[]
+  id                    String                 @id @default(uuid()) @db.Uuid
+  key                   String                 @unique @db.VarChar(80)
+  name                  String                 @db.VarChar(160)
+  carrier               PaligCarrier
+  status                PaligCatalogStatus     @default(DRAFT)
+  reviewNote            String?                @map("review_note") @db.VarChar(500)
+  createdAt             DateTime               @default(now()) @map("created_at")
+  updatedAt             DateTime               @updatedAt @map("updated_at")
+  solutions             AuthorizedSolution[]
+  opportunities         Opportunity[]
+  knowledgeVersions     KnowledgeVersion[]
+  knowledgeStagedAssets KnowledgeStagedAsset[]
 
   @@index([carrier, status])
   @@map("authorized_products")
 }
 
 model AuthorizedSolution {
-  id                String                @id @default(uuid()) @db.Uuid
-  key               String                @unique @db.VarChar(80)
-  name              String                @db.VarChar(160)
-  productId         String?               @map("product_id") @db.Uuid
-  status            PaligCatalogStatus    @default(DRAFT)
-  reviewNote        String?               @map("review_note") @db.VarChar(500)
-  createdAt         DateTime              @default(now()) @map("created_at")
-  updatedAt         DateTime              @updatedAt @map("updated_at")
-  product           AuthorizedProduct?    @relation(fields: [productId], references: [id], onDelete: Restrict)
-  needMappings      NeedSolutionMapping[]
-  opportunities     Opportunity[]
-  knowledgeVersions KnowledgeVersion[]
+  id                    String                 @id @default(uuid()) @db.Uuid
+  key                   String                 @unique @db.VarChar(80)
+  name                  String                 @db.VarChar(160)
+  productId             String?                @map("product_id") @db.Uuid
+  status                PaligCatalogStatus     @default(DRAFT)
+  reviewNote            String?                @map("review_note") @db.VarChar(500)
+  createdAt             DateTime               @default(now()) @map("created_at")
+  updatedAt             DateTime               @updatedAt @map("updated_at")
+  product               AuthorizedProduct?     @relation(fields: [productId], references: [id], onDelete: Restrict)
+  needMappings          NeedSolutionMapping[]
+  opportunities         Opportunity[]
+  knowledgeVersions     KnowledgeVersion[]
+  knowledgeStagedAssets KnowledgeStagedAsset[]
 
   @@index([productId, status])
   @@map("authorized_solutions")
@@ -2264,6 +2268,27 @@ enum KnowledgeConflictStatus {
   ACCEPTED
 }
 
+enum KnowledgeStagingStatus {
+  STAGED
+  DUPLICATE
+  READY_FOR_REVIEW
+  PROMOTED
+  FAILED
+}
+
+enum KnowledgeScanStatus {
+  PENDING_SCAN
+  CLEAN
+  QUARANTINED
+  SCAN_FAILED
+}
+
+enum KnowledgeStagingReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum TrainingEnrollmentStatus {
   ASSIGNED
   IN_PROGRESS
@@ -2320,6 +2345,7 @@ model KnowledgeDocument {
   versions       KnowledgeVersion[]
   permissions    KnowledgePermission[]
   lessons        TrainingLesson[]
+  stagedAssets   KnowledgeStagedAsset[]
 
   @@index([collectionId, status, updatedAt])
   @@index([classification, status])
@@ -2429,6 +2455,53 @@ model KnowledgeConflict {
   @@index([primaryVersionId, status])
   @@index([secondaryVersionId, status])
   @@map("knowledge_conflicts")
+}
+
+model KnowledgeStagedAsset {
+  id                           String                       @id @default(uuid()) @db.Uuid
+  sha256                       String                       @db.Char(64)
+  originalFilename             String                       @map("original_filename") @db.VarChar(255)
+  mimeType                     String                       @map("mime_type") @db.VarChar(120)
+  fileSize                     Int                          @map("file_size")
+  storageKey                   String                       @map("storage_key") @db.VarChar(500)
+  status                       KnowledgeStagingStatus       @default(STAGED)
+  scanStatus                   KnowledgeScanStatus          @default(PENDING_SCAN) @map("scan_status")
+  reviewStatus                 KnowledgeStagingReviewStatus @default(PENDING) @map("review_status")
+  duplicateOfId                String?                      @map("duplicate_of_id") @db.Uuid
+  proposedSourceType           KnowledgeSourceType?         @map("proposed_source_type")
+  proposedAuthorityLevel       KnowledgeAuthorityLevel?     @map("proposed_authority_level")
+  proposedCurrentStatus        KnowledgeCurrentStatus       @default(UNKNOWN) @map("proposed_current_status")
+  proposedDocumentDate         DateTime?                    @map("proposed_document_date") @db.Date
+  proposedVersionLabel         String?                      @map("proposed_version_label") @db.VarChar(120)
+  proposedAuthorizedProductId  String?                      @map("proposed_authorized_product_id") @db.Uuid
+  proposedAuthorizedSolutionId String?                      @map("proposed_authorized_solution_id") @db.Uuid
+  proposedCustomerNeeds        Json?                        @map("proposed_customer_needs")
+  proposedPublicAllowed        Boolean                      @default(false) @map("proposed_public_allowed")
+  proposedConsultantAllowed    Boolean                      @default(true) @map("proposed_consultant_allowed")
+  proposedManagerAllowed       Boolean                      @default(true) @map("proposed_manager_allowed")
+  proposedTrainingAllowed      Boolean                      @default(false) @map("proposed_training_allowed")
+  carrier                      PaligCarrier?
+  country                      String                       @default("CO") @db.VarChar(2)
+  notes                        String?                      @db.VarChar(1000)
+  errorCode                    String?                      @map("error_code") @db.VarChar(100)
+  createdById                  String                       @map("created_by_id") @db.Uuid
+  reviewedById                 String?                      @map("reviewed_by_id") @db.Uuid
+  reviewedAt                   DateTime?                    @map("reviewed_at")
+  promotedDocumentId           String?                      @map("promoted_document_id") @db.Uuid
+  createdAt                    DateTime                     @default(now()) @map("created_at")
+  updatedAt                    DateTime                     @updatedAt @map("updated_at")
+  duplicateOf                  KnowledgeStagedAsset?        @relation("KnowledgeStagedDuplicates", fields: [duplicateOfId], references: [id], onDelete: Restrict)
+  duplicates                   KnowledgeStagedAsset[]       @relation("KnowledgeStagedDuplicates")
+  createdBy                    User                         @relation("KnowledgeStagedAssetCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  reviewedBy                   User?                        @relation("KnowledgeStagedAssetReviewer", fields: [reviewedById], references: [id], onDelete: Restrict)
+  proposedAuthorizedProduct    AuthorizedProduct?           @relation(fields: [proposedAuthorizedProductId], references: [id], onDelete: Restrict)
+  proposedAuthorizedSolution   AuthorizedSolution?          @relation(fields: [proposedAuthorizedSolutionId], references: [id], onDelete: Restrict)
+  promotedDocument             KnowledgeDocument?           @relation(fields: [promotedDocumentId], references: [id], onDelete: Restrict)
+
+  @@index([sha256, createdAt])
+  @@index([status, scanStatus, reviewStatus])
+  @@index([duplicateOfId])
+  @@map("knowledge_staged_assets")
 }
 
 model KnowledgeChunk {

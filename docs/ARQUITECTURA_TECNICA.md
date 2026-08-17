@@ -4,6 +4,8 @@
 
 > Knowledge Core es transversal y no depende de Henry. Storage, embeddings, recuperación autorizada, formación y memoria gobernada son dominios reutilizables; Henry los consume mediante tools y un único ContextAssembler.
 
+> Los originales de Knowledge usan `StorageProvider` y filesystem persistente content-addressed en producción. El staging calcula SHA-256 server-side, deduplica, aplica scan/review y solo entonces alimenta el pipeline existente; nunca publica automáticamente. Henry no conoce paths ni storage keys.
+
 ## 1. Enfoque
 
 HAVONA CAPITAL GROUP se construirá como un monorepo con monolito modular, preparado para separar servicios cuando el crecimiento lo requiera.

@@ -17,6 +17,7 @@ import { z } from 'zod';
 import { RequirePermissions } from '../common/decorators';
 import { ZodPipe } from '../common/zod.pipe';
 import { KnowledgeService } from './knowledge.service';
+import { KnowledgeStagingService } from './knowledge-staging.service';
 
 const actor = (req: any) => ({
   id: req.auth.user.id,
@@ -68,10 +69,30 @@ const search = z.object({
   historicalAt: z.string().datetime({ offset: true }).optional(),
   limit: z.number().int().min(1).max(12).optional(),
 });
+const stagingProposal = upload.pick({
+  sourceType: true,
+  authorityLevel: true,
+  documentDate: true,
+  currentStatus: true,
+  publicAllowed: true,
+  consultantAllowed: true,
+  managerAllowed: true,
+  trainingAllowed: true,
+  carrier: true,
+  authorizedProductId: true,
+  authorizedSolutionId: true,
+  versionLabel: true,
+  country: true,
+  notes: true,
+  customerNeedKeys: true,
+});
 
 @Controller('knowledge')
 export class KnowledgeController {
-  constructor(private readonly knowledge: KnowledgeService) {}
+  constructor(
+    private readonly knowledge: KnowledgeService,
+    private readonly staging: KnowledgeStagingService,
+  ) {}
   @Get() @RequirePermissions('knowledge.read') list(@Query() query: any, @Req() req: any) {
     return this.knowledge.list(actor(req), query);
   }
@@ -188,5 +209,40 @@ export class KnowledgeController {
   }
   @Get('gaps') @RequirePermissions('knowledge.admin') gaps(@Req() req: any) {
     return this.knowledge.gaps(actor(req));
+  }
+  @Get('staging') @RequirePermissions('knowledge.review') stagingList(@Req() req: any) {
+    return this.staging.list(actor(req));
+  }
+  @Post('staging')
+  @RequirePermissions('knowledge.upload')
+  @UseInterceptors(FileInterceptor('file', {
+    storage: memoryStorage(),
+    limits: { fileSize: Number(process.env.KNOWLEDGE_MAX_FILE_SIZE ?? 15_000_000), files: 1 },
+  }))
+  stage(
+    @Body(new ZodPipe(stagingProposal)) body: any,
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: any,
+  ) {
+    return this.staging.stage(file, body, actor(req));
+  }
+  @Patch('staging/:id/review') @RequirePermissions('knowledge.review') reviewStaging(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodPipe(stagingProposal.extend({ approved: z.boolean() }))) body: any,
+    @Req() req: any,
+  ) {
+    return this.staging.review(id, body, actor(req));
+  }
+  @Post('staging/:id/promote') @RequirePermissions('knowledge.upload') promoteStaging(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodPipe(z.object({
+      title: z.string().min(3).max(240),
+      description: z.string().max(1000).optional(),
+      collectionId: z.string().uuid(),
+      classification: upload.shape.classification,
+    }))) body: any,
+    @Req() req: any,
+  ) {
+    return this.staging.promote(id, body, actor(req));
   }
 }

@@ -29,7 +29,7 @@ describe('Knowledge conflict engine', () => {
       },
       $transaction: jest.fn(async (callback) => callback(tx)),
     };
-    const service = new KnowledgeService(db, {} as any, {} as any, {} as any, {} as any);
+    const service = new KnowledgeService(db, {} as any, {} as any, {} as any, {} as any, {} as any);
     const result = await service.addFact('version-training', {
       claimKey: 'accidents.rdh.daily', subject: 'RDH', predicate: 'dailyAmount',
       value: { amount: '300000', currency: 'COP' },
@@ -60,7 +60,7 @@ describe('Knowledge conflict engine', () => {
       }]) },
       $transaction: jest.fn(async (callback) => callback(tx)),
     };
-    const service = new KnowledgeService(db, {} as any, {} as any, {} as any, {} as any);
+    const service = new KnowledgeService(db, {} as any, {} as any, {} as any, {} as any, {} as any);
     const result = await service.addFact('v2', {
       claimKey: 'coverage.accident', subject: 'Accidente', predicate: 'covered',
       value: { covered: true },

@@ -1,0 +1,78 @@
+# Knowledge persistent storage and PALIG ingestion staging
+
+## Hallazgo y arquitectura
+
+El provider anterior resolvía `KNOWLEDGE_STORAGE_PATH ?? /tmp/havona-knowledge`. No interpretaba `KNOWLEDGE_STORAGE_PROVIDER`, no validaba producción y Compose no propagaba configuración ni montaba almacenamiento. Por ello, un reinicio/recreación del contenedor podía perder originales aunque PostgreSQL conservara metadata.
+
+Knowledge Core continúa dependiendo solo de `StorageProvider`. `PersistentFilesystemStorageProvider` implementa `put`, `get`, `exists`, `stat` y `delete` con keys opacas, validación anti-traversal, modo `0600`, directorios `0700`, escritura temporal + rename y verificación SHA-256/tamaño. Henry, RAG, Product Core y Web nunca reciben el root ni `storageKey`.
+
+Configuración:
+
+- `KNOWLEDGE_STORAGE_PROVIDER=filesystem`
+- `KNOWLEDGE_STORAGE_PATH=/var/lib/havona/knowledge`
+- `KNOWLEDGE_STORAGE_HOST_PATH=/opt/havona/data/knowledge` (solo Compose/host)
+- `KNOWLEDGE_MALWARE_SCANNER=unavailable` hasta configurar un scanner real.
+
+Producción rechaza cualquier provider distinto de `filesystem`, path ausente/relativo o root `/`. Test/desarrollo pueden seleccionar `temp`; nunca existe fallback productivo a `/tmp`.
+
+Solo API monta el bind, porque `KnowledgeProcessorService` y la cola de ingesta viven actualmente en API. Worker no lee originales. El mount no tiene puerto ni ruta Nginx.
+
+## Staging y deduplicación
+
+`KnowledgeStagedAsset` registra cada recepción con hash calculado server-side, nombre original, MIME, tamaño, storage key interno, scan/review/lifecycle, duplicado canónico y metadata propuesta. Defaults: `UNKNOWN`, `publicAllowed=false`, review pendiente.
+
+El objeto físico usa contenido direccionado:
+
+- limpio: `originals/<sha256>`;
+- no limpio/no escaneado: `quarantine/<sha256>`.
+
+Mismo hash reutiliza el objeto y conserva otra fila `DUPLICATE`; mismo filename con hash diferente es una versión/candidato diferente. El filename nunca forma el path. Promoción exige `CLEAN + APPROVED`, verifica nuevamente hash/tamaño y alimenta `KnowledgeService.createDocument`; queda `PROCESSING` y aún requiere extracción, review, approval y publish existentes. No hay publicación automática.
+
+## Malware contract
+
+`MalwareScanner` retorna `PENDING_SCAN`, `CLEAN`, `QUARANTINED` o `SCAN_FAILED`. `noop-test` solo puede producir `CLEAN` en `NODE_ENV=test`. En producción, scanner ausente retorna explícitamente `PENDING_SCAN`; direct upload queda bloqueado y staging permanece en quarantine. Nunca se afirma una inspección inexistente.
+
+## Retención y errores
+
+Deprecar es lógico y no borra evidencia. Los objetos content-addressed pueden compartirse entre receipts/versiones; un delete físico futuro debe comprobar todas las referencias. Si falla la creación de staging después de un objeto nuevo, se intenta cleanup y se registra fallo seguro sin contenido/path. Los retries de extracción usan el mismo objeto inmutable.
+
+## Backup y restore
+
+Respaldar en una misma ventana lógica:
+
+1. PostgreSQL (documentos, versiones, staging, hashes, permisos, auditoría).
+2. El árbol binario con `infrastructure/backups/knowledge-backup.sh`.
+3. Conservar archive y `.sha256` fuera del VPS según la política de backups.
+
+Restore:
+
+1. Mantener API/ingesta detenida.
+2. Restaurar PostgreSQL y storage del mismo punto temporal.
+3. Ejecutar `knowledge-restore.sh` solo sobre directorio vacío y con flag explícito.
+4. Verificar checksum del archive, ownership/mode y hashes de objetos contra PostgreSQL.
+5. Mantener documentos sin publicar; restaurar no cambia governance.
+
+Los scripts rechazan paths relativos/root, restore no sobrescribe un destino no vacío y valida traversal/checksum.
+
+## Despliegue VPS posterior (no ejecutado)
+
+1. Confirmar commit y CI 3/3.
+2. Obtener UID/GID real con la imagen exacta (`docker compose run --rm --no-deps api id`).
+3. Crear `/opt/havona/data/knowledge` como operador autorizado, dueño del UID/GID runtime y modo `0700`; nunca `777`.
+4. Configurar las cuatro variables anteriores en el env productivo sin imprimirlo.
+5. Configurar scanner real y probar que un fixture permitido resulta `CLEAN`; mantener `unavailable` bloquea ingesta.
+6. Validar `docker compose config`, reconstruir solo API y ejecutar healthcheck.
+7. Verificar escritura/lectura con un staging controlado, recrear API y comprobar persistencia.
+8. Probar backup/restore en entorno aislado antes de ingerir PALIG.
+
+## Ingesta productiva posterior (no ejecutada)
+
+1. Ejecutar dry-run local y aprobar manifest.
+2. Copiar por canal autorizado a staging, nunca a Nginx/public.
+3. Scanner real → `CLEAN`; cualquier otro estado bloquea.
+4. Revisar duplicate, source type, authority, vigencia, fecha, versión, PALIG product/solution/needs y audiencias.
+5. Aprobar staging; promover a KnowledgeDocument/Version.
+6. Ejecutar extracción/chunking y revisar facts/conflicts/gaps.
+7. Aprobar Knowledge Version.
+8. Publicar únicamente mediante permiso y decisión humana separada.
+9. Ejecutar retrieval/citations por rol y backup posterior.

@@ -70,8 +70,11 @@ import { KnowledgeQueueService } from './knowledge/knowledge-queue.service';
 import { KnowledgeProcessorService } from './knowledge/knowledge-processor.service';
 import {
   ConfiguredEmbeddingProvider,
+  ConfiguredMalwareScanner,
   EMBEDDING_PROVIDER,
-  LocalKnowledgeStorage,
+  KnowledgeStorageConfig,
+  MALWARE_SCANNER,
+  PersistentFilesystemStorageProvider,
   STORAGE_PROVIDER,
 } from './knowledge/knowledge.providers';
 import { MemoryPolicy } from './knowledge/memory-policy.service';
@@ -86,6 +89,7 @@ import { HenryMessagingOperatorService } from './henry/henry-messaging-operator.
 import { CadenceController } from './cadences/cadence.controller';
 import { CadenceService } from './cadences/cadence.service';
 import { HenryPaligConsultativeService } from './henry/henry-palig-consultative.service';
+import { KnowledgeStagingService } from './knowledge/knowledge-staging.service';
 
 @Module({
   imports: [
@@ -164,13 +168,17 @@ import { HenryPaligConsultativeService } from './henry/henry-palig-consultative.
     AutomationService,
     AutomationProcessorService,
     AnalyticsService,
-    LocalKnowledgeStorage,
+    KnowledgeStorageConfig,
+    PersistentFilesystemStorageProvider,
+    ConfiguredMalwareScanner,
     ConfiguredEmbeddingProvider,
-    { provide: STORAGE_PROVIDER, useExisting: LocalKnowledgeStorage },
+    { provide: STORAGE_PROVIDER, useExisting: PersistentFilesystemStorageProvider },
+    { provide: MALWARE_SCANNER, useExisting: ConfiguredMalwareScanner },
     { provide: EMBEDDING_PROVIDER, useExisting: ConfiguredEmbeddingProvider },
     MemoryPolicy,
     HenryMemoryService,
     KnowledgeService,
+    KnowledgeStagingService,
     KnowledgeQueueService,
     KnowledgeProcessorService,
     RagOrchestratorService,
