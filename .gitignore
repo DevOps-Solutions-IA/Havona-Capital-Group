@@ -17,6 +17,7 @@ data/
 backups/*.sql*
 logs/
 *.log
+*.rdb
 
 # Editors and operating systems
 .idea/

@@ -13,4 +13,5 @@ backups
 data
 logs
 *.log
+*.rdb
 *.tsbuildinfo
