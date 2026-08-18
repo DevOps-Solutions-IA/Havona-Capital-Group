@@ -143,7 +143,7 @@ const keywordScore = (query: string, content: string) => {
   return [...terms].filter((term) => words.has(term)).length / terms.size;
 };
 const tableQueryPattern =
-  /\b(tabla|tarif(?:a|as|ario)|prima(?:s)?|plan(?:es)?|edad(?:es)?|ingreso|permanencia|valor(?:es)? asegurad(?:o|os|a|as)|suma(?:s)? asegurad(?:a|as))\b/i;
+  /\b(tabla|tarifa(?:s)?|prima(?:s)?|plan(?:es)?|edad(?:es)?|ingreso|permanencia|valor(?:es)? asegurad(?:o|os|a|as)|suma(?:s)? asegurad(?:a|as))\b/i;
 
 export const hybridKnowledgeScore = (input: {
   query: string;
@@ -159,8 +159,8 @@ export const hybridKnowledgeScore = (input: {
     : '';
   const context = [input.title, input.section ?? '', headingPath].join(' ');
   const structural = tableQueryPattern.test(input.query) && input.structuralType === 'TABLE' ? 1 : 0;
-  return input.semantic * 0.48 + keywordScore(input.query, input.content) * 0.3 +
-    keywordScore(input.query, context) * 0.14 + structural * 0.08;
+  return input.semantic * 0.42 + keywordScore(input.query, input.content) * 0.24 +
+    keywordScore(input.query, context) * 0.22 + structural * 0.12;
 };
 const injectionPattern =
   /(ignore|ignora).{0,30}(instructions|instrucciones)|system prompt|execute[_ ]sql|api[_ ]key/i;

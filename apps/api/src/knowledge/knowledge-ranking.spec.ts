@@ -17,6 +17,11 @@ describe('Knowledge hybrid retrieval ranking', () => {
     expect(score()).toBeGreaterThan(score({ structuralType: 'TEXT' }));
   });
 
+  it('no confunde el nombre tarifario con una solicitud tabular', () => {
+    const query = '¿Qué advertencia de vigencia incluye el tarifario?';
+    expect(score({ query, structuralType: 'TABLE' })).toBe(score({ query, structuralType: 'TEXT' }));
+  });
+
   it('usa título, sección y jerarquía como contexto documental recuperable', () => {
     const contextual = score({ content: 'Datos y condiciones aplicables' });
     const unrelated = score({
