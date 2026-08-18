@@ -6,6 +6,7 @@ describe('Knowledge hybrid retrieval ranking', () => {
       query: '¿Cuál es la prima mensual del Plan A del Producto Básico AP 2026?',
       content: 'Plan A | Prima mensual | $115.000',
       title: 'COL Tarifario AP Colombia 2026',
+      originalName: 'COL-Tarifario_AP_Colombia_2026_CANONICAL.md',
       section: 'Producto Básico',
       headingPath: ['Tarifario', 'Producto Básico'],
       structuralType: 'TABLE',
@@ -27,6 +28,7 @@ describe('Knowledge hybrid retrieval ranking', () => {
     const unrelated = score({
       content: 'Datos y condiciones aplicables',
       title: 'Capacitación maestra de pensión',
+      originalName: 'capacitacion-pension.md',
       section: 'Régimen pensional',
       headingPath: ['Retiro'],
       structuralType: 'TEXT',

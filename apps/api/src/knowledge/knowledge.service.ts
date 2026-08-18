@@ -149,6 +149,7 @@ export const hybridKnowledgeScore = (input: {
   query: string;
   content: string;
   title: string;
+  originalName: string;
   section: string | null;
   headingPath: unknown;
   structuralType: 'TEXT' | 'TABLE' | 'MIXED';
@@ -157,7 +158,7 @@ export const hybridKnowledgeScore = (input: {
   const headingPath = Array.isArray(input.headingPath)
     ? input.headingPath.filter((item): item is string => typeof item === 'string').join(' ')
     : '';
-  const context = [input.title, input.section ?? '', headingPath].join(' ');
+  const context = [input.title, input.originalName, input.section ?? '', headingPath].join(' ');
   const structural = tableQueryPattern.test(input.query) && input.structuralType === 'TABLE' ? 1 : 0;
   return input.semantic * 0.42 + keywordScore(input.query, input.content) * 0.24 +
     keywordScore(input.query, context) * 0.22 + structural * 0.12;
@@ -995,6 +996,7 @@ export class KnowledgeService {
             query,
             content: row.content,
             title: row.version.document.title,
+            originalName: row.version.originalName,
             section: row.section,
             headingPath: row.headingPath,
             structuralType: row.structuralType,
