@@ -67,15 +67,86 @@ export type TrainingRoleplay = {
   scenarioKey: string;
   status: string;
   objective: string;
+  difficulty: string;
+  transcript: TrainingTurn[];
+  scenario?: TrainingScenario;
+  score?: number | null;
+  evaluation?: TrainingEvaluation;
+};
+export type TrainingTurn = { role: 'CONSULTANT' | 'CLIENT'; content: string };
+export type TrainingScenario = {
+  scenarioKey: string;
+  title: string;
+  category: string;
+  skill: string;
+  need: string;
+  difficulty: string;
+  persona: string;
+  context: string;
+  objective: string;
+  openingMessage: string;
+};
+export type TrainingEvaluation = {
+  score: number;
+  compliance: { critical: boolean; flags: Array<{ code: string; reason: string }> };
+  feedback: {
+    strengths: Array<{ criterion: string; score: number }>;
+    opportunities: Array<{ criterion: string; score: number; improvement: string }>;
+    missedKeyMoment: string;
+    bestQuestion: string;
+    complianceRisk: string[];
+    recommendedScenarioKey: string;
+  };
+};
+export type TrainingPerformance = {
+  insufficientEvidence: boolean;
+  roleplaysCompleted: number;
+  averageScore: number | null;
+  lastScore: number | null;
+  scoreTrend: number | null;
+  strongestSkills: Array<{ skill: string; score: number }>;
+  weakestSkills: Array<{ skill: string; score: number }>;
+  complianceRiskCount: number;
+  assessmentAverage: number | null;
+  trainingProgress: number | null;
+};
+export type TrainingPlan = TrainingPerformance & {
+  nextSkill: string | null;
+  areasNotPracticed: string[];
+  recurrentErrors: string[];
+  nextExercises: TrainingScenario[];
+};
+export type TrainingTeamSummary = {
+  members: Array<{ user: { id: string; name: string }; performance: TrainingPerformance }>;
+  notPracticed: Array<{ id: string; name: string }>;
+  lowScore: Array<{ id: string; name: string }>;
+  improved: Array<{ id: string; name: string }>;
+  complianceRisk: Array<{ id: string; name: string }>;
+  skillsToReinforce: string[];
 };
 export const trainingApi = {
   list: () => api<TrainingProgram[]>('/training/programs'),
   get: (id: string) => api<TrainingProgram>(`/training/programs/${id}`),
   progress: () => api<TrainingProgress[]>('/training/progress'),
+  scenarios: () => api<TrainingScenario[]>('/training/roleplay-scenarios'),
+  performance: () => api<TrainingPerformance>('/training/performance'),
+  plan: () => api<TrainingPlan>('/training/plan'),
+  history: () => api<TrainingRoleplay[]>('/training/roleplays/history'),
+  team: () => api<TrainingTeamSummary>('/training/team'),
   startRoleplay: (scenarioKey: string) =>
     api<TrainingRoleplay>('/training/roleplays', {
       method: 'POST',
       body: JSON.stringify({ scenarioKey }),
+    }),
+  respond: (roleplayId: string, content: string) =>
+    api<{ content: string; turn: number }>(`/training/roleplays/${roleplayId}/respond`, {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    }),
+  evaluate: (roleplayId: string, transcript: TrainingTurn[]) =>
+    api<TrainingRoleplay>(`/training/roleplays/${roleplayId}/evaluate`, {
+      method: 'POST',
+      body: JSON.stringify({ transcript }),
     }),
 };
 export type HenryMemory = {

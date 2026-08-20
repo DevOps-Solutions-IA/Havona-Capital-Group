@@ -66,7 +66,10 @@ const CONSULTANT_TOOLS = [
   'search_knowledge',
   'get_knowledge_document',
   'get_training_progress',
+  'get_training_plan',
+  'get_training_performance',
   'start_roleplay',
+  'continue_roleplay',
   'evaluate_roleplay',
   'get_memory',
   'save_memory',
@@ -104,6 +107,7 @@ const MANAGER_TOOLS = [
   'link_thread_to_crm',
   'close_communication_thread',
   'get_team_scorecard',
+  'get_team_training_summary',
   'get_knowledge_gaps',
 ];
 

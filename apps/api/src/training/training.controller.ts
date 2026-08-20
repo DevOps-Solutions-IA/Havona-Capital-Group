@@ -4,6 +4,26 @@ import { RequirePermissions } from '../common/decorators';
 import { ZodPipe } from '../common/zod.pipe';
 import { TrainingService } from './training.service';
 
+const actor = (req: any) => ({
+  id: req.auth.user.id,
+  roles: req.auth.user.roles,
+  permissions: req.auth.user.permissions,
+});
+const audit = (req: any) => ({
+  actorUserId: req.auth.user.id,
+  ipAddress: req.ip,
+  userAgent: req.headers['user-agent'],
+});
+const transcriptSchema = z
+  .array(
+    z.object({
+      role: z.enum(['CONSULTANT', 'CLIENT']),
+      content: z.string().trim().min(1).max(4000),
+    }),
+  )
+  .min(2)
+  .max(100);
+
 const program = z.object({
   title: z.string().min(3).max(200),
   description: z.string().max(1000).optional(),
@@ -32,6 +52,9 @@ const program = z.object({
 @Controller('training')
 export class TrainingController {
   constructor(private readonly training: TrainingService) {}
+  @Get('roleplay-scenarios') @RequirePermissions('training.read') scenarios() {
+    return this.training.listScenarios();
+  }
   @Get('programs') @RequirePermissions('training.read') list(@Req() req: any) {
     return this.training.listPrograms(
       req.auth.user.id,
@@ -86,46 +109,64 @@ export class TrainingController {
     @Body(new ZodPipe(z.object({ answers: z.record(z.string().uuid(), z.unknown()) }))) body: any,
     @Req() req: any,
   ) {
-    return this.training.attempt(id, body.answers, req.auth.user.id);
+    return this.training.attempt(id, body.answers, req.auth.user.id, audit(req));
   }
   @Post('roleplays') @RequirePermissions('training.read') roleplay(
     @Body(
       new ZodPipe(
         z.object({
-          scenarioKey: z.enum([
-            'objection_price',
-            'think_about_it',
-            'already_insured',
-            'no_budget',
-          ]),
+          scenarioKey: z.string().min(3).max(100),
         }),
       ),
     )
     body: any,
     @Req() req: any,
   ) {
-    return this.training.startRoleplay(body.scenarioKey, req.auth.user.id);
+    return this.training.startRoleplay(body.scenarioKey, req.auth.user.id, audit(req));
+  }
+  @Post('roleplays/:id/respond') @RequirePermissions('training.read') respond(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodPipe(z.object({ content: z.string().trim().min(1).max(4000) }))) body: any,
+    @Req() req: any,
+  ) {
+    return this.training.continueRoleplay(id, body.content, req.auth.user.id);
   }
   @Post('roleplays/:id/evaluate') @RequirePermissions('training.read') evaluate(
     @Param('id', ParseUUIDPipe) id: string,
     @Body(
       new ZodPipe(
         z.object({
-          transcript: z
-            .array(
-              z.object({
-                role: z.enum(['CONSULTANT', 'CLIENT']),
-                content: z.string().min(1).max(4000),
-              }),
-            )
-            .min(2)
-            .max(100),
+          transcript: transcriptSchema,
         }),
       ),
     )
     body: any,
     @Req() req: any,
   ) {
-    return this.training.evaluateRoleplay(id, body.transcript, req.auth.user.id);
+    return this.training.evaluateRoleplay(
+      id,
+      body.transcript,
+      req.auth.user.id,
+      'ROLEPLAY',
+      audit(req),
+    );
+  }
+  @Post('transcripts/evaluate') @RequirePermissions('training.read') manualTranscript(
+    @Body(new ZodPipe(z.object({ transcript: transcriptSchema }))) body: any,
+    @Req() req: any,
+  ) {
+    return this.training.evaluateManualTranscript(body.transcript, req.auth.user.id, audit(req));
+  }
+  @Get('roleplays/history') @RequirePermissions('training.read') history(@Req() req: any) {
+    return this.training.roleplayHistory(actor(req));
+  }
+  @Get('performance') @RequirePermissions('training.read') performance(@Req() req: any) {
+    return this.training.performance(actor(req));
+  }
+  @Get('plan') @RequirePermissions('training.read') plan(@Req() req: any) {
+    return this.training.improvementPlan(actor(req), audit(req));
+  }
+  @Get('team') @RequirePermissions('training.read_team') team(@Req() req: any) {
+    return this.training.teamSummary(actor(req));
   }
 }
