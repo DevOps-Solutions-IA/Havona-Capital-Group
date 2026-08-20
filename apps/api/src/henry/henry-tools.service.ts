@@ -17,6 +17,7 @@ import { KnowledgeService } from '../knowledge/knowledge.service';
 import { RagOrchestratorService } from '../knowledge/rag-orchestrator.service';
 import { HenryMemoryService } from '../knowledge/memory.service';
 import { TrainingService } from '../training/training.service';
+import { TRAINING_ROLEPLAY_CATALOG } from '../training/training-roleplay.catalog';
 import { EmailTemplateService } from '../email-templates/email-template.service';
 import { HenryMessagingOperatorService } from './henry-messaging-operator.service';
 import { CadenceService } from '../cadences/cadence.service';
@@ -213,8 +214,15 @@ const schemas = {
   }),
   get_knowledge_document: z.object({ documentId: z.string().uuid() }),
   get_training_progress: z.object({}),
+  get_training_plan: z.object({}),
+  get_training_performance: z.object({}),
+  get_team_training_summary: z.object({}),
   start_roleplay: z.object({
-    scenarioKey: z.enum(['objection_price', 'think_about_it', 'already_insured', 'no_budget']),
+    scenarioKey: z.string().min(3).max(100),
+  }),
+  continue_roleplay: z.object({
+    roleplayId: z.string().uuid(),
+    content: z.string().trim().min(1).max(4000),
   }),
   evaluate_roleplay: z.object({
     roleplayId: z.string().uuid(),
@@ -779,16 +787,39 @@ export class HenryToolsService {
       parameters: objectSchema({}),
     },
     {
+      name: 'get_training_plan',
+      description: 'Consulta el plan individual derivado exclusivamente del historial formativo propio.',
+      parameters: objectSchema({}),
+    },
+    {
+      name: 'get_training_performance',
+      description: 'Consulta métricas formativas propias y evidencia insuficiente cuando corresponda.',
+      parameters: objectSchema({}),
+    },
+    {
+      name: 'get_team_training_summary',
+      description: 'Consulta coaching formativo del equipo autorizado; no incluye CRM ni ventas.',
+      parameters: objectSchema({}),
+    },
+    {
       name: 'start_roleplay',
       description: 'Inicia una simulación de entrenamiento separada de CRM.',
       parameters: objectSchema(
         {
           scenarioKey: {
             type: 'string',
-            enum: ['objection_price', 'think_about_it', 'already_insured', 'no_budget'],
+            enum: TRAINING_ROLEPLAY_CATALOG.map((scenario) => scenario.scenarioKey),
           },
         },
         ['scenarioKey'],
+      ),
+    },
+    {
+      name: 'continue_roleplay',
+      description: 'Continúa una simulación activa; Henry permanece en modo prospecto.',
+      parameters: objectSchema(
+        { roleplayId: { type: 'string' }, content: { type: 'string' } },
+        ['roleplayId', 'content'],
       ),
     },
     {
@@ -1331,10 +1362,42 @@ export class HenryToolsService {
           this.requireKnowledgeActor(context),
         )) as unknown as Record<string, unknown>;
       case 'get_training_progress':
-        return { data: await this.training.listPrograms(this.requireActor(context).id, false) };
+        return {
+          programs: await this.training.listPrograms(this.requireActor(context).id, false),
+          progress: await this.training.listProgress(this.requireActor(context).id),
+        };
+      case 'get_training_plan': {
+        const actor = this.requireActor(context);
+        return (await this.training.improvementPlan(
+          { id: actor.id, roles: actor.roles ?? [], permissions: actor.permissions },
+          { actorUserId: actor.id },
+        )) as unknown as Record<string, unknown>;
+      }
+      case 'get_training_performance': {
+        const actor = this.requireActor(context);
+        return (await this.training.performance({
+          id: actor.id,
+          roles: actor.roles ?? [],
+          permissions: actor.permissions,
+        })) as unknown as Record<string, unknown>;
+      }
+      case 'get_team_training_summary': {
+        const actor = this.requireActor(context);
+        return (await this.training.teamSummary({
+          id: actor.id,
+          roles: actor.roles ?? [],
+          permissions: actor.permissions,
+        })) as unknown as Record<string, unknown>;
+      }
       case 'start_roleplay':
         return (await this.training.startRoleplay(
           input.scenarioKey,
+          this.requireActor(context).id,
+        )) as unknown as Record<string, unknown>;
+      case 'continue_roleplay':
+        return (await this.training.continueRoleplay(
+          input.roleplayId,
+          input.content,
           this.requireActor(context).id,
         )) as unknown as Record<string, unknown>;
       case 'evaluate_roleplay':

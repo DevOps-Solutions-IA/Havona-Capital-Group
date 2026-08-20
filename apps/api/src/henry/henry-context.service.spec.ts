@@ -35,6 +35,26 @@ describe('HenryContextService', () => {
     expect(client.toolPermissions).toEqual(['request_human_escalation']);
     expect(manager.toolPermissions).toContain('get_available_consultants');
     expect(manager.toolPermissions).toContain('qualify_prospect');
+    expect(client.toolPermissions).not.toContain('start_roleplay');
+    expect(manager.toolPermissions).toContain('get_team_training_summary');
+  });
+
+  it('habilita tools propias de Academia al consultor sin exponer coaching de equipo', async () => {
+    const resolved = await service.resolve(
+      { pageType: 'other' },
+      { id: 'consultant', roles: ['CONSULTOR'], permissions: ['training.read'] },
+    );
+    expect(resolved.toolPermissions).toEqual(
+      expect.arrayContaining([
+        'get_training_progress',
+        'get_training_plan',
+        'get_training_performance',
+        'start_roleplay',
+        'continue_roleplay',
+        'evaluate_roleplay',
+      ]),
+    );
+    expect(resolved.toolPermissions).not.toContain('get_team_training_summary');
   });
 
   it('limita la inteligencia operativa al ámbito del consultor', async () => {
