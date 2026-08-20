@@ -516,6 +516,7 @@ export class HenryMessagingOperatorService {
         messageClassification: preview.messageClassification,
         idempotencyKey: hash(operation.idempotencyKey).slice(0, 64),
         generatedByHenry: true,
+        humanConfirmed: Boolean(operation.confirmedAt),
         templateMetadata: {
           templateId: draft.templateId,
           templateVersionId: draft.templateVersionId,

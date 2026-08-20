@@ -150,8 +150,9 @@ export class CommunicationsService {
         'La comunicación comercial requiere consentimiento vigente',
         409,
       );
+    const isUnconfirmedHenrySend = input.generatedByHenry && input.humanConfirmed !== true;
     if (
-      (input.generatedByHenry || input.generatedByAutomation) &&
+      (isUnconfirmedHenrySend || input.generatedByAutomation) &&
       ['HUMAN', 'PAUSED', 'CLOSED'].includes(thread.handlingMode)
     )
       throw new CommunicationError(

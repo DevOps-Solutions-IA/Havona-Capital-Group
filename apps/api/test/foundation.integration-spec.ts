@@ -587,7 +587,7 @@ describe('Fase 0 (PostgreSQL + Redis)', () => {
       type: 'PROSPECT_CREATED',
       entityType: 'Prospect',
       entityId: prospect.id,
-      payload: { prospectId: prospect.id },
+      payload: { prospectId: prospect.id, assignedUserId: admin.id },
     };
     expect((await automations.publishEvent(event)).duplicate).toBe(false);
     expect((await automations.publishEvent(event)).duplicate).toBe(true);

@@ -144,6 +144,27 @@ describe('HAVONA Communications Core', () => {
       ),
     ).rejects.toMatchObject({ code: 'COMMUNICATION_FORBIDDEN' });
   });
+  it('permite al operador Henry ejecutar un envío confirmado por una persona en modo humano', async () => {
+    db.communicationThread.findFirst.mockResolvedValue({
+      id: 'thread',
+      channel: 'EMAIL',
+      status: 'OPEN',
+      handlingMode: 'HUMAN',
+      contactIdentity: 'person@example.com',
+      consent: { commercialStatus: 'OPTED_IN' },
+      messages: [],
+    });
+    db.communicationMessage.upsert.mockResolvedValue({ id: 'message', generatedByHenry: true });
+    await expect(
+      service.send(
+        { id: 'self', permissions: [] },
+        'thread',
+        { text: 'hola', generatedByHenry: true, humanConfirmed: true },
+        {},
+      ),
+    ).resolves.toEqual(expect.objectContaining({ id: 'message' }));
+    expect(queue.enqueueSend).toHaveBeenCalledTimes(1);
+  });
   it('exige plantilla fuera de ventana WhatsApp', async () => {
     db.communicationThread.findFirst.mockResolvedValue({
       id: 'thread',
