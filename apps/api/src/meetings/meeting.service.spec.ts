@@ -26,6 +26,7 @@ describe('MeetingService RBAC y dominio', () => {
     createMeeting: jest.fn(),
     validateMeetingAccess: jest.fn(),
     getJoinConfiguration: jest.fn(),
+    cancelMeeting: jest.fn(),
   };
   const service = new MeetingService(db, access, audit, config, provider);
   beforeEach(() => {
@@ -82,6 +83,66 @@ describe('MeetingService RBAC y dominio', () => {
       'member',
     );
   });
+  it('permite lectura OWN sin ampliar el ámbito', async () => {
+    db.meeting.findUnique.mockResolvedValue({
+      id: 'meeting-own',
+      ownerUserId: 'consultant',
+      participants: [],
+    });
+    await service.get({ id: 'consultant', permissions: ['meeting.read'] }, 'meeting-own');
+    expect(access.assertUserScope).not.toHaveBeenCalled();
+  });
+  it('valida TEAM y GLOBAL mediante el scope autoritativo', async () => {
+    db.meeting.findUnique.mockResolvedValue({
+      id: 'meeting-team',
+      ownerUserId: 'team-member',
+      participants: [],
+    });
+    await service.get(
+      { id: 'manager', roles: ['GERENTE'], permissions: ['meeting.read', 'meeting.manage_team'] },
+      'meeting-team',
+    );
+    expect(access.assertUserScope).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'manager' }),
+      'team-member',
+    );
+    access.assertUserScope.mockClear();
+    await service.get(
+      { id: 'admin', roles: ['SUPER_ADMIN'], permissions: ['meeting.read'] },
+      'meeting-team',
+    );
+    expect(access.assertUserScope).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'admin' }),
+      'team-member',
+    );
+  });
+  it('bloquea meetingId manipulado o de otro consultor', async () => {
+    db.meeting.findUnique.mockResolvedValue({
+      id: 'meeting-other',
+      ownerUserId: 'other',
+      participants: [],
+    });
+    access.assertUserScope.mockRejectedValue(new ForbiddenException('Fuera de ámbito'));
+    await expect(
+      service.get({ id: 'consultant', permissions: ['meeting.read'] }, 'meeting-other'),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+  it('bloquea cancelación sin permiso de gestión aunque conozca el meetingId', async () => {
+    db.meeting.findUnique.mockResolvedValue({
+      id: 'meeting-other',
+      ownerUserId: 'other',
+      participants: [],
+    });
+    await expect(
+      service.cancel(
+        { id: 'consultant', permissions: ['meeting.read'] },
+        'meeting-other',
+        'Manipulación',
+        {},
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(provider.cancelMeeting).not.toHaveBeenCalled();
+  });
   it('rechaza relación CRM no autorizada antes de persistir', async () => {
     db.meeting.findUnique.mockResolvedValue(null);
     access.authorizeRelations.mockRejectedValue(new ForbiddenException());
@@ -96,6 +157,33 @@ describe('MeetingService RBAC y dominio', () => {
           prospectId: 'cross',
         },
         'key',
+        {},
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(provider.createMeeting).not.toHaveBeenCalled();
+  });
+  it('rechaza calendarEventLink ajeno antes de crear la reunión', async () => {
+    db.meeting.findUnique.mockResolvedValue(null);
+    db.calendarEventLink.findUnique.mockResolvedValue({
+      id: 'calendar-other',
+      connection: { userId: 'other' },
+      prospectId: null,
+      companyId: null,
+      opportunityId: null,
+      conversationId: null,
+    });
+    access.assertUserScope.mockRejectedValue(new ForbiddenException('Cita fuera de ámbito'));
+    await expect(
+      service.create(
+        { id: 'consultant', permissions: ['meeting.create'] },
+        {
+          title: 'Reunión',
+          scheduledStartAt: new Date(Date.now() + 3600000).toISOString(),
+          scheduledEndAt: new Date(Date.now() + 7200000).toISOString(),
+          timezone: 'America/Bogota',
+          calendarEventLinkId: 'calendar-other',
+        },
+        'calendar-scope-key',
         {},
       ),
     ).rejects.toBeInstanceOf(ForbiddenException);

@@ -57,6 +57,40 @@ describe('HenryContextService', () => {
     expect(resolved.toolPermissions).not.toContain('get_team_training_summary');
   });
 
+  it('habilita herramientas Meet al consultor y las niega a PUBLIC y CLIENT', async () => {
+    const consultant = await service.resolve(
+      { pageType: 'agenda' },
+      {
+        id: 'consultant',
+        roles: ['CONSULTOR'],
+        permissions: ['meeting.read', 'meeting.join', 'meeting.create', 'meeting.manage_own'],
+      },
+    );
+    const visitor = await service.resolve({ pageType: 'public-home' });
+    const client = await service.resolve(
+      { pageType: 'other' },
+      { id: 'client', roles: [], permissions: ['meeting.read'] },
+    );
+
+    expect(consultant.toolPermissions).toEqual(
+      expect.arrayContaining([
+        'get_meeting',
+        'get_meeting_join_info',
+        'create_meeting_for_calendar_event',
+        'cancel_meeting',
+      ]),
+    );
+    for (const tool of [
+      'get_meeting',
+      'get_meeting_join_info',
+      'create_meeting_for_calendar_event',
+      'cancel_meeting',
+    ]) {
+      expect(visitor.toolPermissions).not.toContain(tool);
+      expect(client.toolPermissions).not.toContain(tool);
+    }
+  });
+
   it('limita la inteligencia operativa al ámbito del consultor', async () => {
     db.task.count.mockResolvedValue(2);
     db.opportunity.count.mockResolvedValue(3);
