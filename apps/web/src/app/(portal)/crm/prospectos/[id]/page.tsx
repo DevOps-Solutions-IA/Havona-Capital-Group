@@ -1,6 +1,7 @@
 'use client';
 
 import { use, useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { Alert, Button, EmptyState, Field, SelectField, Skeleton } from '@havona/ui';
 import { PageHeader } from '@/components/page';
 import { api, messageOf } from '@/lib/api';
@@ -132,6 +133,16 @@ export default function CrmDetailPage({ params }: { params: Promise<{ id: string
         title={data.name}
         description={`${data.interest.replaceAll('-', ' ')} · ${data.city} · ${data.source.name}`}
       />
+      {data.email && (
+        <div className="mb-5 flex justify-end">
+          <Link
+            href={`/comunicaciones/plantillas?prospectId=${id}`}
+            className="rounded-full border border-brand-200 bg-white px-4 py-2 text-sm font-semibold text-brand-800"
+          >
+            Preparar correo
+          </Link>
+        </div>
+      )}
       {error && <Alert>{error}</Alert>}
       <div className="crm-360">
         <aside className="crm-identity">

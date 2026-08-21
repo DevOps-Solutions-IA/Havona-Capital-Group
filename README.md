@@ -20,6 +20,8 @@ CRM, Jitsi y WhatsApp permanecen fuera de esta fase.
 
 **Fase 2 — COMPLETADA (`v0.3.0`)**
 
+**Fase 3 — EN CONSTRUCCIÓN (objetivo `v0.4.0`)**
+
 La fundación técnica fue aprobada con evidencia del entorno local oficial y GitHub Actions. Las
 validaciones de infraestructura final (VPS, DNS, HTTPS público, SMTP productivo, firewall,
 hardening, monitoreo, backup/restauración y persistencia del servidor) pertenecen a
@@ -36,6 +38,15 @@ corporativa y aprobación del lenguaje visual maestro.
 La Fase 2 entrega un CRM comercial real con pipeline, ficha 360, tareas, actividad, clientes,
 empresas y paneles limitados por ámbito. Consulte [`docs/FASE_2_CRM.md`](docs/FASE_2_CRM.md) y su
 [acta de cierre](docs/CIERRE_FASE_2.md).
+
+La Fase 3 construye Henry Web como asistente virtual real, multi-provider, persistente, auditable e
+integrado con el CRM. Su alcance y límites están definidos en
+[`docs/FASE_3_HENRY_WEB.md`](docs/FASE_3_HENRY_WEB.md); el canal web es el único activo en esta
+fase y el Pull Request permanece Draft hasta aprobación expresa.
+
+La configuración segura, endpoints, herramientas, RBAC y validación local de Henry se documentan
+en [`docs/HENRY_OPERACION_Y_CONFIGURACION.md`](docs/HENRY_OPERACION_Y_CONFIGURACION.md). Una
+conversación con modelo requiere `OPENROUTER_API_KEY` y `AI_MODEL` en el entorno privado del API.
 
 ## Requisitos
 

@@ -6,8 +6,34 @@ x-app-environment: &app-environment
   REDIS_HOST: redis
   REDIS_PORT: 6379
   REDIS_PASSWORD: ${REDIS_PASSWORD}
-  REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+  REDIS_URL: redis://redis:6379
   LOG_LEVEL: ${LOG_LEVEL:-info}
+  AI_PROVIDER: ${AI_PROVIDER:-openrouter}
+  AI_MODEL: ${AI_MODEL:-}
+  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+  AI_BASE_URL: ${AI_BASE_URL:-https://openrouter.ai/api/v1}
+  AI_TIMEOUT_MS: ${AI_TIMEOUT_MS:-30000}
+  AI_MAX_RETRIES: ${AI_MAX_RETRIES:-2}
+  AI_MAX_INPUT_TOKENS: ${AI_MAX_INPUT_TOKENS:-8000}
+  AI_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-1200}
+  AI_MAX_TOOL_CALLS: ${AI_MAX_TOOL_CALLS:-4}
+  AI_TEMPERATURE: ${AI_TEMPERATURE:-0.2}
+  VOICE_PROVIDER: ${VOICE_PROVIDER:-elevenlabs}
+  ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
+  ELEVENLABS_VOICE_ID: ${ELEVENLABS_VOICE_ID:-}
+  ELEVENLABS_TTS_MODEL: ${ELEVENLABS_TTS_MODEL:-eleven_multilingual_v2}
+  ELEVENLABS_STT_MODEL: ${ELEVENLABS_STT_MODEL:-scribe_v1}
+  ELEVENLABS_BASE_URL: ${ELEVENLABS_BASE_URL:-https://api.elevenlabs.io/v1}
+  ELEVENLABS_HENRY_GATEWAY_SECRET: ${ELEVENLABS_HENRY_GATEWAY_SECRET:-}
+  VOICE_MAX_AUDIO_SIZE: ${VOICE_MAX_AUDIO_SIZE:-10485760}
+  VOICE_MAX_DURATION_SECONDS: ${VOICE_MAX_DURATION_SECONDS:-120}
+  VOICE_REQUEST_TIMEOUT_MS: ${VOICE_REQUEST_TIMEOUT_MS:-30000}
+  VOICE_STREAMING_ENABLED: ${VOICE_STREAMING_ENABLED:-true}
+  VOICE_AUDIO_RETENTION_ENABLED: ${VOICE_AUDIO_RETENTION_ENABLED:-false}
+  RESEND_ENABLED: ${RESEND_ENABLED:-false}
+  GOOGLE_CALENDAR_ENABLED: ${GOOGLE_CALENDAR_ENABLED:-false}
+  META_WHATSAPP_ENABLED: ${META_WHATSAPP_ENABLED:-false}
+  JITSI_ENABLED: ${JITSI_ENABLED:-false}
 
 services:
   postgres:
@@ -49,6 +75,23 @@ services:
     networks: [backend]
     security_opt: [no-new-privileges:true]
 
+  clamav:
+    image: clamav/clamav-debian:1.5.3
+    profiles: [prod]
+    restart: unless-stopped
+    volumes:
+      - clamav_signatures:/var/lib/clamav
+    healthcheck:
+      test: [CMD, clamdcheck.sh]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 360s
+    networks: [backend, clamav_updates]
+    security_opt: [no-new-privileges:true]
+    mem_limit: ${CLAMAV_MEMORY_LIMIT:-2g}
+    mem_reservation: ${CLAMAV_MEMORY_RESERVATION:-1g}
+
   api:
     build:
       context: .
@@ -62,17 +105,47 @@ services:
       APP_ORIGIN: ${APP_ORIGIN}
       CORS_ORIGINS: ${APP_ORIGIN}
       COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-resend}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-}
+      RESEND_FROM_NAME: ${RESEND_FROM_NAME:-HAVONA CAPITAL GROUP}
+      RESEND_REPLY_TO: ${RESEND_REPLY_TO:-}
+      RESEND_WEBHOOK_SECRET: ${RESEND_WEBHOOK_SECRET:-}
+      RESEND_WEBHOOK_URL: ${RESEND_WEBHOOK_URL:-}
+      RESEND_REQUEST_TIMEOUT_MS: ${RESEND_REQUEST_TIMEOUT_MS:-15000}
+      KNOWLEDGE_STORAGE_PROVIDER: ${KNOWLEDGE_STORAGE_PROVIDER:-filesystem}
+      KNOWLEDGE_STORAGE_PATH: ${KNOWLEDGE_STORAGE_PATH:-/var/lib/havona/knowledge}
+      KNOWLEDGE_MALWARE_SCANNER: ${KNOWLEDGE_MALWARE_SCANNER:-unavailable}
+      CLAMAV_HOST: ${CLAMAV_HOST:-clamav}
+      CLAMAV_PORT: ${CLAMAV_PORT:-3310}
+      CLAMAV_TIMEOUT_MS: ${CLAMAV_TIMEOUT_MS:-15000}
+      KNOWLEDGE_MAX_FILE_SIZE: ${KNOWLEDGE_MAX_FILE_SIZE:-15000000}
+      KNOWLEDGE_OCR_PROVIDER: ${KNOWLEDGE_OCR_PROVIDER:-unavailable}
+      KNOWLEDGE_OCR_TIMEOUT_MS: ${KNOWLEDGE_OCR_TIMEOUT_MS:-45000}
+      KNOWLEDGE_OCR_DPI: ${KNOWLEDGE_OCR_DPI:-200}
+      KNOWLEDGE_OCR_MIN_NATIVE_CHARS: ${KNOWLEDGE_OCR_MIN_NATIVE_CHARS:-40}
+      KNOWLEDGE_OCR_VERSION: ${KNOWLEDGE_OCR_VERSION:-tesseract-cli}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
+      EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_REQUEST_TIMEOUT_MS: ${EMBEDDING_REQUEST_TIMEOUT_MS:-30000}
+      EMBEDDING_BATCH_SIZE: ${EMBEDDING_BATCH_SIZE:-64}
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
+      clamav: { condition: service_healthy }
     healthcheck:
-      test: [CMD, wget, --quiet, --tries=1, --spider, http://localhost:3001/health/ready]
+      test: [CMD, wget, --quiet, --tries=1, --spider, http://127.0.0.1:3001/health/ready]
       interval: 15s
       timeout: 5s
       retries: 10
       start_period: 30s
     networks: [backend, frontend]
     security_opt: [no-new-privileges:true]
+    volumes:
+      - ${KNOWLEDGE_STORAGE_HOST_PATH:-/opt/havona/data/knowledge}:/var/lib/havona/knowledge
 
   worker:
     build:
@@ -85,6 +158,11 @@ services:
       <<: *app-environment
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-5}
       WORKER_QUEUE_NAME: ${WORKER_QUEUE_NAME:-havona-system}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-}
+      RESEND_FROM_NAME: ${RESEND_FROM_NAME:-HAVONA CAPITAL GROUP}
+      RESEND_REPLY_TO: ${RESEND_REPLY_TO:-}
+      RESEND_REQUEST_TIMEOUT_MS: ${RESEND_REQUEST_TIMEOUT_MS:-15000}
       SMTP_HOST: ${SMTP_HOST}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_SECURE: ${SMTP_SECURE:-false}
@@ -110,12 +188,16 @@ services:
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
         NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+        APP_DOMAIN: ${APP_DOMAIN:-app.havonacapitalgroup.com}
+        PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-https://havonacapitalgroup.com}
     profiles: [prod]
     restart: unless-stopped
     environment:
       NODE_ENV: ${NODE_ENV:-development}
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
       NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+      APP_DOMAIN: ${APP_DOMAIN:-app.havonacapitalgroup.com}
+      PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-https://havonacapitalgroup.com}
     depends_on:
       api: { condition: service_healthy }
     healthcheck:
@@ -172,11 +254,15 @@ services:
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
         NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+        APP_DOMAIN: ${APP_DOMAIN:-app.havonacapitalgroup.com}
+        PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-https://havonacapitalgroup.com}
     profiles: [dev]
     environment:
       NODE_ENV: development
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
       NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+      APP_DOMAIN: ${APP_DOMAIN:-app.havonacapitalgroup.com}
+      PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-https://havonacapitalgroup.com}
     ports: ['127.0.0.1:3000:3000']
     volumes: ['.:/app', 'web_node_modules:/app/node_modules']
     depends_on:
@@ -228,6 +314,7 @@ networks:
   frontend:
   backend:
     internal: true
+  clamav_updates:
 
 volumes:
   postgres_data:
@@ -237,3 +324,4 @@ volumes:
   api_node_modules:
   worker_node_modules:
   web_node_modules:
+  clamav_signatures:
