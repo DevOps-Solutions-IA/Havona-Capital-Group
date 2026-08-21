@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TrainingPage from './page';
 import { trainingApi } from '@/lib/knowledge';
 
-vi.mock('@/lib/auth', () => ({ useAuth: () => ({ can: (permission: string) => permission === 'training.read_team' }) }));
+vi.mock('@/lib/auth', () => ({
+  useAuth: () => ({ can: (permission: string) => permission === 'training.read_team' }),
+}));
 vi.mock('@/lib/knowledge', async () => {
   const actual = await vi.importActual<typeof import('@/lib/knowledge')>('@/lib/knowledge');
   return {

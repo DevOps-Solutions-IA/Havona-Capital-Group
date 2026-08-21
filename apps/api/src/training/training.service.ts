@@ -203,7 +203,11 @@ export class TrainingService {
     });
     return row;
   }
-  async startRoleplay(scenarioKey: string, userId: string, ctx: AuditContext = { actorUserId: userId }) {
+  async startRoleplay(
+    scenarioKey: string,
+    userId: string,
+    ctx: AuditContext = { actorUserId: userId },
+  ) {
     const scenario = getTrainingScenario(scenarioKey);
     if (!scenario) throw new BadRequestException('TRAINING_SCENARIO_NOT_FOUND');
     const row = await this.db.trainingRoleplay.create({
@@ -220,26 +224,45 @@ export class TrainingService {
       scenarioKey,
       source: 'TRAINING_SIMULATION',
     });
-    return { ...row, scenario: publicTrainingScenario(scenario), openingMessage: scenario.openingMessage };
+    return {
+      ...row,
+      scenario: publicTrainingScenario(scenario),
+      openingMessage: scenario.openingMessage,
+    };
   }
 
   async continueRoleplay(id: string, content: string, userId: string) {
-    const roleplay = await this.db.trainingRoleplay.findFirst({ where: { id, userId, status: 'ACTIVE' } });
+    const roleplay = await this.db.trainingRoleplay.findFirst({
+      where: { id, userId, status: 'ACTIVE' },
+    });
     if (!roleplay) throw new NotFoundException('TRAINING_ROLEPLAY_NOT_FOUND');
     const scenario = getTrainingScenario(roleplay.scenarioKey);
     if (!scenario) throw new BadRequestException('TRAINING_SCENARIO_NOT_FOUND');
-    const transcript = Array.isArray(roleplay.transcript) ? (roleplay.transcript as TrainingTurn[]) : [];
+    const transcript = Array.isArray(roleplay.transcript)
+      ? (roleplay.transcript as TrainingTurn[])
+      : [];
     const consultantTurn: TrainingTurn = { role: 'CONSULTANT', content };
     const clientTurns = transcript.filter((turn) => turn.role === 'CLIENT').length;
-    let response = scenario.objections[Math.min(clientTurns - 1, scenario.objections.length - 1)] ??
+    let response =
+      scenario.objections[Math.min(clientTurns - 1, scenario.objections.length - 1)] ??
       'Entiendo. ¿Qué necesitas saber de mi situación para continuar?';
-    if (/ignora (?:las|tus) reglas|system prompt|mu[eé]strame .*cliente|llama (?:al )?crm|ejecuta .*automat/i.test(content))
-      response = 'No entiendo esa solicitud. Prefiero continuar únicamente con esta conversación de práctica.';
+    if (
+      /ignora (?:las|tus) reglas|system prompt|mu[eé]strame .*cliente|llama (?:al )?crm|ejecuta .*automat/i.test(
+        content,
+      )
+    )
+      response =
+        'No entiendo esa solicitud. Prefiero continuar únicamente con esta conversación de práctica.';
     else if (/¿(?:qué|cómo|cuál|quién|cuándo)|preocupa|impacto|prioridad/i.test(content))
-      response = clientTurns > 2
-        ? `Lo más importante para mí es ${scenario.objective.toLowerCase()}`
-        : scenario.context;
-    const next: TrainingTurn[] = [...transcript, consultantTurn, { role: 'CLIENT', content: response }];
+      response =
+        clientTurns > 2
+          ? `Lo más importante para mí es ${scenario.objective.toLowerCase()}`
+          : scenario.context;
+    const next: TrainingTurn[] = [
+      ...transcript,
+      consultantTurn,
+      { role: 'CLIENT', content: response },
+    ];
     await this.db.trainingRoleplay.update({ where: { id }, data: { transcript: next } });
     return { id, mode: 'ROLEPLAY', role: 'CLIENT', content: response, turn: next.length };
   }
@@ -330,9 +353,22 @@ export class TrainingService {
     if (targetUserId !== actor.id && !actor.permissions.includes('training.read_team'))
       throw new ForbiddenException('TRAINING_FORBIDDEN');
     const [roleplays, attempts, enrollments] = await Promise.all([
-      this.db.trainingRoleplay.findMany({ where: { userId: targetUserId, status: 'COMPLETED' }, orderBy: { completedAt: 'desc' }, take: 50, select: { scenarioKey: true, score: true, rubric: true, feedback: true, completedAt: true } }),
-      this.db.trainingAttempt.findMany({ where: { userId: targetUserId }, orderBy: { createdAt: 'desc' }, take: 50, select: { score: true } }),
-      this.db.trainingEnrollment.findMany({ where: { userId: targetUserId }, select: { progress: true } }),
+      this.db.trainingRoleplay.findMany({
+        where: { userId: targetUserId, status: 'COMPLETED' },
+        orderBy: { completedAt: 'desc' },
+        take: 50,
+        select: { scenarioKey: true, score: true, rubric: true, feedback: true, completedAt: true },
+      }),
+      this.db.trainingAttempt.findMany({
+        where: { userId: targetUserId },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+        select: { score: true },
+      }),
+      this.db.trainingEnrollment.findMany({
+        where: { userId: targetUserId },
+        select: { progress: true },
+      }),
     ]);
     return this.performanceFromRows(targetUserId, roleplays, attempts, enrollments);
   }
@@ -350,27 +386,59 @@ export class TrainingService {
       const rubric = Array.isArray(item.rubric) ? (item.rubric as any[]) : [];
       for (const result of rubric) {
         if (typeof result?.criterion !== 'string' || typeof result?.score !== 'number') continue;
-        skillScores.set(result.criterion, [...(skillScores.get(result.criterion) ?? []), result.score]);
+        skillScores.set(result.criterion, [
+          ...(skillScores.get(result.criterion) ?? []),
+          result.score,
+        ]);
       }
       const feedback = item.feedback as any;
-      if (feedback?.compliance?.flags?.length) complianceRiskCount += feedback.compliance.flags.length;
+      if (feedback?.compliance?.flags?.length)
+        complianceRiskCount += feedback.compliance.flags.length;
     }
-    const skills = [...skillScores.entries()].map(([skill, values]) => ({ skill, score: Number((values.reduce((a, b) => a + b, 0) / values.length).toFixed(2)), samples: values.length }));
-    const recent = scores.slice(0, 3), previous = scores.slice(3, 6);
-    const avg = (values: number[]) => values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
-    const recentAverage = avg(recent), previousAverage = avg(previous);
+    const skills = [...skillScores.entries()].map(([skill, values]) => ({
+      skill,
+      score: Number((values.reduce((a, b) => a + b, 0) / values.length).toFixed(2)),
+      samples: values.length,
+    }));
+    const recent = scores.slice(0, 3),
+      previous = scores.slice(3, 6);
+    const avg = (values: number[]) =>
+      values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
+    const recentAverage = avg(recent),
+      previousAverage = avg(previous);
     return {
       userId: targetUserId,
       insufficientEvidence: roleplays.length < 2,
       roleplaysCompleted: roleplays.length,
       averageScore: avg(scores) === null ? null : Number(avg(scores)!.toFixed(2)),
       lastScore: scores[0] ?? null,
-      scoreTrend: recentAverage === null || previousAverage === null ? null : Number((recentAverage - previousAverage).toFixed(2)),
-      strongestSkills: skills.filter((item) => item.samples >= 1).sort((a, b) => b.score - a.score).slice(0, 3),
-      weakestSkills: skills.filter((item) => item.samples >= 1).sort((a, b) => a.score - b.score).slice(0, 3),
+      scoreTrend:
+        recentAverage === null || previousAverage === null
+          ? null
+          : Number((recentAverage - previousAverage).toFixed(2)),
+      strongestSkills: skills
+        .filter((item) => item.samples >= 1)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 3),
+      weakestSkills: skills
+        .filter((item) => item.samples >= 1)
+        .sort((a, b) => a.score - b.score)
+        .slice(0, 3),
       complianceRiskCount,
-      assessmentAverage: attempts.length ? Number((attempts.reduce((sum, item) => sum + Number(item.score), 0) / attempts.length).toFixed(2)) : null,
-      trainingProgress: enrollments.length ? Number((enrollments.reduce((sum, item) => sum + item.progress, 0) / enrollments.length).toFixed(2)) : null,
+      assessmentAverage: attempts.length
+        ? Number(
+            (attempts.reduce((sum, item) => sum + Number(item.score), 0) / attempts.length).toFixed(
+              2,
+            ),
+          )
+        : null,
+      trainingProgress: enrollments.length
+        ? Number(
+            (
+              enrollments.reduce((sum, item) => sum + item.progress, 0) / enrollments.length
+            ).toFixed(2),
+          )
+        : null,
       practicedScenarioKeys: roleplays.map((item) => item.scenarioKey),
     };
   }
@@ -378,14 +446,30 @@ export class TrainingService {
   async improvementPlan(actor: TrainingActor, ctx: AuditContext) {
     const performance = await this.performance(actor);
     const practiced = new Set(performance.practicedScenarioKeys);
-    const areasNotPracticed = [...new Set(TRAINING_ROLEPLAY_CATALOG.filter((item) => !practiced.has(item.scenarioKey)).map((item) => item.skill))].slice(0, 8);
+    const areasNotPracticed = [
+      ...new Set(
+        TRAINING_ROLEPLAY_CATALOG.filter((item) => !practiced.has(item.scenarioKey)).map(
+          (item) => item.skill,
+        ),
+      ),
+    ].slice(0, 8);
     const weakest = performance.weakestSkills[0]?.skill;
-    const preferred = TRAINING_ROLEPLAY_CATALOG.filter((item) => item.skill === weakest && !practiced.has(item.scenarioKey));
+    const preferred = TRAINING_ROLEPLAY_CATALOG.filter(
+      (item) => item.skill === weakest && !practiced.has(item.scenarioKey),
+    );
     const fallback = TRAINING_ROLEPLAY_CATALOG.filter((item) => !practiced.has(item.scenarioKey));
-    const nextExercises = [...preferred, ...fallback].filter((item, index, all) => all.findIndex((other) => other.scenarioKey === item.scenarioKey) === index).slice(0, 3).map(publicTrainingScenario);
+    const nextExercises = [...preferred, ...fallback]
+      .filter(
+        (item, index, all) =>
+          all.findIndex((other) => other.scenarioKey === item.scenarioKey) === index,
+      )
+      .slice(0, 3)
+      .map(publicTrainingScenario);
     const plan = {
       ...performance,
-      recurrentErrors: performance.complianceRiskCount ? ['Riesgos de cumplimiento detectados en evaluaciones recientes.'] : [],
+      recurrentErrors: performance.complianceRiskCount
+        ? ['Riesgos de cumplimiento detectados en evaluaciones recientes.']
+        : [],
       areasNotPracticed,
       nextSkill: weakest ?? areasNotPracticed[0] ?? null,
       nextExercises,
@@ -432,7 +516,11 @@ export class TrainingService {
     const historyStart = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000);
     const [roleplays, attempts, enrollments] = await Promise.all([
       this.db.trainingRoleplay.findMany({
-        where: { userId: { in: scopedIds }, status: 'COMPLETED', completedAt: { gte: historyStart } },
+        where: {
+          userId: { in: scopedIds },
+          status: 'COMPLETED',
+          completedAt: { gte: historyStart },
+        },
         orderBy: { completedAt: 'desc' },
         take: 10_000,
         select: { userId: true, scenarioKey: true, score: true, rubric: true, feedback: true },
@@ -459,11 +547,25 @@ export class TrainingService {
     }));
     return {
       members,
-      notPracticed: members.filter((item) => item.performance.roleplaysCompleted === 0).map((item) => item.user),
-      lowScore: members.filter((item) => item.performance.averageScore !== null && item.performance.averageScore < 60).map((item) => item.user),
-      improved: members.filter((item) => (item.performance.scoreTrend ?? 0) > 0).map((item) => item.user),
-      complianceRisk: members.filter((item) => item.performance.complianceRiskCount > 0).map((item) => item.user),
-      skillsToReinforce: [...new Set(members.flatMap((item) => item.performance.weakestSkills.map((skill) => skill.skill)))].slice(0, 5),
+      notPracticed: members
+        .filter((item) => item.performance.roleplaysCompleted === 0)
+        .map((item) => item.user),
+      lowScore: members
+        .filter(
+          (item) => item.performance.averageScore !== null && item.performance.averageScore < 60,
+        )
+        .map((item) => item.user),
+      improved: members
+        .filter((item) => (item.performance.scoreTrend ?? 0) > 0)
+        .map((item) => item.user),
+      complianceRisk: members
+        .filter((item) => item.performance.complianceRiskCount > 0)
+        .map((item) => item.user),
+      skillsToReinforce: [
+        ...new Set(
+          members.flatMap((item) => item.performance.weakestSkills.map((skill) => skill.skill)),
+        ),
+      ].slice(0, 5),
     };
   }
 }

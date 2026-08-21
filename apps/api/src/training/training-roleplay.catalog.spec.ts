@@ -24,9 +24,13 @@ describe('Academia Henry roleplay catalog', () => {
 
   it('no codifica cifras de producto como verdad contractual', () => {
     const serialized = JSON.stringify(TRAINING_ROLEPLAY_CATALOG);
-    expect(serialized).not.toMatch(/prima actual|tasa vigente|edad vigente|cubre automáticamente y/i);
+    expect(serialized).not.toMatch(
+      /prima actual|tasa vigente|edad vigente|cubre automáticamente y/i,
+    );
     for (const item of TRAINING_ROLEPLAY_CATALOG) {
-      expect(item.allowedFacts).toContain('No existen cifras ni condiciones contractuales autorizadas.');
+      expect(item.allowedFacts).toContain(
+        'No existen cifras ni condiciones contractuales autorizadas.',
+      );
       expect(item.persona).not.toMatch(/cliente real/i);
     }
   });

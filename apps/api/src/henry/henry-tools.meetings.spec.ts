@@ -48,24 +48,28 @@ describe('HenryToolsService Meet governance', () => {
   });
 
   it.each([
-    ['create_meeting_for_calendar_event', {
-      calendarEventLinkId: '00000000-0000-4000-8000-000000000003',
-      title: 'Cita consultiva',
-      scheduledStartAt: '2030-01-01T10:00:00.000Z',
-      scheduledEndAt: '2030-01-01T11:00:00.000Z',
-      timezone: 'America/Bogota',
-      confirmedByUser: false,
-      idempotencyKey: '00000000-0000-4000-8000-000000000004',
-    }],
-    ['cancel_meeting', {
-      meetingId: '00000000-0000-4000-8000-000000000002',
-      reason: 'Cambio de agenda',
-      confirmedByUser: false,
-    }],
+    [
+      'create_meeting_for_calendar_event',
+      {
+        calendarEventLinkId: '00000000-0000-4000-8000-000000000003',
+        title: 'Cita consultiva',
+        scheduledStartAt: '2030-01-01T10:00:00.000Z',
+        scheduledEndAt: '2030-01-01T11:00:00.000Z',
+        timezone: 'America/Bogota',
+        confirmedByUser: false,
+        idempotencyKey: '00000000-0000-4000-8000-000000000004',
+      },
+    ],
+    [
+      'cancel_meeting',
+      {
+        meetingId: '00000000-0000-4000-8000-000000000002',
+        reason: 'Cambio de agenda',
+        confirmedByUser: false,
+      },
+    ],
   ])('bloquea %s sin confirmación explícita', async (tool, input) => {
-    await expect(service.execute(tool, input, context)).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
+    await expect(service.execute(tool, input, context)).rejects.toBeInstanceOf(BadRequestException);
     expect(meetings.create).not.toHaveBeenCalled();
     expect(meetings.cancel).not.toHaveBeenCalled();
   });

@@ -788,12 +788,14 @@ export class HenryToolsService {
     },
     {
       name: 'get_training_plan',
-      description: 'Consulta el plan individual derivado exclusivamente del historial formativo propio.',
+      description:
+        'Consulta el plan individual derivado exclusivamente del historial formativo propio.',
       parameters: objectSchema({}),
     },
     {
       name: 'get_training_performance',
-      description: 'Consulta métricas formativas propias y evidencia insuficiente cuando corresponda.',
+      description:
+        'Consulta métricas formativas propias y evidencia insuficiente cuando corresponda.',
       parameters: objectSchema({}),
     },
     {
@@ -817,10 +819,10 @@ export class HenryToolsService {
     {
       name: 'continue_roleplay',
       description: 'Continúa una simulación activa; Henry permanece en modo prospecto.',
-      parameters: objectSchema(
-        { roleplayId: { type: 'string' }, content: { type: 'string' } },
-        ['roleplayId', 'content'],
-      ),
+      parameters: objectSchema({ roleplayId: { type: 'string' }, content: { type: 'string' } }, [
+        'roleplayId',
+        'content',
+      ]),
     },
     {
       name: 'evaluate_roleplay',

@@ -88,7 +88,9 @@ export default function TrainingHome() {
               {performance.averageScore ?? '—'}
             </p>
             <p className="text-sm text-slate-600">
-              {performance.insufficientEvidence ? 'Evidencia todavía insuficiente' : 'Historial reciente'}
+              {performance.insufficientEvidence
+                ? 'Evidencia todavía insuficiente'
+                : 'Historial reciente'}
             </p>
           </div>
           <div className="rounded-2xl border bg-white p-5">
@@ -154,7 +156,9 @@ export default function TrainingHome() {
             {history.slice(0, 10).map((item) => (
               <li key={item.id} className="flex items-center justify-between gap-4 py-4">
                 <span>{item.scenarioKey.replaceAll('_', ' ')}</span>
-                <span className="font-semibold">{item.score == null ? item.status : `${item.score}/100`}</span>
+                <span className="font-semibold">
+                  {item.score == null ? item.status : `${item.score}/100`}
+                </span>
               </li>
             ))}
           </ul>

@@ -41,7 +41,10 @@ describe('Academia Henry roleplay UX', () => {
       difficulty: scenario.difficulty,
       transcript: [{ role: 'CLIENT', content: scenario.openingMessage }],
     });
-    vi.mocked(trainingApi.respond).mockResolvedValue({ content: 'Mi familia depende de mí.', turn: 3 });
+    vi.mocked(trainingApi.respond).mockResolvedValue({
+      content: 'Mi familia depende de mí.',
+      turn: 3,
+    });
   });
 
   it('separa visualmente roleplay mode de coach mode y no muestra hechos ocultos', async () => {
@@ -50,7 +53,9 @@ describe('Academia Henry roleplay UX', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Iniciar simulación' }));
     expect(await screen.findByText(/Henry es el prospecto/)).toBeInTheDocument();
     expect(screen.queryByText(/hiddenFacts/i)).not.toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Tu respuesta'), { target: { value: '¿Quién depende de ti?' } });
+    fireEvent.change(screen.getByLabelText('Tu respuesta'), {
+      target: { value: '¿Quién depende de ti?' },
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
     await waitFor(() => expect(screen.getByText('Mi familia depende de mí.')).toBeInTheDocument());
   });

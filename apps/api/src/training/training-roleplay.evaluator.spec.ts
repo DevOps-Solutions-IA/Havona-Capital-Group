@@ -1,25 +1,36 @@
 import { GOLDEN_TRAINING_SET } from './training-golden-set';
-import { evaluateScenarioTranscript, evaluateTrainingTranscript, TRAINING_RUBRIC } from './training-roleplay.evaluator';
+import {
+  evaluateScenarioTranscript,
+  evaluateTrainingTranscript,
+  TRAINING_RUBRIC,
+} from './training-roleplay.evaluator';
 
 describe('Academia Henry evidence evaluator', () => {
   it('usa exactamente 15 criterios con score, evidencia, razón y mejora', () => {
-    const result = evaluateScenarioTranscript('discovery_family', GOLDEN_TRAINING_SET[0]!.transcript);
+    const result = evaluateScenarioTranscript(
+      'discovery_family',
+      GOLDEN_TRAINING_SET[0]!.transcript,
+    );
     expect(TRAINING_RUBRIC).toHaveLength(15);
     expect(result.rubric).toHaveLength(15);
     expect(result.rubric.every((item) => item.score >= 0 && item.score <= 5)).toBe(true);
-    expect(result.rubric.every((item) => item.reason && item.improvement && Array.isArray(item.evidence))).toBe(true);
+    expect(
+      result.rubric.every(
+        (item) => item.reason && item.improvement && Array.isArray(item.evidence),
+      ),
+    ).toBe(true);
   });
 
   it.each(GOLDEN_TRAINING_SET)('$id cumple la expectativa Golden', (testCase) => {
     const result = evaluateScenarioTranscript(testCase.scenarioKey, testCase.transcript);
     const expectation = testCase.expectation;
-    if (expectation.kind === 'CRITICAL')
-      expect(result.compliance.critical).toBe(expectation.value);
+    if (expectation.kind === 'CRITICAL') expect(result.compliance.critical).toBe(expectation.value);
     else if (expectation.kind === 'FLAG')
       expect(result.compliance.flags.map((flag) => flag.code)).toContain(expectation.code);
     else {
       const criterion = result.rubric.find((item) => item.criterion === expectation.criterion)!;
-      if (expectation.kind === 'MIN_SCORE') expect(criterion.score).toBeGreaterThanOrEqual(expectation.value);
+      if (expectation.kind === 'MIN_SCORE')
+        expect(criterion.score).toBeGreaterThanOrEqual(expectation.value);
       else expect(criterion.score).toBeLessThanOrEqual(expectation.value);
     }
   });
@@ -32,8 +43,13 @@ describe('Academia Henry evidence evaluator', () => {
   });
 
   it('no premia doce preguntas irrelevantes por volumen', () => {
-    const result = evaluateScenarioTranscript('discovery_retirement', GOLDEN_TRAINING_SET[4]!.transcript);
-    expect(result.rubric.find((item) => item.criterion === 'calidad_preguntas')?.score).toBeLessThanOrEqual(1);
+    const result = evaluateScenarioTranscript(
+      'discovery_retirement',
+      GOLDEN_TRAINING_SET[4]!.transcript,
+    );
+    expect(
+      result.rubric.find((item) => item.criterion === 'calidad_preguntas')?.score,
+    ).toBeLessThanOrEqual(1);
   });
 
   it('penaliza promesa en contexto y no genera falso positivo ante abstención explícita', () => {
