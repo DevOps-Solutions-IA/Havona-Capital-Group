@@ -14,6 +14,7 @@ import {
 } from './training-roleplay.catalog';
 import {
   evaluateTrainingTranscript,
+  sanitizeManualTranscriptEvaluationForPersistence,
   TRAINING_RUBRIC,
   TrainingTurn,
 } from './training-roleplay.evaluator';
@@ -254,11 +255,19 @@ export class TrainingService {
     });
     if (!roleplay) throw new NotFoundException('TRAINING_ROLEPLAY_NOT_FOUND');
     const scenario = getTrainingScenario(roleplay.scenarioKey);
-    const evaluation = evaluateTrainingTranscript(transcript as TrainingTurn[], scenario, source);
+    const transientEvaluation = evaluateTrainingTranscript(
+      transcript as TrainingTurn[],
+      scenario,
+      source,
+    );
+    const evaluation =
+      source === 'MANUAL_TRANSCRIPT'
+        ? sanitizeManualTranscriptEvaluationForPersistence(transientEvaluation)
+        : transientEvaluation;
     const updated = await this.db.trainingRoleplay.update({
       where: { id },
       data: {
-        transcript,
+        transcript: source === 'MANUAL_TRANSCRIPT' ? [] : transcript,
         rubric: evaluation.rubric as unknown as Prisma.InputJsonValue,
         score: evaluation.score,
         status: 'COMPLETED',

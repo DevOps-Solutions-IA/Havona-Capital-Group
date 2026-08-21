@@ -67,7 +67,64 @@ describe('TrainingService Academy operations', () => {
     await expect(service.performance(manager, 'outside')).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('genera evaluación manual con origen explícito y sin CRM', async () => {
+  it('mantiene historial y plan limitados al consultor autenticado', async () => {
+    const db: any = {
+      trainingRoleplay: { findMany: jest.fn().mockResolvedValue([]) },
+      trainingAttempt: { findMany: jest.fn().mockResolvedValue([]) },
+      trainingEnrollment: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    const service = new TrainingService(db, audit as any);
+
+    await service.roleplayHistory(consultant);
+    const plan = await service.improvementPlan(consultant, { actorUserId: consultant.id });
+
+    expect(db.trainingRoleplay.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { userId: consultant.id } }),
+    );
+    expect(plan).toEqual(
+      expect.objectContaining({ insufficientEvidence: true, nextExercises: expect.any(Array) }),
+    );
+    expect(audit.record).toHaveBeenCalledWith(
+      'training.plan.viewed',
+      'User',
+      consultant.id,
+      expect.anything(),
+      expect.objectContaining({ insufficientEvidence: true }),
+    );
+  });
+
+  it('limita la vista del gerente a miembros de su equipo autorizado', async () => {
+    const db: any = {
+      calendarTeamMembership: {
+        findMany: jest.fn().mockResolvedValue([{ memberId: 'member' }]),
+      },
+      user: { findMany: jest.fn().mockResolvedValue([]) },
+      trainingRoleplay: { findMany: jest.fn().mockResolvedValue([]) },
+      trainingAttempt: { findMany: jest.fn().mockResolvedValue([]) },
+      trainingEnrollment: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    const service = new TrainingService(db, audit as any);
+
+    await service.teamSummary(manager);
+
+    expect(db.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: { in: [manager.id, 'member'] } }),
+      }),
+    );
+  });
+
+  it('evalúa un transcript manual transitoriamente sin persistir PII, citas ni input crudo', async () => {
+    const sentinels = [
+      'María Prueba',
+      'maria.prueba@example.test',
+      '+57 300 555 0199',
+      '1012345678',
+      'Calle Falsa 123',
+      '$987.654.321',
+      'POL-TEST-998877',
+      'Mi frase sensible exacta',
+    ];
     const db: any = {
       trainingRoleplay: {
         create: jest.fn().mockResolvedValue({ id: 'manual' }),
@@ -77,11 +134,66 @@ describe('TrainingService Academy operations', () => {
     };
     const service = new TrainingService(db, audit as any);
     const result = await service.evaluateManualTranscript(
-      [{ role: 'CLIENT', content: 'Quiero revisar opciones.' }, { role: 'CONSULTANT', content: '¿Qué te preocupa?' }],
+      [
+        {
+          role: 'CLIENT',
+          content:
+            'Soy María Prueba, maria.prueba@example.test, +57 300 555 0199, documento 1012345678, vivo en Calle Falsa 123, tengo $987.654.321 y la póliza POL-TEST-998877.',
+        },
+        {
+          role: 'CONSULTANT',
+          content: 'Mi frase sensible exacta: ¿Qué te preocupa de esa situación?',
+        },
+      ],
       consultant.id,
       { actorUserId: consultant.id },
     );
+    const createPayload = db.trainingRoleplay.create.mock.calls[0][0];
+    const persistencePayload = db.trainingRoleplay.update.mock.calls[0][0];
+    const auditPayload = audit.record.mock.calls;
+    const persisted = JSON.stringify({ createPayload, persistencePayload });
+    const audited = JSON.stringify(auditPayload);
+
     expect(result.evaluation.source).toBe('MANUAL_TRANSCRIPT');
+    expect(persistencePayload.data.transcript).toEqual([]);
+    expect(JSON.stringify(persistencePayload.data.feedback)).not.toContain('quoteOrSummary');
+    expect(JSON.stringify(persistencePayload.data.rubric)).not.toContain('quoteOrSummary');
+    expect(JSON.stringify(result.evaluation)).not.toContain('Mi frase sensible exacta');
+    for (const sentinel of sentinels) {
+      expect(persisted).not.toContain(sentinel);
+      expect(audited).not.toContain(sentinel);
+    }
     expect(db).not.toHaveProperty('communicationMessage');
+    expect(db).not.toHaveProperty('prospect');
+    expect(db).not.toHaveProperty('crmActivity');
+    expect(db).not.toHaveProperty('task');
+    expect(db).not.toHaveProperty('calendarEvent');
+    expect(db).not.toHaveProperty('automationEvent');
+  });
+
+  it('conserva transcript y evidencia para roleplays sintéticos', async () => {
+    const transcript = [
+      { role: 'CLIENT', content: 'Este dato pertenece a una persona sintética.' },
+      { role: 'CONSULTANT', content: '¿Qué te preocupa de esa situación?' },
+    ];
+    const db: any = {
+      trainingRoleplay: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'roleplay',
+          userId: consultant.id,
+          status: 'ACTIVE',
+          scenarioKey: 'discovery_family',
+        }),
+        update: jest.fn().mockResolvedValue({ id: 'roleplay', status: 'COMPLETED' }),
+      },
+    };
+    const service = new TrainingService(db, audit as any);
+
+    const result = await service.evaluateRoleplay('roleplay', transcript, consultant.id);
+    const persistencePayload = db.trainingRoleplay.update.mock.calls[0][0];
+
+    expect(persistencePayload.data.transcript).toEqual(transcript);
+    expect(JSON.stringify(persistencePayload.data.rubric)).toContain('¿Qué te preocupa');
+    expect(JSON.stringify(result.evaluation)).toContain('¿Qué te preocupa');
   });
 });
