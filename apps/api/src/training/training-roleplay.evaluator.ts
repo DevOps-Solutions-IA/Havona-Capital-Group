@@ -193,3 +193,27 @@ export function evaluateTrainingTranscript(
 export function evaluateScenarioTranscript(scenarioKey: string, transcript: readonly TrainingTurn[]) {
   return evaluateTrainingTranscript(transcript, getTrainingScenario(scenarioKey));
 }
+
+export function sanitizeManualTranscriptEvaluationForPersistence(
+  evaluation: ReturnType<typeof evaluateTrainingTranscript>,
+) {
+  const withoutRawEvidence = (evidence: CriterionEvidence) => ({
+    turn: evidence.turn,
+    reason: evidence.reason,
+  });
+
+  return {
+    ...evaluation,
+    rubric: evaluation.rubric.map((result) => ({
+      ...result,
+      evidence: result.evidence.map(withoutRawEvidence),
+    })),
+    feedback: {
+      ...evaluation.feedback,
+      strengths: evaluation.feedback.strengths.map((strength) => ({
+        ...strength,
+        evidence: strength.evidence ? withoutRawEvidence(strength.evidence) : null,
+      })),
+    },
+  };
+}
