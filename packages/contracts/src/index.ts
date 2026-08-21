@@ -1,4 +1,5 @@
 import { z } from 'zod';
+export * from './email-library';
 
 export const passwordSchema = z
   .string()
@@ -172,11 +173,73 @@ export const opportunityListQuerySchema = z.object({
   ownerId: uuid.optional(),
   status: z.enum(['OPEN', 'WON', 'LOST', 'CANCELLED']).optional(),
   priority: crmPriority.optional(),
+  customerNeedKey: z
+    .enum([
+      'FAMILY_PROTECTION',
+      'INCOME_PROTECTION',
+      'EDUCATION',
+      'RETIREMENT_PENSION_GAP',
+      'CAPITAL_ACCUMULATION',
+      'ACCIDENT_PROTECTION',
+      'CRITICAL_ILLNESS',
+      'CANCER_PROTECTION',
+      'BUSINESS_PARTNER_PROTECTION',
+      'KEY_PERSON',
+      'BUSINESS_CONTINUITY',
+    ])
+    .optional(),
+  authorizedSolutionId: uuid.optional(),
+  authorizedProductId: uuid.optional(),
 });
+export const opportunityCurrencySchema = z.enum(['COP', 'USD']);
+export const opportunityForecastCategorySchema = z.enum(['PIPELINE', 'LIKELY', 'COMMIT', 'UPSIDE']);
+export const customerNeedKeySchema = z.enum([
+  'FAMILY_PROTECTION',
+  'INCOME_PROTECTION',
+  'EDUCATION',
+  'RETIREMENT_PENSION_GAP',
+  'CAPITAL_ACCUMULATION',
+  'ACCIDENT_PROTECTION',
+  'CRITICAL_ILLNESS',
+  'CANCER_PROTECTION',
+  'BUSINESS_PARTNER_PROTECTION',
+  'KEY_PERSON',
+  'BUSINESS_CONTINUITY',
+]);
+export const moneyAmountSchema = z
+  .string()
+  .regex(/^\d{1,17}(?:\.\d{1,2})?$/, 'Monto monetario inválido')
+  .refine((value) => !/^0+(?:\.0{1,2})?$/.test(value), 'El monto debe ser mayor que cero');
+const opportunityFinancialFields = {
+  amount: moneyAmountSchema.nullable().optional(),
+  currency: opportunityCurrencySchema.nullable().optional(),
+  expectedCloseDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha de cierre esperada inválida')
+    .nullable()
+    .optional(),
+  probability: z.coerce.number().min(0).max(100).nullable().optional(),
+  forecastCategory: opportunityForecastCategorySchema.nullable().optional(),
+};
 export const createOpportunitySchema = z.object({
   prospectId: uuid,
   title: plainText(160),
   priority: crmPriority.default('MEDIUM'),
+  customerNeedKey: customerNeedKeySchema.nullable().optional(),
+  authorizedSolutionId: uuid.nullable().optional(),
+  authorizedProductId: uuid.nullable().optional(),
+  ...opportunityFinancialFields,
+});
+export const updateOpportunityCommercialContextSchema = z
+  .object({
+    customerNeedKey: customerNeedKeySchema.nullable().optional(),
+    authorizedSolutionId: uuid.nullable().optional(),
+    authorizedProductId: uuid.nullable().optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, 'Sin cambios de contexto comercial');
+export const updateOpportunityFinancialsSchema = z.object({
+  ...opportunityFinancialFields,
+  reason: optionalPlainText(500),
 });
 export const moveOpportunityStageSchema = z.object({
   stageId: uuid,
@@ -259,3 +322,279 @@ export const createCompanySchema = z.object({
 });
 export type CrmProspectListQuery = z.infer<typeof crmProspectListQuerySchema>;
 export type OpportunityListQuery = z.infer<typeof opportunityListQuerySchema>;
+
+export const henryIntentionSchema = z.enum([
+  'pension',
+  'educacion',
+  'patrimonio',
+  'proteccion-familiar',
+  'accidentes',
+  'empresarios',
+  'socios',
+  'socio-unico',
+  'consultores',
+  'hablar-con-asesor',
+  'agendar',
+  'otra-consulta',
+]);
+
+export const henryPageContextSchema = z
+  .object({
+    pageType: z.enum([
+      'public-home',
+      'public-solution',
+      'henry-full',
+      'dashboard',
+      'prospect-list',
+      'prospect-detail',
+      'company-detail',
+      'pipeline',
+      'tasks',
+      'agenda',
+      'communications',
+      'automations',
+      'analytics',
+      'knowledge',
+      'training',
+      'clients',
+      'companies',
+      'consultants',
+      'meetings',
+      'administration',
+      'henry-admin',
+      'other',
+    ]),
+    section: slug(80).optional(),
+    intentHint: slug(80).optional(),
+    entityType: z.enum(['prospect', 'company', 'opportunity']).optional(),
+    entityId: uuid.optional(),
+    selectedStage: slug(80).optional(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (Boolean(value.entityType) !== Boolean(value.entityId)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'entityType y entityId deben enviarse juntos',
+      });
+    }
+    if (value.entityType && !['prospect-detail', 'company-detail'].includes(value.pageType)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'La entidad no corresponde al tipo de página',
+      });
+    }
+  });
+
+export const createHenryConversationSchema = z.object({
+  channel: z.literal('WEB').default('WEB'),
+  consent: z.object({
+    accepted: z.literal(true, {
+      errorMap: () => ({ message: 'El consentimiento es obligatorio' }),
+    }),
+    privacyVersion: slug(40),
+  }),
+  entryPoint: slug(80).default('henry'),
+  pageContext: henryPageContextSchema.optional(),
+});
+export const sendHenryMessageSchema = z.object({
+  messageId: uuid,
+  content: plainText(4000),
+  pageContext: henryPageContextSchema.optional(),
+});
+export const henryConversationListSchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25),
+  status: z.enum(['ACTIVE', 'WAITING_HUMAN', 'CLOSED', 'BLOCKED']).optional(),
+  channel: z.enum(['WEB', 'WHATSAPP', 'EMAIL', 'VOICE']).optional(),
+  escalated: z
+    .enum(['true', 'false'])
+    .transform((value) => value === 'true')
+    .optional(),
+  search: z.string().trim().max(120).optional(),
+});
+export const requestEscalationSchema = z.object({
+  reason: z.enum([
+    'USER_REQUEST',
+    'SENSITIVE_CONTEXT',
+    'LOW_CONFIDENCE',
+    'UNSUPPORTED_INTENT',
+    'REPEATED_ERROR',
+    'HIGH_VALUE_CASE',
+    'AUTOMATION_LIMIT',
+    'POLICY',
+  ]),
+  summary: plainText(1200),
+});
+
+export type CreateHenryConversationInput = z.infer<typeof createHenryConversationSchema>;
+export type SendHenryMessageInput = z.infer<typeof sendHenryMessageSchema>;
+export type HenryConversationListInput = z.infer<typeof henryConversationListSchema>;
+export type HenryPageContextInput = z.infer<typeof henryPageContextSchema>;
+
+export const calendarAvailabilityQuerySchema = z.object({
+  timeMin: isoDate,
+  timeMax: isoDate,
+  durationMinutes: z.coerce.number().int().min(15).max(480).default(45),
+  timezone: z.string().trim().min(1).max(100).default('America/Bogota'),
+});
+export const calendarEventListQuerySchema = z.object({
+  timeMin: isoDate.optional(),
+  timeMax: isoDate.optional(),
+});
+export const calendarTeamAvailabilityQuerySchema = calendarAvailabilityQuerySchema.extend({
+  userIds: z.preprocess(
+    (value) => (typeof value === 'string' ? value.split(',').filter(Boolean) : value),
+    z.array(uuid).min(1).max(20),
+  ),
+});
+export const calendarTeamEventsQuerySchema = calendarEventListQuerySchema.extend({ userId: uuid });
+export const calendarTeamMembershipSchema = z.object({ managerId: uuid }).strict();
+export const calendarAvailabilityRuleSchema = z.object({
+  timezone: z.string().trim().min(1).max(100),
+  workingDays: z.array(z.number().int().min(1).max(7)).min(1).max(7),
+  workStart: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+  workEnd: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+  minimumNoticeMinutes: z.number().int().min(0).max(43_200),
+  defaultMeetingDuration: z.number().int().min(15).max(480),
+  bufferBeforeMinutes: z.number().int().min(0).max(240),
+  bufferAfterMinutes: z.number().int().min(0).max(240),
+  maximumFutureBookingDays: z.number().int().min(1).max(730),
+});
+const calendarAttendeeSchema = z.object({ email: z.string().trim().email().max(254) }).strict();
+export const createCalendarEventSchema = z
+  .object({
+    title: plainText(240),
+    description: optionalPlainText(2000),
+    start: isoDate,
+    end: isoDate,
+    timezone: z.string().trim().min(1).max(100),
+    attendees: z.array(calendarAttendeeSchema).max(50).default([]),
+    location: optionalPlainText(500),
+    createConference: z.boolean().default(false),
+    reminders: z
+      .array(
+        z.object({
+          method: z.enum(['email', 'popup']),
+          minutes: z.number().int().min(0).max(40_320),
+        }),
+      )
+      .max(5)
+      .optional(),
+    prospectId: uuid.optional(),
+    companyId: uuid.optional(),
+    opportunityId: uuid.optional(),
+    conversationId: uuid.optional(),
+    calendarOwnerUserId: uuid.optional(),
+    assignedConsultantId: uuid.optional(),
+    confirmedByUser: z.literal(true),
+    sendUpdates: z.enum(['all', 'externalOnly', 'none']).default('all'),
+  })
+  .refine((v) => new Date(v.end) > new Date(v.start), {
+    message: 'El fin debe ser posterior al inicio',
+    path: ['end'],
+  });
+export const updateCalendarEventSchema = z
+  .object({
+    title: plainText(240).optional(),
+    description: optionalPlainText(2000),
+    start: isoDate.optional(),
+    end: isoDate.optional(),
+    timezone: z.string().trim().min(1).max(100).optional(),
+    attendees: z.array(calendarAttendeeSchema).max(50).optional(),
+    location: optionalPlainText(500),
+    createConference: z.boolean().optional(),
+    confirmedByUser: z.literal(true),
+    sendUpdates: z.enum(['all', 'externalOnly', 'none']).default('all'),
+  })
+  .refine((v) => !v.start || !v.end || new Date(v.end) > new Date(v.start), {
+    message: 'El fin debe ser posterior al inicio',
+    path: ['end'],
+  });
+export const cancelCalendarEventSchema = z.object({
+  reason: plainText(500),
+  confirmedByUser: z.literal(true),
+  sendUpdates: z.enum(['all', 'externalOnly', 'none']).default('all'),
+});
+export const selectCalendarSchema = z.object({ calendarId: z.string().trim().min(1).max(512) });
+
+export type CalendarAvailabilityQuery = z.infer<typeof calendarAvailabilityQuerySchema>;
+export type CreateCalendarEventInput = z.infer<typeof createCalendarEventSchema>;
+export type UpdateCalendarEventInput = z.infer<typeof updateCalendarEventSchema>;
+
+const meetingRelations = {
+  calendarEventLinkId: uuid.optional(),
+  prospectId: uuid.optional(),
+  companyId: uuid.optional(),
+  opportunityId: uuid.optional(),
+  conversationId: uuid.optional(),
+  assignedConsultantId: uuid.optional(),
+};
+export const createMeetingSchema = z
+  .object({
+    title: plainText(240),
+    description: optionalPlainText(2000),
+    scheduledStartAt: isoDate,
+    scheduledEndAt: isoDate,
+    timezone: z.string().trim().min(1).max(100),
+    ownerUserId: uuid.optional(),
+    ...meetingRelations,
+    joinPolicy: z.enum(['AUTHENTICATED', 'INVITED']).default('AUTHENTICATED'),
+    guestAccessPolicy: z.enum(['DISABLED', 'SIGNED_INVITATION']).default('SIGNED_INVITATION'),
+    allowGuestBeforeHost: z.boolean().default(false),
+    joinEarlyMinutes: z.number().int().min(0).max(240).default(15),
+    joinLateMinutes: z.number().int().min(0).max(1440).default(30),
+    lobbyRequired: z.boolean().default(true),
+    confirmedByUser: z.literal(true),
+  })
+  .strict()
+  .refine((v) => new Date(v.scheduledEndAt) > new Date(v.scheduledStartAt), {
+    message: 'El fin debe ser posterior al inicio',
+    path: ['scheduledEndAt'],
+  });
+export const updateMeetingSchema = z
+  .object({
+    title: plainText(240).optional(),
+    description: optionalPlainText(2000),
+    scheduledStartAt: isoDate.optional(),
+    scheduledEndAt: isoDate.optional(),
+    timezone: z.string().trim().min(1).max(100).optional(),
+    assignedConsultantId: uuid.optional(),
+    confirmedByUser: z.literal(true),
+  })
+  .strict()
+  .refine(
+    (v) =>
+      !v.scheduledStartAt ||
+      !v.scheduledEndAt ||
+      new Date(v.scheduledEndAt) > new Date(v.scheduledStartAt),
+    { message: 'El fin debe ser posterior al inicio', path: ['scheduledEndAt'] },
+  );
+export const cancelMeetingSchema = z
+  .object({ reason: plainText(500), confirmedByUser: z.literal(true) })
+  .strict();
+export const meetingInvitationSchema = z
+  .object({
+    expectedEmail: z.string().trim().email().max(254).optional(),
+    displayName: optionalPlainText(120),
+    expiresAt: isoDate,
+  })
+  .strict();
+export const publicMeetingJoinSchema = z
+  .object({ token: z.string().min(32).max(512), displayName: plainText(120).optional() })
+  .strict();
+export const meetingListQuerySchema = z.object({
+  ownerUserId: uuid.optional(),
+  from: isoDate.optional(),
+  to: isoDate.optional(),
+  status: z.enum(['SCHEDULED', 'ACTIVE', 'COMPLETED', 'CANCELLED', 'FAILED']).optional(),
+});
+export const meetingProviderEventSchema = z
+  .object({
+    meetingId: uuid,
+    providerEventId: z.string().trim().min(8).max(180),
+    type: z.enum(['STARTED', 'JOINED', 'LEFT', 'ENDED']),
+    occurredAt: isoDate,
+    participantExternalId: z.string().trim().max(180).optional(),
+  })
+  .strict();

@@ -4,6 +4,7 @@
 .env.*
 !.env.example
 node_modules
+**/node_modules
 .pnpm-store
 .turbo
 .next
@@ -13,4 +14,5 @@ backups
 data
 logs
 *.log
+*.rdb
 *.tsbuildinfo

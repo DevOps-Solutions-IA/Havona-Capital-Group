@@ -8,6 +8,7 @@ FROM base AS dependencies
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/worker/package.json apps/worker/package.json
 COPY packages/config/package.json packages/config/package.json
+COPY packages/database/package.json packages/database/package.json
 COPY packages/shared/package.json packages/shared/package.json
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 
@@ -17,7 +18,7 @@ CMD ["pnpm", "--filter", "@havona/worker", "dev"]
 
 FROM dependencies AS build
 COPY . .
-RUN pnpm --filter @havona/config build && pnpm --filter @havona/shared build && pnpm --filter @havona/worker build
+RUN pnpm --filter @havona/config build && pnpm --filter @havona/database build && pnpm --filter @havona/shared build && pnpm --filter @havona/worker build
 
 FROM node:22-alpine AS production
 ENV NODE_ENV=production

@@ -1,5 +1,19 @@
 # PLAN DE FASES — HAVONA CAPITAL GROUP
 
+> Pre-cierre Fase F: Opportunity Financial Enrichment incorpora valor comercial, moneda, fecha esperada, probability manual, forecast conservador, provenance e historia. No habilita Fase G, FX ni contabilidad.
+>
+> Pre-cierre Fase G: el código de Resend, estados reales, webhook idempotente y revalidación PALIG
+> queda sujeto a CI y validación externa. Sin dominio/sender/webhook/E2E demostrados el estado es
+> `CODE READY / EXTERNAL VALIDATION PENDING`; no habilita Fase H.
+
+> Fase 8 en construcción: Knowledge Core, RAG trazable, Training Core y memoria gobernada amplían el único Henry Core. El PR permanece Draft y no constituye release.
+
+> Pre-cierre Fase B en construcción: Email Template Core gobierna templates, versiones, variantes,
+> drafts y snapshots; Communications Core conserva la exclusividad del envío.
+
+> Pre-cierre Fase D en construcción: Henry opera drafts y envíos gobernados con confirmación,
+> idempotencia y scheduling corporativo; Communications y Automations conservan la ejecución.
+
 Todas las fases adoptan **HAVONA CAPITAL GROUP** como nombre corporativo oficial. La Home aprobada
 en Fase 1 define el ADN visual que deben interpretar —sin copiar composiciones literalmente— CRM,
 Henry, Agenda, Havona Meet, administración, dashboards, portal cliente, academia, mobile y módulos
@@ -130,6 +144,16 @@ Versión: `v0.3.0`
 
 ## Fase 3 — Henry web
 
+**Estado: EN CONSTRUCCIÓN**
+
+Rama: `feature/fase-03-henry-web`
+
+La arquitectura, seguridad, dominio conversacional, integración CRM y límites se definen en
+`docs/FASE_3_HENRY_WEB.md`. Las ampliaciones autorizadas incorporan voz web y HAVONA Calendar Core
+con Google Calendar. Calendar Core es transversal a Agenda, CRM, Henry, gerentes, futuras
+automatizaciones y Portal; Henry es un consumidor y no el propietario de la agenda. WhatsApp,
+email conversacional y Havona Meet permanecen fuera de alcance.
+
 Entregables:
 
 - Chat web.
@@ -140,17 +164,20 @@ Entregables:
 - Herramientas.
 - Escalamiento.
 - Auditoría.
+- Agenda Google: OAuth, FreeBusy, citas, sincronización, UI y tools confirmables.
 
 Versión: `v0.4.0`
 
-## Fase 4 — Agenda y Havona Meet
+## Fase 4 — Havona Meet y automatización de citas
+
+HAVONA Meet Core se implementa como motor corporativo mediante `MeetingProvider` y Jitsi, con
+reuniones vinculables a Agenda, CRM y Henry, acceso interno RBAC, invitados firmados y sala web
+real. La validación Jitsi externa se ejecutará en VPS/preproducción cuando exista infraestructura
+autorizada; no se simularán videollamadas durante desarrollo.
 
 Entregables:
 
-- Disponibilidad.
-- Citas.
-- Reagendamiento.
-- Cancelación.
+- Evolución de disponibilidad y citas sobre la Agenda Google entregada en Fase 3.
 - Jitsi.
 - Creación de salas.
 - Recordatorios.
@@ -160,6 +187,13 @@ Entregables:
 Versión: `v0.5.0`
 
 ## Fase 5 — WhatsApp y correo
+
+**Estado: EN CONSTRUCCIÓN TÉCNICA EN PR #4**
+
+La ampliación autorizada implementa HAVONA Communications Core como motor omnicanal corporativo,
+independiente de Henry y reutilizable desde CRM, Portal, operación humana y automatizaciones
+futuras. Meta WhatsApp y Resend son providers iniciales; sus validaciones externas requieren
+cuentas, dominios y webhooks autorizados y se reportan separadamente de la implementación técnica.
 
 Entregables:
 
@@ -175,6 +209,12 @@ Versión: `v0.6.0`
 
 ## Fase 6 — Seguimientos inteligentes
 
+**Estado: EN CONSTRUCCIÓN TÉCNICA EN PR #4**
+
+Se implementa HAVONA Automations Core como dominio corporativo transversal con event bus, outbox,
+workflows versionados, scheduler BullMQ, cadencias, suppression, approvals y acciones allowlisted.
+Henry aporta razonamiento controlado; el motor conserva la decisión y ejecución determinística.
+
 Entregables:
 
 - Secuencias.
@@ -189,6 +229,13 @@ Entregables:
 Versión: `v0.7.0`
 
 ## Fase 7 — Analítica
+
+**Estado: EN CONSTRUCCIÓN TÉCNICA EN PR #4**
+
+La ampliación autorizada implementa HAVONA Enterprise Analytics & Commercial Intelligence Core
+como capa transversal independiente de Henry para calcular hechos. Incluye catálogo semántico,
+tiempo explícito, embudo, riesgo explicable, prioridades, objetivos, calidad de datos, métricas
+operativas, herramientas Henry y Command Center con RBAC.
 
 Entregables:
 
@@ -216,3 +263,9 @@ Posibles módulos:
 - Modelos predictivos.
 - Distribución automática.
 - Infraestructura distribuida.
+
+## Addendum pre-cierre — PALIG Product & Need Alignment
+
+El gate transversal exclusivo Pan-American Life agrega catálogo estructural DRAFT, contexto
+nullable en Opportunity y autorización server-side sin reabrir el enriquecimiento financiero ni
+ingerir todavía el corpus documental privado.

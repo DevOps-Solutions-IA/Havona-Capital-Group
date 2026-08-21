@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import {
   Activity,
   BriefcaseBusiness,
+  Bot,
   Building2,
   CheckSquare2,
   ChevronDown,
@@ -20,10 +21,20 @@ import {
   ContactRound,
   UserSearch,
   Users,
+  CalendarDays,
+  Video,
+  MessagesSquare,
+  Workflow,
+  ChartNoAxesCombined,
+  BookOpen,
+  GraduationCap,
+  MailCheck,
   X,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { BrandMark } from './brand-mark';
+import { HenryGlobalAssistant } from './henry/henry-global-assistant';
+import type { HenryExperienceRole } from '@/lib/henry';
 const links = [
   { href: '/dashboard', label: 'Resumen', icon: LayoutDashboard },
   {
@@ -40,9 +51,38 @@ const links = [
   },
   { href: '/crm/pipeline', label: 'Pipeline', icon: Columns3, permission: 'crm.read_assigned' },
   { href: '/crm/tareas', label: 'Tareas', icon: CheckSquare2, permission: 'crm.tasks.own' },
+  { href: '/agenda', label: 'Agenda', icon: CalendarDays, permission: 'calendar.read' },
+  { href: '/reuniones', label: 'HAVONA Meet', icon: Video, permission: 'meeting.read' },
+  {
+    href: '/comunicaciones',
+    label: 'Comunicaciones',
+    icon: MessagesSquare,
+    permission: 'communications.read',
+  },
+  {
+    href: '/comunicaciones/plantillas',
+    label: 'Plantillas email',
+    icon: MailCheck,
+    permission: 'email_templates.read',
+  },
+  {
+    href: '/automatizaciones',
+    label: 'Automatizaciones',
+    icon: Workflow,
+    permission: 'automations.read',
+  },
+  {
+    href: '/analitica',
+    label: 'Inteligencia comercial',
+    icon: ChartNoAxesCombined,
+    permission: 'analytics.read',
+  },
+  { href: '/conocimiento', label: 'Conocimiento', icon: BookOpen, permission: 'knowledge.read' },
+  { href: '/formacion', label: 'Formación', icon: GraduationCap, permission: 'training.read' },
   { href: '/crm/clientes', label: 'Clientes', icon: ContactRound, permission: 'crm.read_assigned' },
   { href: '/crm/empresas', label: 'Empresas', icon: Building2, permission: 'crm.read_all' },
   { href: '/crm/consultores', label: 'Consultores', icon: UserRound, permission: 'crm.assign' },
+  { href: '/administracion-henry', label: 'Henry', icon: Bot, permission: 'henry.read_assigned' },
   { href: '/usuarios', label: 'Usuarios', icon: Users, permission: 'users.read' },
   { href: '/roles', label: 'Roles y permisos', icon: ShieldCheck, permission: 'roles.read' },
   { href: '/auditoria', label: 'Auditoría', icon: FileClock, permission: 'audit.read' },
@@ -66,6 +106,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     );
   if (!user) return null;
   const nav = links.filter((item) => !item.permission || can(item.permission));
+  const roleNames = user.roles.map((role) => (typeof role === 'string' ? role : role.name));
+  const henryRole: HenryExperienceRole = roleNames.includes('SUPER_ADMIN')
+    ? 'SUPER_ADMIN'
+    : roleNames.includes('ADMIN')
+      ? 'ADMIN'
+      : roleNames.includes('GERENTE')
+        ? 'MANAGER'
+        : roleNames.includes('CONSULTOR')
+          ? 'CONSULTANT'
+          : 'CLIENT';
   return (
     <div className="min-h-screen lg:grid lg:grid-cols-[270px_1fr]">
       <button
@@ -152,6 +202,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
         <main className="mx-auto max-w-[1500px] p-5 pt-8 lg:p-8">{children}</main>
+        <HenryGlobalAssistant internal storageScope={`internal_${user.id}`} role={henryRole} />
       </div>
     </div>
   );

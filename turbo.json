@@ -15,6 +15,12 @@
     "typecheck": {
       "dependsOn": ["^build"]
     },
+    "@havona/database#lint": {
+      "dependsOn": ["build"]
+    },
+    "@havona/database#typecheck": {
+      "dependsOn": ["build"]
+    },
     "test": {
       "dependsOn": ["^build"],
       "outputs": ["coverage/**"]

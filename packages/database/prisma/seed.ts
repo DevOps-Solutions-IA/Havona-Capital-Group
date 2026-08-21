@@ -1,4 +1,6 @@
 import { PrismaClient } from '@prisma/client';
+import { CORPORATE_EMAIL_LIBRARY } from '../../contracts/src/email-library';
+import { createHash } from 'node:crypto';
 import * as argon2 from 'argon2';
 const db = new PrismaClient();
 const permissions = [
@@ -23,6 +25,60 @@ const permissions = [
   ['crm.notes', 'Gestionar notas e interacciones internas'],
   ['crm.close', 'Cerrar oportunidades'],
   ['crm.dashboard', 'Consultar métricas comerciales globales'],
+  ['henry.read_all', 'Consultar todas las conversaciones de Henry'],
+  ['henry.read_assigned', 'Consultar conversaciones de Henry asignadas'],
+  ['henry.dashboard', 'Consultar métricas reales de Henry'],
+  ['henry.escalations.manage', 'Gestionar escalamientos de Henry'],
+  ['calendar.connect', 'Conectar y seleccionar Google Calendar'],
+  ['calendar.read', 'Consultar agenda y disponibilidad propias'],
+  ['calendar.manage_own', 'Crear, reprogramar y cancelar citas propias'],
+  ['calendar.manage_team', 'Gestionar agenda del equipo autorizado'],
+  ['meeting.read', 'Consultar reuniones autorizadas'],
+  ['meeting.create', 'Crear reuniones corporativas'],
+  ['meeting.manage_own', 'Gestionar reuniones propias'],
+  ['meeting.manage_team', 'Gestionar reuniones del equipo autorizado'],
+  ['meeting.join', 'Ingresar a reuniones autorizadas'],
+  ['meeting.admin', 'Administrar configuración de reuniones'],
+  ['communications.read', 'Consultar comunicaciones autorizadas'],
+  ['communications.send', 'Enviar comunicaciones autorizadas'],
+  ['communications.manage_own', 'Gestionar comunicaciones propias o asignadas'],
+  ['communications.manage_team', 'Gestionar comunicaciones del equipo autorizado'],
+  ['communications.assign', 'Asignar comunicaciones a responsables autorizados'],
+  ['communications.takeover', 'Transferir atención entre humano y Henry'],
+  ['communications.link_crm', 'Vincular comunicaciones con CRM autorizado'],
+  ['communications.admin', 'Administrar Communications Core'],
+  ['automations.read', 'Consultar workflows y ejecuciones autorizadas'],
+  ['automations.create', 'Crear workflows estructurados'],
+  ['automations.manage_own', 'Gestionar automatizaciones propias'],
+  ['automations.manage_team', 'Gestionar automatizaciones del equipo autorizado'],
+  ['automations.activate', 'Activar, pausar y archivar workflows'],
+  ['automations.approve', 'Resolver aprobaciones de automatización asignadas'],
+  ['automations.admin', 'Administrar HAVONA Automations Core'],
+  ['analytics.read', 'Consultar analítica comercial autorizada'],
+  ['analytics.read_team', 'Consultar analítica del equipo autorizado'],
+  ['analytics.read_all', 'Consultar analítica comercial global'],
+  ['analytics.goals.manage', 'Crear y actualizar objetivos comerciales'],
+  ['analytics.export', 'Exportar datasets analíticos autorizados'],
+  ['analytics.admin', 'Administrar HAVONA Analytics Core'],
+  ['knowledge.read', 'Consultar conocimiento corporativo autorizado'],
+  ['knowledge.upload', 'Crear documentos y versiones de conocimiento'],
+  ['knowledge.review', 'Revisar conocimiento procesado'],
+  ['knowledge.publish', 'Aprobar, publicar y deprecar conocimiento'],
+  ['knowledge.admin', 'Administrar colecciones y permisos de conocimiento'],
+  ['training.read', 'Consultar formación asignada'],
+  ['training.manage', 'Administrar programas y evaluaciones'],
+  ['training.read_team', 'Consultar progreso formativo del equipo autorizado'],
+  ['memory.manage_own', 'Consultar y gobernar memoria propia de Henry'],
+  ['email_templates.read', 'Consultar catálogo y plantillas de correo autorizadas'],
+  ['email_templates.create_personal', 'Crear variantes personales de plantillas corporativas'],
+  ['email_templates.edit_personal', 'Editar plantillas y variantes personales propias'],
+  ['email_templates.manage_corporate', 'Crear, versionar y activar plantillas corporativas'],
+  ['email_templates.approve', 'Aprobar versiones corporativas de correo'],
+  [
+    'email_templates.legal_approve',
+    'Registrar revisión jurídica humana de plantillas corporativas',
+  ],
+  ['email_templates.preview', 'Crear, editar y previsualizar borradores autorizados'],
 ] as const;
 const grants: Record<string, string[]> = {
   SUPER_ADMIN: permissions.map(([key]) => key),
@@ -42,6 +98,47 @@ const grants: Record<string, string[]> = {
     'crm.notes',
     'crm.close',
     'crm.dashboard',
+    'henry.read_all',
+    'henry.read_assigned',
+    'henry.dashboard',
+    'henry.escalations.manage',
+    'calendar.connect',
+    'calendar.read',
+    'calendar.manage_own',
+    'calendar.manage_team',
+    'meeting.read',
+    'meeting.create',
+    'meeting.manage_own',
+    'meeting.manage_team',
+    'meeting.join',
+    'communications.read',
+    'communications.send',
+    'communications.manage_own',
+    'communications.manage_team',
+    'communications.assign',
+    'communications.takeover',
+    'communications.link_crm',
+    'automations.read',
+    'automations.create',
+    'automations.manage_own',
+    'automations.manage_team',
+    'automations.activate',
+    'automations.approve',
+    'analytics.read',
+    'analytics.read_team',
+    'analytics.goals.manage',
+    'analytics.export',
+    'knowledge.read',
+    'knowledge.upload',
+    'knowledge.review',
+    'training.read',
+    'training.manage',
+    'training.read_team',
+    'memory.manage_own',
+    'email_templates.read',
+    'email_templates.create_personal',
+    'email_templates.edit_personal',
+    'email_templates.preview',
   ],
   CONSULTOR: [
     'settings.read',
@@ -51,6 +148,30 @@ const grants: Record<string, string[]> = {
     'crm.tasks.own',
     'crm.notes',
     'crm.close',
+    'henry.read_assigned',
+    'calendar.connect',
+    'calendar.read',
+    'calendar.manage_own',
+    'meeting.read',
+    'meeting.create',
+    'meeting.manage_own',
+    'meeting.join',
+    'communications.read',
+    'communications.send',
+    'communications.manage_own',
+    'communications.takeover',
+    'communications.link_crm',
+    'automations.read',
+    'automations.manage_own',
+    'automations.approve',
+    'analytics.read',
+    'knowledge.read',
+    'training.read',
+    'memory.manage_own',
+    'email_templates.read',
+    'email_templates.create_personal',
+    'email_templates.edit_personal',
+    'email_templates.preview',
   ],
 };
 async function main() {
@@ -86,6 +207,25 @@ async function main() {
       description: 'Duración de sesiones en horas',
     },
   });
+  await db.systemSetting.upsert({
+    where: { key: 'calendar.availability_defaults' },
+    update: {},
+    create: {
+      key: 'calendar.availability_defaults',
+      value: {
+        timezone: 'America/Bogota',
+        workingDays: [1, 2, 3, 4, 5],
+        workStart: '08:00',
+        workEnd: '18:00',
+        minimumNoticeMinutes: 120,
+        defaultMeetingDuration: 45,
+        bufferBeforeMinutes: 15,
+        bufferAfterMinutes: 15,
+        maximumFutureBookingDays: 90,
+      },
+      description: 'Reglas corporativas predeterminadas de disponibilidad',
+    },
+  });
   for (const [key, name] of [
     ['direct', 'Directo'],
     ['organic', 'Orgánico'],
@@ -117,6 +257,59 @@ async function main() {
       update: { name, position: index + 1, isActive: true },
       create: { key, name, position: index + 1 },
     });
+  const customerNeeds = [
+    ['FAMILY_PROTECTION', 'Protección familiar'],
+    ['INCOME_PROTECTION', 'Protección de ingresos'],
+    ['EDUCATION', 'Educación'],
+    ['RETIREMENT_PENSION_GAP', 'Retiro y brecha pensional'],
+    ['CAPITAL_ACCUMULATION', 'Acumulación de capital'],
+    ['ACCIDENT_PROTECTION', 'Protección ante accidentes'],
+    ['CRITICAL_ILLNESS', 'Enfermedades graves'],
+    ['CANCER_PROTECTION', 'Protección frente al cáncer'],
+    ['BUSINESS_PARTNER_PROTECTION', 'Protección entre socios'],
+    ['KEY_PERSON', 'Persona clave'],
+    ['BUSINESS_CONTINUITY', 'Continuidad empresarial'],
+  ] as const;
+  for (const [key, name] of customerNeeds)
+    await db.customerNeed.upsert({
+      where: { key },
+      update: { name },
+      create: { key, name, status: 'DRAFT' },
+    });
+  for (const [key, name] of [
+    ['palig.vida-flex-max', 'Vida Flex MAX'],
+    ['palig.accidentes-personales', 'Accidentes Personales'],
+    ['palig.enfermedades-graves', 'Enfermedades Graves'],
+    ['palig.seguro-individual-cancer', 'Seguro Individual de Cáncer'],
+  ] as const)
+    await db.authorizedProduct.upsert({
+      where: { key },
+      update: { name },
+      create: {
+        key,
+        name,
+        carrier: 'PAN_AMERICAN_LIFE_COLOMBIA',
+        status: 'DRAFT',
+        reviewNote: 'CATALOG_REVIEW_REQUIRED; sin contenido contractual cargado.',
+      },
+    });
+  for (const [key, name] of [
+    ['consultative.education', 'Planeación consultiva para educación'],
+    ['consultative.retirement', 'Planeación consultiva para retiro y brecha pensional'],
+    ['consultative.business-partners', 'Protección consultiva entre socios'],
+    ['consultative.key-person', 'Protección consultiva de persona clave'],
+    ['consultative.business-continuity', 'Continuidad empresarial consultiva'],
+  ] as const)
+    await db.authorizedSolution.upsert({
+      where: { key },
+      update: { name },
+      create: {
+        key,
+        name,
+        status: 'DRAFT',
+        reviewNote: 'SOLUTION_MAPPING_REVIEW_REQUIRED; no implica producto autorizado.',
+      },
+    });
   const email = process.env.INITIAL_SUPER_ADMIN_EMAIL?.trim().toLowerCase();
   const password = process.env.INITIAL_SUPER_ADMIN_PASSWORD;
   const name = process.env.INITIAL_SUPER_ADMIN_NAME?.trim() || 'Super Administrador';
@@ -145,6 +338,234 @@ async function main() {
     update: {},
     create: { userId: user.id, roleId: role.id },
   });
+  for (const definition of CORPORATE_EMAIL_LIBRARY) {
+    let emailTemplate = await db.emailTemplate.findFirst({
+      where: { key: definition.key, locale: definition.locale, isCorporate: true },
+      include: { versions: { where: { version: definition.version }, take: 1 } },
+    });
+    const governance = {
+      allowedRoles: definition.allowedRoles,
+      automationPolicy: definition.automationPolicy,
+      automationEligible: definition.automationEligible,
+      autoSendPolicy: definition.autoSendPolicy,
+      approvalPolicy: definition.approvalPolicy,
+      requiredEvidence: definition.requiredEvidence,
+      triggerEvents: definition.triggerEvents,
+      stopEvents: definition.stopEvents,
+      followUpAction: definition.followUpAction,
+      cta: definition.cta,
+      allowedAttachments: definition.allowedAttachments,
+      attachmentRequired: definition.attachmentRequired,
+      calendarAware: definition.calendarAware,
+      meetingAware: definition.meetingAware,
+      knowledgeAware: definition.knowledgeAware,
+      editableSections: definition.editableSections,
+      lockedSections: definition.lockedSections,
+      legalPolicyReference: definition.legalPolicyReference,
+      consentPolicyReference: definition.consentPolicyReference,
+    };
+    if (!emailTemplate)
+      emailTemplate = await db.emailTemplate.create({
+        data: {
+          key: definition.key,
+          name: definition.name,
+          description: definition.description,
+          category: definition.category,
+          purpose: definition.purpose,
+          lifecycleStage: definition.lifecycleStage,
+          scope: 'CORPORATE',
+          locale: definition.locale,
+          status: 'REVIEW',
+          isCorporate: true,
+          tags: [definition.lifecycleStage.toLowerCase(), definition.cta.type.toLowerCase()],
+          governance,
+          contentOwner: definition.contentOwner,
+          createdById: user.id,
+          updatedById: user.id,
+        },
+        include: { versions: { where: { version: definition.version }, take: 1 } },
+      });
+    else
+      await db.emailTemplate.update({
+        where: { id: emailTemplate.id },
+        data: {
+          name: definition.name,
+          description: definition.description,
+          category: definition.category,
+          purpose: definition.purpose,
+          lifecycleStage: definition.lifecycleStage,
+          governance,
+          contentOwner: definition.contentOwner,
+          updatedById: user.id,
+        },
+      });
+    if (!emailTemplate.versions.length) {
+      const blocks = [
+        {
+          id: 'introduction',
+          type: 'INTRODUCTION',
+          mode: 'STRUCTURED_EDITABLE',
+          content: definition.introduction,
+        },
+        { id: 'body', type: 'BODY', mode: 'LOCKED', content: definition.body },
+        { id: 'personal-note', type: 'BODY', mode: 'FREE_EDITABLE', content: '<p></p>' },
+        {
+          id: 'cta',
+          type: 'CTA',
+          mode: 'STRUCTURED_EDITABLE',
+          content: `<p>${definition.cta.label}</p>`,
+        },
+        {
+          id: 'identity',
+          type: 'FOOTER',
+          mode: 'LOCKED',
+          content: '<p>HAVONA CAPITAL GROUP<br>{{consultant.fullName}}</p>',
+        },
+        ...(definition.classification === 'COMMERCIAL' || definition.classification === 'MARKETING'
+          ? [
+              {
+                id: 'unsubscribe',
+                type: 'UNSUBSCRIBE',
+                mode: 'LOCKED',
+                content: '<p>LEGAL_REVIEW_REQUIRED: commercial.unsubscribe</p>',
+              },
+            ]
+          : []),
+      ];
+      await db.emailTemplateVersion.create({
+        data: {
+          templateId: emailTemplate.id,
+          version: definition.version,
+          locale: definition.locale,
+          status: 'REVIEW',
+          subject: definition.subject,
+          preheader: definition.preheader,
+          blocks,
+          variableContract: {
+            required: definition.requiredVariables,
+            optional: definition.optionalVariables,
+          },
+          messageClassification: definition.classification,
+          subjectAlternatives: definition.subjectAlternatives,
+          contentPolicy: governance,
+          legalStatus: definition.legalStatus,
+          checksum: createHash('sha256')
+            .update(JSON.stringify({ definition, blocks }))
+            .digest('hex'),
+          createdById: user.id,
+        },
+      });
+    }
+  }
+  const templates = [
+    ['Seguimiento prospecto nuevo', 'PROSPECT_CREATED', 'Prospect'],
+    ['Recordatorio de cita', 'CALENDAR_EVENT_SCHEDULED', 'CalendarEventLink'],
+    ['Seguimiento post-cita', 'CALENDAR_AFTER_APPOINTMENT', 'CalendarEventLink'],
+    ['Reactivación de prospecto inactivo', 'PROSPECT_INACTIVE', 'Prospect'],
+    ['Escalamiento por cliente sin respuesta', 'COMMUNICATION_NO_REPLY', 'CommunicationThread'],
+    ['Notificación de entrega fallida', 'COMMUNICATION_DELIVERY_FAILED', 'CommunicationThread'],
+  ] as const;
+  for (const [workflowName, triggerType, entityType] of templates)
+    await db.automationWorkflow.upsert({
+      where: { name_version: { name: workflowName, version: 1 } },
+      update: {},
+      create: {
+        name: workflowName,
+        description: `Plantilla corporativa desactivada para ${workflowName.toLowerCase()}`,
+        status: 'DRAFT',
+        scope: 'TEAM',
+        version: 1,
+        createdById: user.id,
+        ownerUserId: user.id,
+        triggers: { create: { type: triggerType, definition: { entityType } } },
+        actions: {
+          create: {
+            stepOrder: 1,
+            type: 'CREATE_CRM_TASK',
+            definition: { title: workflowName, assignee: 'ENTITY_OWNER' },
+            approvalMode: 'AUTO',
+          },
+        },
+      },
+    });
+  const cadenceLibrary = [
+    [
+      'prospecting.followup_basic',
+      'Seguimiento básico de prospección',
+      'Seguimiento respetuoso después del primer contacto',
+    ],
+    [
+      'proposal.followup_basic',
+      'Seguimiento básico de propuesta',
+      'Seguimiento de una propuesta con evidencia de envío',
+    ],
+    [
+      'meeting.post_meeting',
+      'Seguimiento posterior a reunión',
+      'Continuidad posterior a una reunión confirmada',
+    ],
+    [
+      'documents.pending',
+      'Documentos pendientes',
+      'Solicitud controlada de documentación pendiente',
+    ],
+    ['service.review', 'Revisión de servicio', 'Seguimiento periódico de servicio autorizado'],
+    [
+      'reactivation.basic',
+      'Reactivación conservadora',
+      'Reactivación limitada de prospectos inactivos con consentimiento',
+    ],
+  ] as const;
+  for (const [key, cadenceName, purpose] of cadenceLibrary) {
+    const cadence = await db.communicationCadence.upsert({
+      where: { key },
+      update: { name: cadenceName, purpose },
+      create: { key, name: cadenceName, purpose, status: 'DRAFT', createdById: user.id },
+    });
+    const version = await db.cadenceVersion.findUnique({
+      where: { cadenceId_version: { cadenceId: cadence.id, version: 1 } },
+    });
+    if (!version)
+      await db.cadenceVersion.create({
+        data: {
+          cadenceId: cadence.id,
+          version: 1,
+          status: 'DRAFT',
+          allowedRoles: ['CONSULTOR', 'GERENTE', 'ADMIN', 'SUPER_ADMIN'],
+          channelPolicy: { channels: ['EMAIL'] },
+          enrollmentConditions: { consentRequired: true, duplicateActiveEnrollment: false },
+          stopConditions: [
+            'CUSTOMER_REPLIED',
+            'OPT_OUT',
+            'SUPPRESSED',
+            'HUMAN_TAKEOVER',
+            'THREAD_PAUSED',
+            'THREAD_CLOSED',
+            'OPPORTUNITY_CLOSED',
+            'MANUAL_STOP',
+          ],
+          approvalPolicy: 'APPROVAL_REQUIRED',
+          frequencyPolicy: { maxPerDay: 1, maxPerSevenDays: 3, minimumIntervalMinutes: 1440 },
+          sendingWindow: {
+            days: [1, 2, 3, 4, 5],
+            start: '08:00',
+            end: '18:00',
+            timezone: 'America/Bogota',
+          },
+          maxLifetimeDays: 30,
+          steps: {
+            create: {
+              stepOrder: 1,
+              type: 'END',
+              delayMinutes: 0,
+              approvalMode: 'HUMAN_ONLY',
+              requiredEvidence: [],
+              definition: { structuralOnly: true },
+            },
+          },
+        },
+      });
+  }
 }
 main()
   .catch((e) => {
