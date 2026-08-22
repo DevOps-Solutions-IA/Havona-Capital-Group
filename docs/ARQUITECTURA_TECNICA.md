@@ -1,10 +1,58 @@
 # ARQUITECTURA TÉCNICA — HAVONA CAPITAL GROUP
 
+> Opportunity conserva enriquecimiento financiero nullable e historia append-only. CRM es fuente, Outbox publica cambios, Analytics agrega por moneda y Henry consume Analytics. No existe motor FX o contable.
+
+> Knowledge Core es transversal y no depende de Henry. Storage, embeddings, recuperación autorizada, formación y memoria gobernada son dominios reutilizables; Henry los consume mediante tools y un único ContextAssembler.
+
+> Los originales de Knowledge usan `StorageProvider` y filesystem persistente content-addressed en producción. El staging calcula SHA-256 server-side, deduplica, aplica scan/review y solo entonces alimenta el pipeline existente; nunca publica automáticamente. Henry no conoce paths ni storage keys.
+
+> Las validaciones semánticas previas a publicación usan colecciones `henryEnabled=false` y versiones
+> `REVIEW`. Henry solo recupera `PUBLISHED` desde colecciones `henryEnabled=true`; el QA privado
+> reutiliza el mismo ranking bajo permiso administrativo sin abrir una ruta de consumo para Henry.
+
 ## 1. Enfoque
 
 HAVONA CAPITAL GROUP se construirá como un monorepo con monolito modular, preparado para separar servicios cuando el crecimiento lo requiera.
 
 ## 2. Aplicaciones
+
+HAVONA Meet Core es un dominio corporativo transversal. Agenda/Calendar, CRM, Henry, Portal y
+futuras automatizaciones consumen `MeetingService`, que delega en `MeetingProvider`; Jitsi es la
+implementación inicial. La dependencia permitida es Henry → Meet Core y Calendar → Meet Core.
+Meet Core nunca depende de Henry y Google Meet no se confunde con HAVONA Meet.
+
+HAVONA Communications Core es el dominio corporativo omnicanal transversal. CRM, Henry,
+consultores, gerentes, Portal, servicio al cliente y automatizaciones futuras consumen el servicio,
+que delega en `MessagingProvider` o `EmailProvider`. Meta WhatsApp y Resend son implementaciones
+iniciales. La dependencia permitida es Henry → Communications Core; Communications Core no depende
+de Henry y opera aunque la IA esté deshabilitada.
+
+HAVONA Email Template Core es la capa transversal de composición y gobierno de correo. CRM, Henry,
+Automations y las interfaces producen borradores/versiones mediante este núcleo; el núcleo entrega
+mensajes renderizados a Communications Core y nunca depende de Resend ni de otro provider.
+
+En la integración Resend de Fase G, BullMQ reclama el mensaje y realiza una revalidación final de
+recipient, consentimiento/suppression, template, adjuntos y Product/Need PALIG. El transporte
+compartido solo conoce HTTP, timeout, idempotencia y mapping seguro; el webhook Svix es la única
+fuente de `DELIVERED`, `BOUNCED` y `COMPLAINED`. `SENT` no equivale a entrega.
+
+HAVONA Henry Messaging Operator es una capa de orquestación dentro del único Henry Core. Resuelve
+intención y contexto, conserva el draft activo, exige confirmación ligada al snapshot y delega el
+dispatch a Communications Core y la programación a Automations Core. No contiene provider ni crea
+un agente de email independiente.
+
+HAVONA Automations Core es el motor corporativo transversal de workflows. CRM, Calendar, Meet y
+Communications publican eventos mediante un bus interno respaldado por transactional outbox;
+Automations Core decide enrollments, conditions, delays, approvals y actions allowlisted mediante
+BullMQ. Henry puede aportar razonamiento estructurado, pero no ejecuta providers ni sustituye el
+motor determinístico. La dependencia permitida es `Henry → Automations Core`; Automations Core no
+depende de providers externos concretos.
+
+HAVONA Enterprise Analytics & Commercial Intelligence Core es la capa semántica transversal que
+calcula hechos reproducibles desde CRM, Calendar, Meet, Communications, Automations y Henry. No
+depende de Henry: la dependencia correcta es `Henry → Analytics Core`. El catálogo centraliza
+fórmulas, fuentes, periodos, cobertura y versiones; PostgreSQL es la fuente inicial y los datos
+desconocidos nunca se convierten en cero.
 
 ### `apps/web`
 
@@ -46,6 +94,11 @@ Responsabilidades:
 - Integraciones.
 - Henry.
 - Configuración.
+
+La agenda se implementa como **HAVONA Calendar Core**, un módulo corporativo independiente de
+Henry. `CalendarService` y `CalendarProvider` son consumidos por Agenda Web, CRM, Henry, gerentes,
+workers/automatizaciones futuras y Portal. La dependencia permitida es `Henry → Calendar Core`;
+Calendar Core no depende de Henry.
 
 Tecnología:
 
@@ -202,3 +255,10 @@ Orden de separación futura:
 - Introducir microservicios.
 - Introducir Kubernetes.
 - Añadir proveedores sin justificación.
+
+## PALIG Product & Need Core
+
+PALIG Product & Need Core gobierna el único portafolio comercializable
+(`PAN_AMERICAN_LIFE_COLOMBIA`) y separa CustomerNeed, AuthorizedSolution, AuthorizedProduct y
+evidencia Knowledge. Las referencias de Opportunity son nullable para respetar discovery y no
+alteran el dominio financiero.

@@ -1,0 +1,3 @@
+ALTER TYPE "CommunicationMessageStatus" ADD VALUE IF NOT EXISTS 'SENDING';
+ALTER TYPE "CommunicationMessageStatus" ADD VALUE IF NOT EXISTS 'BOUNCED';
+ALTER TYPE "CommunicationMessageStatus" ADD VALUE IF NOT EXISTS 'COMPLAINED';
