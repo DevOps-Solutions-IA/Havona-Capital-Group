@@ -1,4 +1,5 @@
 import { ForbiddenException } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { MeetingService } from './meeting.service';
 describe('MeetingService RBAC y dominio', () => {
   const db: any = {
@@ -12,7 +13,7 @@ describe('MeetingService RBAC y dominio', () => {
     meetingAttendanceEvent: { upsert: jest.fn() },
     calendarEventLink: { findUnique: jest.fn() },
     meetingParticipant: { findUnique: jest.fn() },
-    meetingInvitation: { findUnique: jest.fn() },
+    meetingInvitation: { findUnique: jest.fn(), update: jest.fn() },
     user: { findUniqueOrThrow: jest.fn() },
   };
   const access: any = {
@@ -189,6 +190,60 @@ describe('MeetingService RBAC y dominio', () => {
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(provider.createMeeting).not.toHaveBeenCalled();
   });
+  it('consume una invitación pública al emitir un JWT GUEST', async () => {
+    const token = 'guest-certification-token-1234567890';
+    const tokenHash = createHash('sha256').update(token).digest('hex');
+
+    db.meetingInvitation.findUnique.mockResolvedValue({
+      id: '00000000-0000-4000-8000-000000000010',
+      meetingId: '00000000-0000-4000-8000-000000000011',
+      tokenHash,
+      status: 'ACTIVE',
+      usedAt: null,
+      expiresAt: new Date(Date.now() + 60000),
+      expectedEmail: null,
+      displayName: 'Invitado HAVONA',
+      meeting: {
+        id: '00000000-0000-4000-8000-000000000011',
+        providerMeetingId: 'havona-secure-room',
+        title: 'HAVONA Meet',
+        scheduledStartAt: new Date(Date.now() - 60000),
+        scheduledEndAt: new Date(Date.now() + 3600000),
+        status: 'ACTIVE',
+        lobbyRequired: true,
+        allowGuestBeforeHost: false,
+        joinEarlyMinutes: 15,
+        joinLateMinutes: 30,
+      },
+    });
+
+    provider.getJoinConfiguration.mockResolvedValue({
+      url: 'https://meet.havonacapitalgroup.com/havona-secure-room',
+      domain: 'meet.havonacapitalgroup.com',
+      roomName: 'havona-secure-room',
+      jwt: 'guest-jwt',
+      role: 'GUEST',
+      displayName: 'Invitado HAVONA',
+    });
+
+    const result = await service.guestJoin(token, undefined, {});
+
+    expect(result).toMatchObject({
+      role: 'GUEST',
+      roomName: 'havona-secure-room',
+    });
+
+    expect(provider.validateMeetingAccess).toHaveBeenCalled();
+
+    expect(db.meetingInvitation.update).toHaveBeenCalledWith({
+      where: { id: '00000000-0000-4000-8000-000000000010' },
+      data: {
+        usedAt: expect.any(Date),
+        status: 'USED',
+      },
+    });
+  });
+
   it('conserva actor, propietario y consultor asignado separados', async () => {
     db.meeting.findUnique.mockResolvedValue(null);
     access.resolveAssignedConsultant.mockResolvedValue('consultant');

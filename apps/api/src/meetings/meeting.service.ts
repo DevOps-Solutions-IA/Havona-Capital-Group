@@ -301,7 +301,7 @@ export class MeetingService {
     });
     if (!invitation || !safeHash(token, invitation.tokenHash))
       throw new MeetingError('MEETING_TOKEN_INVALID', 'Invitación inválida', 401);
-    if (invitation.status !== 'ACTIVE')
+    if (invitation.status !== 'ACTIVE' || invitation.usedAt)
       throw new MeetingError('MEETING_TOKEN_INVALID', 'Invitación revocada o utilizada', 401);
     if (invitation.expiresAt < new Date())
       throw new MeetingError('MEETING_TOKEN_EXPIRED', 'La invitación expiró', 401);
@@ -314,7 +314,7 @@ export class MeetingService {
     });
     await this.db.meetingInvitation.update({
       where: { id: invitation.id },
-      data: { usedAt: new Date() },
+      data: { usedAt: new Date(), status: 'USED' },
     });
     await this.audit.record('MEETING_GUEST_JOIN_GRANTED', 'Meeting', invitation.meetingId, ctx, {
       invitationId: invitation.id,
