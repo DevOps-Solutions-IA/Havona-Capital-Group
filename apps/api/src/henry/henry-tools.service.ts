@@ -211,6 +211,7 @@ const schemas = {
   search_knowledge: z.object({
     query: z.string().trim().min(2).max(500),
     historicalAt: z.string().datetime({ offset: true }).optional(),
+    evidenceLayer: z.enum(['PRODUCT_TRUTH', 'SALES_INTELLIGENCE', 'COMPLIANCE']).optional(),
   }),
   get_knowledge_document: z.object({ documentId: z.string().uuid() }),
   get_training_progress: z.object({}),
@@ -771,10 +772,18 @@ export class HenryToolsService {
     {
       name: 'search_knowledge',
       description:
-        'Busca exclusivamente conocimiento corporativo publicado y autorizado; devuelve evidencia y citas.',
-      parameters: objectSchema({ query: { type: 'string' }, historicalAt: { type: 'string' } }, [
-        'query',
-      ]),
+        'Busca conocimiento publicado y autorizado. Para consultas híbridas ejecuta una búsqueda SALES_INTELLIGENCE para técnica comercial y otra PRODUCT_TRUTH antes de afirmar datos de producto.',
+      parameters: objectSchema(
+        {
+          query: { type: 'string' },
+          historicalAt: { type: 'string' },
+          evidenceLayer: {
+            type: 'string',
+            enum: ['PRODUCT_TRUTH', 'SALES_INTELLIGENCE', 'COMPLIANCE'],
+          },
+        },
+        ['query'],
+      ),
     },
     {
       name: 'get_knowledge_document',

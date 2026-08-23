@@ -93,6 +93,10 @@ import { HenryPaligConsultativeService } from './henry/henry-palig-consultative.
 import { HenryCommercialBehaviorService } from './henry/henry-commercial-behavior.service';
 import { KnowledgeStagingService } from './knowledge/knowledge-staging.service';
 import { KnowledgePrivateQaService } from './knowledge/knowledge-private-qa.service';
+import {
+  HenryCapabilityRouter,
+  HenryToolAuthorizationService,
+} from './henry/henry-tool-orchestration.service';
 
 @Module({
   imports: [
@@ -138,6 +142,8 @@ import { KnowledgePrivateQaService } from './knowledge/knowledge-private-qa.serv
     HenryExpertCopilotService,
     HenryPaligConsultativeService,
     HenryCommercialBehaviorService,
+    HenryCapabilityRouter,
+    HenryToolAuthorizationService,
     ...HENRY_POLICY_PROVIDERS,
     HenryPolicyComposer,
     HenryPolicyEngine,

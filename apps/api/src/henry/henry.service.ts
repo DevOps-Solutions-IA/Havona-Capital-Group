@@ -29,6 +29,13 @@ import {
   HenryCommercialBehaviorService,
   type HenryCommercialMemory,
 } from './henry-commercial-behavior.service';
+import { HenryEvidenceContext } from './henry-evidence-context';
+import {
+  HenryCapabilityRouter,
+  HenryToolAuthorizationService,
+  HenryToolBudget,
+  HenryToolCallCache,
+} from './henry-tool-orchestration.service';
 
 type Actor = { id: string; permissions: string[] };
 
@@ -48,6 +55,8 @@ export class HenryService {
     private readonly persistentMemory: HenryMemoryService,
     private readonly paligConsultative: HenryPaligConsultativeService,
     private readonly commercialBehavior: HenryCommercialBehaviorService,
+    private readonly capabilityRouter: HenryCapabilityRouter,
+    private readonly toolAuthorization: HenryToolAuthorizationService,
   ) {}
 
   async reasonForAutomation(input: {
@@ -711,15 +720,42 @@ export class HenryService {
     let totalTokens = 0;
     let costUsd = 0;
     let costReported = false;
-    let authorizedProductEvidence = false;
+    const evidence = new HenryEvidenceContext();
+    const toolBudget = new HenryToolBudget(this.config.maxToolCalls);
+    const toolCache = new HenryToolCallCache();
+    const toolSequence: Array<{
+      name: string;
+      status: 'SUCCEEDED' | 'FAILED' | 'REJECTED' | 'REUSED';
+      kind: 'READ' | 'MUTATION';
+    }> = [];
+    const selection = this.capabilityRouter.select({
+      content: inputMessage.content,
+      stage,
+      commercialIntent: commercial.detectedIntent,
+      runtimeContext,
+      definitions: this.tools.definitions,
+      authorization: this.toolAuthorization,
+      prospectAssociated,
+    });
+    messages[0] = {
+      ...messages[0]!,
+      content: `${messages[0]!.content ?? ''}\n<henry-tool-orchestration>\ncapability=${selection.capability}\nselectedTools=${selection.selectedTools.map((tool) => tool.name).join(',')}\n${selection.capability === 'SALES_KNOWLEDGE' ? 'Para una consulta híbrida comercial + producto recupera por separado SALES_INTELLIGENCE y PRODUCT_TRUTH. Capacitación orienta la conversación pero no autoriza afirmaciones materiales de producto. Si Product Truth no está disponible, limita expresamente la respuesta.' : ''}\n</henry-tool-orchestration>`,
+    };
+    const availableDefinitions = new Set(this.tools.definitions.map((tool) => tool.name));
+    await this.updateExecutionObservability(execution.id, {
+      intent: commercial.detectedIntent,
+      capability: selection.capability,
+      candidateTools: selection.candidateTools,
+      selectedTools: selection.selectedTools.map((tool) => tool.name),
+      toolSelectionReason: selection.reason,
+      toolBudget: toolBudget.snapshot(),
+    });
     try {
-      while (iterations <= this.config.maxToolCalls) {
+      while (iterations <= this.config.maxToolCalls + 1) {
         iterations += 1;
         const result = await this.provider.complete({
           messages,
-          tools: this.tools.definitions.filter((tool) =>
-            runtimeContext.toolPermissions.includes(tool.name),
-          ),
+          tools: selection.selectedTools,
           maxOutputTokens: this.config.maxOutputTokens,
           temperature: this.config.temperature,
         });
@@ -737,14 +773,15 @@ export class HenryService {
           let outputDecision = this.policyEngine.evaluateOutput(content);
           const commercialOutputDecision = this.commercialBehavior.evaluateOutput(
             content,
-            authorizedProductEvidence,
+            evidence.hasProductTruth(),
           );
-          if (outputDecision.action === 'ALLOW' && commercialOutputDecision.action === 'REJECT')
+          if (outputDecision.action === 'ALLOW' && commercialOutputDecision.action === 'REJECT') {
+            content = commercialOutputDecision.response!;
             outputDecision = {
               ...commercialOutputDecision,
-              reason: 'POLICY',
-              stage: 'ESCALATION',
+              action: 'ALLOW',
             };
+          }
           if (outputDecision.action === 'REJECT') {
             content = outputDecision.response!;
             await this.tools.escalate(
@@ -779,6 +816,26 @@ export class HenryService {
             outputDecision.action === 'REJECT' ? 'ESCALATED' : 'SUCCEEDED',
             outputDecision.action === 'REJECT' ? outputDecision.ruleId : undefined,
           );
+          const evidenceSnapshot = evidence.snapshot();
+          await this.updateExecutionObservability(execution.id, {
+            toolBudget: toolBudget.snapshot(),
+            toolSequence,
+            toolBudgetUsed: toolBudget.used,
+            toolReused: toolSequence.filter((item) => item.status === 'REUSED').length,
+            toolRejected: toolSequence.filter((item) => item.status === 'REJECTED').length,
+            retrievalLayers: Object.entries(evidenceSnapshot)
+              .filter(([, values]) => values.length)
+              .map(([layer]) => layer),
+            salesIntelligenceEvidenceCount: evidenceSnapshot.salesIntelligence.length,
+            productTruthEvidenceCount: evidenceSnapshot.productTruth.length,
+            complianceEvidenceCount: evidenceSnapshot.compliance.length,
+            productTruthAuthorityLevels: [
+              ...new Set(evidenceSnapshot.productTruth.map((item) => item.authorityRank)),
+            ],
+            knowledgeCollections: [],
+            finalResolution:
+              outputDecision.action === 'REJECT' ? 'POLICY_ESCALATION' : 'SAFE_RESPONSE',
+          });
           console.info(
             JSON.stringify({
               level: 'info',
@@ -794,22 +851,21 @@ export class HenryService {
           );
           return { data: { status: 'COMPLETED', message: this.publicMessage(output) } };
         }
-        if (totalToolCalls + result.toolCalls.length > this.config.maxToolCalls)
-          throw new AIProviderError(
-            'AI_TOOL_LIMIT_REACHED',
-            'Se alcanzó el límite de herramientas',
-          );
         messages.push({ role: 'assistant', content: result.content, toolCalls: result.toolCalls });
+        let reusedInBatch = false;
         for (const call of result.toolCalls) {
-          totalToolCalls += 1;
           const parsedArguments = this.parseArguments(call.arguments);
-          const baseToolDecision = this.policyEngine.evaluateTool(call.name, prospectAssociated);
-          const toolDecision =
-            baseToolDecision.action === 'REJECT'
-              ? baseToolDecision
-              : runtimeContext.toolPermissions.includes(call.name)
-                ? baseToolDecision
-                : { action: 'REJECT' as const, policyId: 'tools', ruleId: 'TOOL-ROLE-DENIED-001' };
+          const toolDecision = this.toolAuthorization.evaluate({
+            toolName: call.name,
+            runtimeContext,
+            prospectAssociated,
+            availableDefinitions,
+          });
+          const kind = this.toolAuthorization.kind(call.name);
+          const fingerprint = toolCache.fingerprint(call.name, parsedArguments);
+          const cached = toolCache.get(fingerprint);
+          const budgetAvailable =
+            cached || toolDecision.action === 'REJECT' || toolBudget.consume(kind);
           const persisted = await this.db.toolCall.create({
             data: {
               executionId: execution.id,
@@ -826,14 +882,27 @@ export class HenryService {
           try {
             if (toolDecision.action === 'REJECT')
               throw new BadRequestException('Herramienta no autorizada para el estado actual');
-            output = await this.tools.execute(call.name, parsedArguments, {
-              conversationId,
-              audit: context,
-              decision: toolDecision,
-              actor,
-            });
-            if (['search_knowledge', 'list_authorized_products'].includes(call.name))
-              authorizedProductEvidence = true;
+            if (!budgetAvailable)
+              throw new AIProviderError(
+                'AI_TOOL_LIMIT_REACHED',
+                'Se alcanzó el límite de herramientas',
+              );
+            if (cached) {
+              output = cached;
+              reusedInBatch = true;
+              toolSequence.push({ name: call.name, status: 'REUSED', kind });
+            } else {
+              totalToolCalls += 1;
+              output = await this.tools.execute(call.name, parsedArguments, {
+                conversationId,
+                audit: context,
+                decision: toolDecision,
+                actor,
+              });
+              toolCache.set(fingerprint, output);
+              evidence.ingest(call.name, output);
+              toolSequence.push({ name: call.name, status: 'SUCCEEDED', kind });
+            }
             await this.db.toolCall.update({
               where: { id: persisted.id },
               data: {
@@ -857,6 +926,11 @@ export class HenryService {
                   : 'No fue posible ejecutar la herramienta',
             };
             const rejected = toolDecision.action === 'REJECT' || !this.tools.isAllowed(call.name);
+            toolSequence.push({
+              name: call.name,
+              status: rejected ? 'REJECTED' : 'FAILED',
+              kind,
+            });
             await this.db.toolCall.update({
               where: { id: persisted.id },
               data: {
@@ -874,6 +948,14 @@ export class HenryService {
               });
           }
           messages.push({ role: 'tool', toolCallId: call.id, content: JSON.stringify(output) });
+        }
+        if ((reusedInBatch || toolBudget.used >= toolBudget.maxTotal) && evidence.hasAny()) {
+          messages.push({
+            role: 'system',
+            content:
+              'Ya existe evidencia para este turno y no se permitirán lecturas repetidas. Sintetiza ahora una respuesta segura usando únicamente la evidencia recuperada. No solicites más herramientas ni afirmes datos de producto sin Product Truth.',
+          });
+          selection.selectedTools.splice(0);
         }
       }
       throw new AIProviderError('AI_LOOP_LIMIT_REACHED', 'Se alcanzó el límite de iteraciones');
@@ -962,6 +1044,28 @@ export class HenryService {
         },
       }),
     ]);
+  }
+
+  private async updateExecutionObservability(id: string, values: Record<string, unknown>) {
+    const execution = await this.db.aIExecution.findUnique({
+      where: { id },
+      select: { policyContext: true },
+    });
+    const current =
+      execution?.policyContext &&
+      typeof execution.policyContext === 'object' &&
+      !Array.isArray(execution.policyContext)
+        ? (execution.policyContext as Record<string, Prisma.JsonValue>)
+        : {};
+    await this.db.aIExecution.update({
+      where: { id },
+      data: {
+        policyContext: {
+          ...current,
+          ...values,
+        } as Prisma.InputJsonValue,
+      },
+    });
   }
 
   private async createAssistantMessage(

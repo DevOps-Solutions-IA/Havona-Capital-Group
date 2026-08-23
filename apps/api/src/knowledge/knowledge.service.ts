@@ -28,7 +28,10 @@ import {
   DocumentExtractor,
   type ExtractedDocument,
 } from './document-extraction.service';
-import { parseCanonicalMarkdown, type MarkdownCanonicalDocument } from './markdown-canonical.service';
+import {
+  parseCanonicalMarkdown,
+  type MarkdownCanonicalDocument,
+} from './markdown-canonical.service';
 
 type VersionGovernanceInput = KnowledgeGovernanceInput & {
   versionLabel?: string;
@@ -68,7 +71,8 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3
 
 function assertJsonSafe(value: unknown, field: string): void {
   if (value === undefined) throw new Error(`${field}:UNDEFINED`);
-  if (typeof value === 'number' && !Number.isFinite(value)) throw new Error(`${field}:NON_FINITE_NUMBER`);
+  if (typeof value === 'number' && !Number.isFinite(value))
+    throw new Error(`${field}:NON_FINITE_NUMBER`);
   if (typeof value === 'bigint' || typeof value === 'function' || typeof value === 'symbol')
     throw new Error(`${field}:NON_JSON_TYPE`);
   if (Array.isArray(value)) {
@@ -91,33 +95,58 @@ export function validateKnowledgeChunkCreateManyPayload(
 ) {
   rows.forEach((row, chunkIndex) => {
     const fail = (field: string, reason: string): never => {
-      throw new Error(`KNOWLEDGE_CHUNK_PAYLOAD_INVALID:chunk=${chunkIndex}:field=${field}:reason=${reason}`);
+      throw new Error(
+        `KNOWLEDGE_CHUNK_PAYLOAD_INVALID:chunk=${chunkIndex}:field=${field}:reason=${reason}`,
+      );
     };
     if (typeof row.id !== 'string' || !UUID_PATTERN.test(row.id)) fail('id', 'UUID');
     if (!UUID_PATTERN.test(row.versionId)) fail('versionId', 'UUID');
     if (!Number.isInteger(row.position) || row.position < 0) fail('position', 'INTEGER');
     if (row.section && row.section.length > 300) fail('section', 'MAX_LENGTH_300');
-    if (typeof row.structuralType !== 'string' || !['TEXT', 'TABLE', 'MIXED'].includes(row.structuralType))
+    if (
+      typeof row.structuralType !== 'string' ||
+      !['TEXT', 'TABLE', 'MIXED'].includes(row.structuralType)
+    )
       fail('structuralType', 'ENUM');
     if (!row.textHash || row.textHash.length !== 64) fail('textHash', 'SHA256');
-    if (!Number.isInteger(row.tokenEstimate) || row.tokenEstimate < 0) fail('tokenEstimate', 'INTEGER');
-    if (row.embeddingModel && row.embeddingModel.length > 160) fail('embeddingModel', 'MAX_LENGTH_160');
+    if (!Number.isInteger(row.tokenEstimate) || row.tokenEstimate < 0)
+      fail('tokenEstimate', 'INTEGER');
+    if (row.embeddingModel && row.embeddingModel.length > 160)
+      fail('embeddingModel', 'MAX_LENGTH_160');
     if (row.embeddingDimension !== expectedDimension) fail('embeddingDimension', 'DIMENSION');
-    if (!(row.embeddedAt instanceof Date) || Number.isNaN(row.embeddedAt.getTime())) fail('embeddedAt', 'DATE');
-    for (const field of ['headingPath', 'extractionMethods', 'extractionWarnings', 'structure', 'embedding'] as const) {
-      try { assertJsonSafe(row[field], field); } catch (error) {
+    if (!(row.embeddedAt instanceof Date) || Number.isNaN(row.embeddedAt.getTime()))
+      fail('embeddedAt', 'DATE');
+    for (const field of [
+      'headingPath',
+      'extractionMethods',
+      'extractionWarnings',
+      'structure',
+      'embedding',
+    ] as const) {
+      try {
+        assertJsonSafe(row[field], field);
+      } catch (error) {
         fail(field, error instanceof Error ? error.message : 'JSON');
       }
     }
     const embedding = row.embedding as unknown;
-    if (!Array.isArray(embedding) || embedding.length !== expectedDimension) fail('embedding', 'VECTOR_DIMENSION');
+    if (!Array.isArray(embedding) || embedding.length !== expectedDimension)
+      fail('embedding', 'VECTOR_DIMENSION');
   });
 }
 
 function safePrismaDiagnostic(error: unknown) {
-  const candidate = error as { name?: string; code?: string; meta?: unknown; clientVersion?: string; message?: string };
+  const candidate = error as {
+    name?: string;
+    code?: string;
+    meta?: unknown;
+    clientVersion?: string;
+    message?: string;
+  };
   const message = candidate.message ?? String(error);
-  const terminal = message.match(/\n(?:Argument|Invalid value|Unknown argument|Error parsing)[\s\S]*$/)?.[0]?.trim();
+  const terminal = message
+    .match(/\n(?:Argument|Invalid value|Unknown argument|Error parsing)[\s\S]*$/)?.[0]
+    ?.trim();
   return {
     name: candidate.name ?? 'UnknownError',
     code: candidate.code ?? null,
@@ -159,9 +188,14 @@ export const hybridKnowledgeScore = (input: {
     ? input.headingPath.filter((item): item is string => typeof item === 'string').join(' ')
     : '';
   const context = [input.title, input.originalName, input.section ?? '', headingPath].join(' ');
-  const structural = tableQueryPattern.test(input.query) && input.structuralType === 'TABLE' ? 1 : 0;
-  return input.semantic * 0.42 + keywordScore(input.query, input.content) * 0.24 +
-    keywordScore(input.query, context) * 0.22 + structural * 0.12;
+  const structural =
+    tableQueryPattern.test(input.query) && input.structuralType === 'TABLE' ? 1 : 0;
+  return (
+    input.semantic * 0.42 +
+    keywordScore(input.query, input.content) * 0.24 +
+    keywordScore(input.query, context) * 0.22 +
+    structural * 0.12
+  );
 };
 const injectionPattern =
   /(ignore|ignora).{0,30}(instructions|instrucciones)|system prompt|execute[_ ]sql|api[_ ]key/i;
@@ -265,7 +299,10 @@ export class KnowledgeService {
   }
 
   private async assertClean(file: Express.Multer.File, checksum: string) {
-    const result = await this.scanner.scan(file.buffer, { mimeType: file.mimetype, sha256: checksum });
+    const result = await this.scanner.scan(file.buffer, {
+      mimeType: file.mimetype,
+      sha256: checksum,
+    });
     if (result.status !== 'CLEAN') {
       throw new BadRequestException(result.errorCode ?? `KNOWLEDGE_SCAN_${result.status}`);
     }
@@ -365,7 +402,11 @@ export class KnowledgeService {
 
   async addVersion(
     documentId: string,
-    input: { effectiveFrom?: string; effectiveUntil?: string; changeSummary: string } & VersionGovernanceInput,
+    input: {
+      effectiveFrom?: string;
+      effectiveUntil?: string;
+      changeSummary: string;
+    } & VersionGovernanceInput,
     file: Express.Multer.File,
     actor: KnowledgeActor,
   ) {
@@ -571,17 +612,19 @@ export class KnowledgeService {
         structuralType: chunk.structuralType,
         extractionMethods: ['NATIVE'],
         warnings: chunk.warnings,
-        structure: chunk.structuralType === 'TABLE'
-          ? ({ markdown: chunk.content, headingPath: chunk.headingPath } as Prisma.InputJsonValue)
-          : null,
+        structure:
+          chunk.structuralType === 'TABLE'
+            ? ({ markdown: chunk.content, headingPath: chunk.headingPath } as Prisma.InputJsonValue)
+            : null,
         headingPath: chunk.headingPath,
       }));
     }
-    const appendText = (
-      text: string,
-      metadata: Omit<(typeof chunks)[number], 'content'>,
-    ) => {
-      const blocks = text.replace(/\r/g, '').split(/\n{2,}/).map((item) => item.trim()).filter(Boolean);
+    const appendText = (text: string, metadata: Omit<(typeof chunks)[number], 'content'>) => {
+      const blocks = text
+        .replace(/\r/g, '')
+        .split(/\n{2,}/)
+        .map((item) => item.trim())
+        .filter(Boolean);
       let current = '';
       for (const block of blocks) {
         if (`${current}\n\n${block}`.length > 1400 && current) {
@@ -593,35 +636,41 @@ export class KnowledgeService {
     };
     if (extracted.pageCount === null) {
       appendText(extracted.documentText ?? '', {
-        section: null, pageStart: null, pageEnd: null, structuralType: 'TEXT',
-        extractionMethods: ['NATIVE'], warnings: extracted.documentWarnings,
+        section: null,
+        pageStart: null,
+        pageEnd: null,
+        structuralType: 'TEXT',
+        extractionMethods: ['NATIVE'],
+        warnings: extracted.documentWarnings,
         structure: null,
         headingPath: [],
       });
       return chunks;
     }
     for (const page of extracted.pages) {
-      if (page.finalText) appendText(page.finalText, {
-        section: page.section,
-        pageStart: page.pageNumber,
-        pageEnd: page.pageNumber,
-        structuralType: page.tables.length ? 'MIXED' : 'TEXT',
-        extractionMethods: [page.extractionMethod],
-        warnings: page.warnings,
-        structure: null,
-        headingPath: page.section ? [page.section] : [],
-      });
-      for (const table of page.tables) chunks.push({
-        section: page.section,
-        content: table.rawText,
-        pageStart: page.pageNumber,
-        pageEnd: page.pageNumber,
-        structuralType: 'TABLE',
-        extractionMethods: [page.extractionMethod],
-        warnings: table.warnings,
-        structure: table as unknown as Prisma.InputJsonValue,
-        headingPath: page.section ? [page.section] : [],
-      });
+      if (page.finalText)
+        appendText(page.finalText, {
+          section: page.section,
+          pageStart: page.pageNumber,
+          pageEnd: page.pageNumber,
+          structuralType: page.tables.length ? 'MIXED' : 'TEXT',
+          extractionMethods: [page.extractionMethod],
+          warnings: page.warnings,
+          structure: null,
+          headingPath: page.section ? [page.section] : [],
+        });
+      for (const table of page.tables)
+        chunks.push({
+          section: page.section,
+          content: table.rawText,
+          pageStart: page.pageNumber,
+          pageEnd: page.pageNumber,
+          structuralType: 'TABLE',
+          extractionMethods: [page.extractionMethod],
+          warnings: table.warnings,
+          structure: table as unknown as Prisma.InputJsonValue,
+          headingPath: page.section ? [page.section] : [],
+        });
     }
     return chunks;
   }
@@ -640,56 +689,80 @@ export class KnowledgeService {
       const buffer = await this.storage.get(version.storageKey);
       const extracted = await this.extractor.extract(buffer, version.mimeType);
       log.push({ stage: 'EXTRACTION', at: new Date().toISOString() });
-      const markdown = version.mimeType === 'text/markdown'
-        ? parseCanonicalMarkdown(version.originalName, buffer)
-        : undefined;
+      const markdown =
+        version.mimeType === 'text/markdown'
+          ? parseCanonicalMarkdown(version.originalName, buffer)
+          : undefined;
       const chunks = this.chunks(extracted, markdown);
       attemptedChunkCount = chunks.length;
-      const failedPages = extracted.pages.filter((page) => page.extractionStatus === 'FAILED').length;
-      const charactersExtracted = extracted.pageCount === null
-        ? extracted.documentText?.length ?? 0
-        : extracted.pages.reduce((total, page) => total + page.characterCount, 0);
-      if (!failedPages && charactersExtracted < 20 && !extracted.pages.every((page) => page.extractionStatus === 'EMPTY_CONFIRMED'))
+      const failedPages = extracted.pages.filter(
+        (page) => page.extractionStatus === 'FAILED',
+      ).length;
+      const charactersExtracted =
+        extracted.pageCount === null
+          ? (extracted.documentText?.length ?? 0)
+          : extracted.pages.reduce((total, page) => total + page.characterCount, 0);
+      if (
+        !failedPages &&
+        charactersExtracted < 20 &&
+        !extracted.pages.every((page) => page.extractionStatus === 'EMPTY_CONFIRMED')
+      )
         throw new Error('KNOWLEDGE_EXTRACTION_EMPTY');
       log.push({ stage: 'CHUNKING', at: new Date().toISOString() });
-      const vectors = failedPages ? [] : await this.embeddings.embed(chunks.map((item) => item.content));
-      const chunkRows: Prisma.KnowledgeChunkCreateManyInput[] = (!failedPages ? chunks : []).map((item, index) => ({
-        id: randomUUID(),
-        versionId,
-        position: index,
-        section: item.section,
-        headingPath: item.headingPath,
-        pageStart: item.pageStart,
-        pageEnd: item.pageEnd,
-        structuralType: item.structuralType,
-        extractionMethods: item.extractionMethods,
-        extractionWarnings: item.warnings,
-        structure: item.structure ?? Prisma.JsonNull,
-        content: item.content,
-        textHash: createHash('sha256').update(item.content).digest('hex'),
-        tokenEstimate: Math.ceil(item.content.length / 4),
-        embedding: vectors[index] ?? [],
-        embeddingModel: this.embeddings.model,
-        embeddingDimension: this.embeddings.dimension,
-        embeddedAt: new Date(),
-      }));
+      const vectors = failedPages
+        ? []
+        : await this.embeddings.embed(chunks.map((item) => item.content));
+      const chunkRows: Prisma.KnowledgeChunkCreateManyInput[] = (!failedPages ? chunks : []).map(
+        (item, index) => ({
+          id: randomUUID(),
+          versionId,
+          position: index,
+          section: item.section,
+          headingPath: item.headingPath,
+          pageStart: item.pageStart,
+          pageEnd: item.pageEnd,
+          structuralType: item.structuralType,
+          extractionMethods: item.extractionMethods,
+          extractionWarnings: item.warnings,
+          structure: item.structure ?? Prisma.JsonNull,
+          content: item.content,
+          textHash: createHash('sha256').update(item.content).digest('hex'),
+          tokenEstimate: Math.ceil(item.content.length / 4),
+          embedding: vectors[index] ?? [],
+          embeddingModel: this.embeddings.model,
+          embeddingDimension: this.embeddings.dimension,
+          embeddedAt: new Date(),
+        }),
+      );
       validateKnowledgeChunkCreateManyPayload(chunkRows, this.embeddings.dimension);
-      const existingReport = await this.db.knowledgeExtractionReport.findUnique({ where: { versionId } });
+      const existingReport = await this.db.knowledgeExtractionReport.findUnique({
+        where: { versionId },
+      });
       const reportId = existingReport?.id ?? randomUUID();
       const reportData = {
-        status: failedPages ? 'FAILED' as const : 'COMPLETED' as const,
+        status: failedPages ? ('FAILED' as const) : ('COMPLETED' as const),
         mimeType: extracted.mimeType,
         totalPages: extracted.pageCount,
-        nativePages: extracted.pages.filter((page) => page.extractionStatus === 'EXTRACTED_NATIVE').length,
-        ocrPages: extracted.pages.filter((page) => page.extractionStatus === 'EXTRACTED_OCR').length,
-        mixedPages: extracted.pages.filter((page) => page.extractionStatus === 'EXTRACTED_MIXED').length,
-        emptyConfirmedPages: extracted.pages.filter((page) => page.extractionStatus === 'EMPTY_CONFIRMED').length,
+        nativePages: extracted.pages.filter((page) => page.extractionStatus === 'EXTRACTED_NATIVE')
+          .length,
+        ocrPages: extracted.pages.filter((page) => page.extractionStatus === 'EXTRACTED_OCR')
+          .length,
+        mixedPages: extracted.pages.filter((page) => page.extractionStatus === 'EXTRACTED_MIXED')
+          .length,
+        emptyConfirmedPages: extracted.pages.filter(
+          (page) => page.extractionStatus === 'EMPTY_CONFIRMED',
+        ).length,
         failedPages,
         pagesWithWarnings: extracted.pages.filter((page) => page.warnings.length).length,
         charactersExtracted,
-        tablesDetected: markdown?.manifest.tableCount ?? extracted.pages.reduce((total, page) => total + page.tables.length, 0),
-        documentWarnings: (markdown?.manifest.warnings ?? extracted.documentWarnings) as Prisma.InputJsonValue,
-        extractorVersion: markdown ? 'markdown-structural-v1' : extracted.extractionMetadata.extractorVersion,
+        tablesDetected:
+          markdown?.manifest.tableCount ??
+          extracted.pages.reduce((total, page) => total + page.tables.length, 0),
+        documentWarnings: (markdown?.manifest.warnings ??
+          extracted.documentWarnings) as Prisma.InputJsonValue,
+        extractorVersion: markdown
+          ? 'markdown-structural-v1'
+          : extracted.extractionMetadata.extractorVersion,
         ocrProvider: extracted.extractionMetadata.ocrProvider,
         ocrVersion: extracted.extractionMetadata.ocrVersion,
         chunkerVersion: markdown ? 'markdown-structural-v1' : CHUNKER_VERSION,
@@ -704,20 +777,29 @@ export class KnowledgeService {
           create: { id: reportId, versionId, ...reportData },
           update: reportData,
         }),
-        ...extracted.pages.map((page) => this.db.knowledgePageExtraction.create({ data: {
-          reportId,
-          pageNumber: page.pageNumber,
-          status: page.extractionStatus,
-          extractionMethod: page.extractionMethod,
-          nativeCharacters: page.nativeText.length,
-          finalCharacters: page.characterCount,
-          tablesDetected: page.tables.length,
-          warnings: page.warnings as Prisma.InputJsonValue,
-          blocks: page.blocks as unknown as Prisma.InputJsonValue,
-          tables: page.tables as unknown as Prisma.InputJsonValue,
-        } })),
-        ...(!failedPages && chunkRows.length ? [this.db.knowledgeChunk.createMany({ data: chunkRows })] : []),
-        this.db.knowledgeVersion.update({ where: { id: versionId }, data: { status: failedPages ? 'FAILED' : 'REVIEW' } }),
+        ...extracted.pages.map((page) =>
+          this.db.knowledgePageExtraction.create({
+            data: {
+              reportId,
+              pageNumber: page.pageNumber,
+              status: page.extractionStatus,
+              extractionMethod: page.extractionMethod,
+              nativeCharacters: page.nativeText.length,
+              finalCharacters: page.characterCount,
+              tablesDetected: page.tables.length,
+              warnings: page.warnings as Prisma.InputJsonValue,
+              blocks: page.blocks as unknown as Prisma.InputJsonValue,
+              tables: page.tables as unknown as Prisma.InputJsonValue,
+            },
+          }),
+        ),
+        ...(!failedPages && chunkRows.length
+          ? [this.db.knowledgeChunk.createMany({ data: chunkRows })]
+          : []),
+        this.db.knowledgeVersion.update({
+          where: { id: versionId },
+          data: { status: failedPages ? 'FAILED' : 'REVIEW' },
+        }),
         this.db.knowledgeDocument.update({
           where: { id: version.documentId },
           data: { status: failedPages ? 'FAILED' : 'REVIEW' },
@@ -753,19 +835,20 @@ export class KnowledgeService {
           ? diagnostic.message.split(':')[0]!.slice(0, 100)
           : 'KNOWLEDGE_INGESTION_FAILED';
       const report = await this.db.knowledgeExtractionReport.findUnique({ where: { versionId } });
-      if (!report) await this.db.knowledgeExtractionReport.create({
-        data: {
-          versionId,
-          status: 'FAILED',
-          mimeType: version.mimeType,
-          failedPages: 0,
-          documentWarnings: [code],
-          extractorVersion: 'unavailable-after-failure',
-          chunkerVersion: CHUNKER_VERSION,
-          extractionStartedAt: processStartedAt,
-          extractionCompletedAt: new Date(),
-        },
-      });
+      if (!report)
+        await this.db.knowledgeExtractionReport.create({
+          data: {
+            versionId,
+            status: 'FAILED',
+            mimeType: version.mimeType,
+            failedPages: 0,
+            documentWarnings: [code],
+            extractorVersion: 'unavailable-after-failure',
+            chunkerVersion: CHUNKER_VERSION,
+            extractionStartedAt: processStartedAt,
+            extractionCompletedAt: new Date(),
+          },
+        });
       const failureStageLog = [
         ...log,
         { stage: 'FAILED', at: new Date().toISOString(), diagnostic },
@@ -830,7 +913,9 @@ export class KnowledgeService {
       where: { id: documentId },
       include: {
         versions: {
-          where: { status: 'APPROVED' }, orderBy: { version: 'desc' }, take: 1,
+          where: { status: 'APPROVED' },
+          orderBy: { version: 'desc' },
+          take: 1,
           include: { extractionReport: true },
         },
         stagedAssets: { select: { sha256: true } },
@@ -913,7 +998,12 @@ export class KnowledgeService {
   async search(
     query: string,
     actor: KnowledgeActor,
-    options?: { historicalAt?: string; collectionId?: string; limit?: number },
+    options?: {
+      historicalAt?: string;
+      collectionId?: string;
+      limit?: number;
+      evidenceLayer?: 'PRODUCT_TRUTH' | 'SALES_INTELLIGENCE' | 'COMPLIANCE';
+    },
   ): Promise<KnowledgeSearchResult> {
     return this.searchScoped(query, actor, options, {
       statuses: options?.historicalAt ? ['PUBLISHED', 'DEPRECATED'] : ['PUBLISHED'],
@@ -928,19 +1018,34 @@ export class KnowledgeService {
     options: { collectionId: string; limit?: number },
   ): Promise<KnowledgeSearchResult> {
     this.assert('knowledge.admin', actor);
-    const collection = await this.db.knowledgeCollection.findUnique({ where: { id: options.collectionId } });
+    const collection = await this.db.knowledgeCollection.findUnique({
+      where: { id: options.collectionId },
+    });
     if (!collection || collection.henryEnabled || collection.isActive)
       throw new ForbiddenException('KNOWLEDGE_PRIVATE_QA_COLLECTION_REQUIRED');
     return this.searchScoped(query, actor, options, {
-      statuses: ['REVIEW'], henryEnabled: false, recordGap: false,
+      statuses: ['REVIEW'],
+      henryEnabled: false,
+      recordGap: false,
     });
   }
 
   private async searchScoped(
     query: string,
     actor: KnowledgeActor,
-    options: { historicalAt?: string; collectionId?: string; limit?: number } | undefined,
-    scope: { statuses: Array<'PUBLISHED' | 'DEPRECATED' | 'REVIEW'>; henryEnabled: boolean; recordGap: boolean },
+    options:
+      | {
+          historicalAt?: string;
+          collectionId?: string;
+          limit?: number;
+          evidenceLayer?: 'PRODUCT_TRUTH' | 'SALES_INTELLIGENCE' | 'COMPLIANCE';
+        }
+      | undefined,
+    scope: {
+      statuses: Array<'PUBLISHED' | 'DEPRECATED' | 'REVIEW'>;
+      henryEnabled: boolean;
+      recordGap: boolean;
+    },
   ): Promise<KnowledgeSearchResult> {
     this.assert('knowledge.read', actor);
     const queryVector = (await this.embeddings.embed([query]))[0] ?? [];
@@ -949,6 +1054,18 @@ export class KnowledgeService {
       where: {
         version: {
           status: { in: scope.statuses },
+          ...(options?.evidenceLayer === 'PRODUCT_TRUTH'
+            ? {
+                sourceType: { notIn: ['CAPACITACION', 'COMERCIAL', 'INFERENCIA_CONSULTIVA'] },
+                authorityRank: { lte: 4 },
+              }
+            : options?.evidenceLayer === 'SALES_INTELLIGENCE'
+              ? {
+                  sourceType: {
+                    in: ['CAPACITACION', 'COMERCIAL', 'INFERENCIA_CONSULTIVA', 'CORPORATIVO'],
+                  },
+                }
+              : {}),
           AND: [
             { OR: [{ effectiveFrom: null }, { effectiveFrom: { lte: now } }] },
             { OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: now } }] },
@@ -1005,7 +1122,9 @@ export class KnowledgeService {
         };
       })
       .filter((item) => item.score >= Number(process.env.RAG_MIN_SCORE ?? 0.18))
-      .sort((a, b) => b.score - a.score || a.row.version.authorityRank - b.row.version.authorityRank)
+      .sort(
+        (a, b) => b.score - a.score || a.row.version.authorityRank - b.row.version.authorityRank,
+      )
       .slice(0, Math.min(options?.limit ?? 6, Number(process.env.RAG_MAX_CHUNKS ?? 8)));
     if (!ranked.length) {
       if (scope.recordGap) await this.recordGap(query, actor);
@@ -1046,10 +1165,7 @@ export class KnowledgeService {
         product: row.version.authorizedProduct,
         solution: row.version.authorizedSolution,
         customerNeeds: row.version.customerNeeds.map((item) => item.customerNeed.key),
-        conflicts: [
-          ...row.version.conflictsAsPrimary,
-          ...row.version.conflictsAsSecondary,
-        ],
+        conflicts: [...row.version.conflictsAsPrimary, ...row.version.conflictsAsSecondary],
         warning: knowledgeValidityWarning(row.version.currentStatus),
       },
     }));
@@ -1062,7 +1178,8 @@ export class KnowledgeService {
         ]),
     );
     const explicitConflict = results.some((item) => item.citation.conflicts.length > 0);
-    const heuristicConflict = topDocs.size > 1 &&
+    const heuristicConflict =
+      topDocs.size > 1 &&
       results.slice(0, 2).every((item) => item.score >= 0.65) &&
       /\b(no|prohibido|excluye)\b/i.test(results[0]!.content) !==
         /\b(no|prohibido|excluye)\b/i.test(results[1]!.content);

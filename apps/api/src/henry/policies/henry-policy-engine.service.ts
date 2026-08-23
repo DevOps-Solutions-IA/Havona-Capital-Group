@@ -102,62 +102,6 @@ export class HenryPolicyEngine {
     return { action: 'ALLOW', policyId: 'guardrails', ruleId: 'GRD-OUTPUT-ALLOW-001' };
   }
 
-  evaluateTool(name: string, prospectAssociated: boolean): HenryPolicyDecision {
-    const allowed = [
-      'get_prospect_context',
-      'create_or_update_prospect',
-      'register_interaction',
-      'create_crm_activity',
-      'create_task',
-      'qualify_prospect',
-      'request_human_escalation',
-      'get_available_consultants',
-      'request_appointment_intent',
-      'get_calendar_availability',
-      'list_calendar_events',
-      'get_calendar_event',
-      'create_calendar_event',
-      'reschedule_calendar_event',
-      'cancel_calendar_event',
-      'list_email_templates',
-      'recommend_email_templates',
-      'get_email_template',
-      'create_email_draft',
-      'personalize_email_draft',
-      'preview_email_draft',
-      'update_email_draft',
-      'attach_to_email_draft',
-      'request_email_confirmation',
-      'send_email_draft',
-      'schedule_email_draft',
-      'cancel_scheduled_email',
-      'reply_to_email_thread',
-      'get_email_send_status',
-      'prepare_email_batch',
-      'list_eligible_cadences',
-      'start_cadence',
-      'get_cadence_status',
-      'pause_cadence',
-      'resume_cadence',
-      'stop_cadence',
-      'explain_cadence',
-    ];
-    if (!allowed.includes(name))
-      return { action: 'REJECT', policyId: 'tools', ruleId: 'TOOL-NOT-ALLOWLISTED-001' };
-    const requiresProspect = [
-      'get_prospect_context',
-      'register_interaction',
-      'create_crm_activity',
-      'create_task',
-      'qualify_prospect',
-      'get_available_consultants',
-      'request_appointment_intent',
-    ];
-    if (requiresProspect.includes(name) && !prospectAssociated)
-      return { action: 'REJECT', policyId: 'tools', ruleId: 'TOOL-PROSPECT-REQUIRED-001' };
-    return { action: 'ALLOW', policyId: 'tools', ruleId: 'TOOL-ALLOWLIST-001' };
-  }
-
   stageAfterTool(name: string, current: HenryConversationStage): HenryConversationStage {
     if (name === 'request_human_escalation') return 'ESCALATION';
     if (

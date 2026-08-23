@@ -12,7 +12,12 @@ export class RagOrchestratorService {
   async retrieve(
     question: string,
     actor: KnowledgeActor,
-    options?: { historicalAt?: string; collectionId?: string; limit?: number },
+    options?: {
+      historicalAt?: string;
+      collectionId?: string;
+      limit?: number;
+      evidenceLayer?: 'PRODUCT_TRUTH' | 'SALES_INTELLIGENCE' | 'COMPLIANCE';
+    },
   ) {
     const retrieval = await this.knowledge.search(question, actor, options);
     if (retrieval.answerStatus === 'INSUFFICIENT')

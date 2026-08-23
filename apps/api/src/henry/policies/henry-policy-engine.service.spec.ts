@@ -4,9 +4,13 @@ describe('HenryPolicyEngine', () => {
   const engine = new HenryPolicyEngine();
 
   it('mantiene descubrimiento sin saltar prematuramente a venta', () => {
-    expect(engine.evaluateInput('Quiero entender mejor cómo proteger a mi familia')).toEqual(expect.objectContaining({
-      action: 'ALLOW', policyId: 'sales', ruleId: 'DISCOVERY-CONTINUE-001',
-    }));
+    expect(engine.evaluateInput('Quiero entender mejor cómo proteger a mi familia')).toEqual(
+      expect.objectContaining({
+        action: 'ALLOW',
+        policyId: 'sales',
+        ruleId: 'DISCOVERY-CONTINUE-001',
+      }),
+    );
   });
 
   it.each([
@@ -23,24 +27,37 @@ describe('HenryPolicyEngine', () => {
     ['Mándame información', 'OBJ-SEND-INFO'],
     ['Estoy comparando', 'OBJ-COMPARING'],
   ])('clasifica la objeción %s con una regla auditable', (content, ruleId) => {
-    expect(engine.evaluateInput(content)).toEqual(expect.objectContaining({ stage: 'OBJECTION', policyId: 'closing', ruleId }));
+    expect(engine.evaluateInput(content)).toEqual(
+      expect.objectContaining({ stage: 'OBJECTION', policyId: 'closing', ruleId }),
+    );
   });
 
   it('detecta intención de cierre hacia agenda sin afirmar que existe una cita', () => {
-    expect(engine.evaluateInput('Quiero agendar una cita')).toEqual(expect.objectContaining({ stage: 'APPOINTMENT', ruleId: 'CLOSE-APPOINTMENT-001' }));
+    expect(engine.evaluateInput('Quiero agendar una cita')).toEqual(
+      expect.objectContaining({ stage: 'APPOINTMENT', ruleId: 'CLOSE-APPOINTMENT-001' }),
+    );
   });
 
   it('detiene el modelo ante una solicitud explícita de humano', () => {
-    expect(engine.evaluateInput('Quiero hablar con un asesor humano')).toEqual(expect.objectContaining({
-      action: 'ESCALATE', reason: 'USER_REQUEST', stage: 'ESCALATION', ruleId: 'ESC-HUMAN-001',
-    }));
+    expect(engine.evaluateInput('Quiero hablar con un asesor humano')).toEqual(
+      expect.objectContaining({
+        action: 'ESCALATE',
+        reason: 'USER_REQUEST',
+        stage: 'ESCALATION',
+        ruleId: 'ESC-HUMAN-001',
+      }),
+    );
   });
 
-  it.each(['Presentaré una demanda', 'Necesito asesoría tributaria definitiva', 'Estoy furioso, esto es una estafa'])(
-    'escala de forma segura el contexto sensible: %s', (content) => {
-      expect(engine.evaluateInput(content)).toEqual(expect.objectContaining({ action: 'ESCALATE', reason: 'SENSITIVE_CONTEXT' }));
-    },
-  );
+  it.each([
+    'Presentaré una demanda',
+    'Necesito asesoría tributaria definitiva',
+    'Estoy furioso, esto es una estafa',
+  ])('escala de forma segura el contexto sensible: %s', (content) => {
+    expect(engine.evaluateInput(content)).toEqual(
+      expect.objectContaining({ action: 'ESCALATE', reason: 'SENSITIVE_CONTEXT' }),
+    );
+  });
 
   it.each([
     'Le garantizamos el resultado',
@@ -48,23 +65,20 @@ describe('HenryPolicyEngine', () => {
     'Su póliza fue aprobada',
     'Este es un diagnóstico médico definitivo',
   ])('rechaza promesas o afirmaciones prohibidas: %s', (content) => {
-    expect(engine.evaluateOutput(content)).toEqual(expect.objectContaining({ action: 'REJECT', policyId: 'guardrails', ruleId: 'GRD-PROMISE-001' }));
+    expect(engine.evaluateOutput(content)).toEqual(
+      expect.objectContaining({
+        action: 'REJECT',
+        policyId: 'guardrails',
+        ruleId: 'GRD-PROMISE-001',
+      }),
+    );
   });
 
   it('permite una respuesta honesta que reconoce falta de conocimiento', () => {
-    expect(engine.evaluateOutput('No tengo información confirmada para responder eso; puedo solicitar apoyo humano.').action).toBe('ALLOW');
-  });
-
-  it('rechaza tools CRM sin un prospecto asociado', () => {
-    expect(engine.evaluateTool('create_task', false)).toEqual(expect.objectContaining({ action: 'REJECT', ruleId: 'TOOL-PROSPECT-REQUIRED-001' }));
-  });
-
-  it('rechaza una herramienta inexistente antes de ejecución', () => {
-    expect(engine.evaluateTool('execute_sql', true)).toEqual(expect.objectContaining({ action: 'REJECT', ruleId: 'TOOL-NOT-ALLOWLISTED-001' }));
-  });
-
-  it('permite captura inicial y tools contextualizadas', () => {
-    expect(engine.evaluateTool('create_or_update_prospect', false).action).toBe('ALLOW');
-    expect(engine.evaluateTool('create_task', true).action).toBe('ALLOW');
+    expect(
+      engine.evaluateOutput(
+        'No tengo información confirmada para responder eso; puedo solicitar apoyo humano.',
+      ).action,
+    ).toBe('ALLOW');
   });
 });
