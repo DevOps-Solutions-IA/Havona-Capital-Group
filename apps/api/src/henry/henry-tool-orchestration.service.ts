@@ -159,7 +159,7 @@ export class HenryToolAuthorizationService {
     availableDefinitions: ReadonlySet<string>;
   }): HenryPolicyDecision {
     if (!input.availableDefinitions.has(input.toolName))
-      return { action: 'REJECT', policyId: 'tools', ruleId: 'TOOL-NOT-DEFINED-001' };
+      return { action: 'REJECT', policyId: 'tools', ruleId: 'TOOL-NOT-ALLOWLISTED-001' };
     if (!input.runtimeContext.toolPermissions.includes(input.toolName))
       return { action: 'REJECT', policyId: 'tools', ruleId: 'TOOL-ROLE-DENIED-001' };
     if (PROSPECT_REQUIRED.has(input.toolName) && !input.prospectAssociated)

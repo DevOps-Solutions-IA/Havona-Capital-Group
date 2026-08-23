@@ -64,6 +64,19 @@ describe('Henry enterprise tool orchestration', () => {
     ).not.toContain('search_knowledge');
   });
 
+  it('preserva la regla auditable para una tool inexistente o inyectada', () => {
+    expect(
+      authorization.evaluate({
+        toolName: 'execute_sql',
+        runtimeContext: context(['execute_sql']),
+        prospectAssociated: true,
+        availableDefinitions: new Set(definitions.map((item) => item.name)),
+      }),
+    ).toEqual(
+      expect.objectContaining({ action: 'REJECT', ruleId: 'TOOL-NOT-ALLOWLISTED-001' }),
+    );
+  });
+
   it('reduce 77 definitions a las capabilities de Sales Knowledge', () => {
     const selection = router.select({
       content:
