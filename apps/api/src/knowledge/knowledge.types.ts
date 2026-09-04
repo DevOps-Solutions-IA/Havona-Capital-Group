@@ -3,6 +3,7 @@ export const KNOWLEDGE_NOT_FOUND =
   'Esta información no se encuentra dentro de la base de conocimiento autorizada de HAVONA CAPITAL GROUP.';
 export type KnowledgeCitation = {
   documentId: string;
+  collectionKey: string;
   title: string;
   version: number;
   section: string | null;

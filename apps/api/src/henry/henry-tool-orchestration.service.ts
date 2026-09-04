@@ -176,8 +176,11 @@ export type HenryToolSelection = {
   capability: HenryCapability;
   candidateTools: string[];
   selectedTools: AIToolDefinition[];
+  retrievalLayers: HenryKnowledgeEvidenceLayer[];
   reason: string;
 };
+
+export type HenryKnowledgeEvidenceLayer = 'PRODUCT_TRUTH' | 'SALES_INTELLIGENCE' | 'COMPLIANCE';
 
 @Injectable()
 export class HenryCapabilityRouter {
@@ -217,6 +220,20 @@ export class HenryCapabilityRouter {
     if (!signals.size) signals.add('GENERAL');
 
     const ordered = [...signals];
+    const retrievalLayers: HenryKnowledgeEvidenceLayer[] = [];
+    if (signals.has('SALES_KNOWLEDGE')) {
+      const salesIntent =
+        input.commercialIntent === 'OBJECTION' ||
+        /objeci[oó]n|caro|precio|valor percibido|negoci|vender|venta|cerrar/.test(normalized);
+      const productIntent =
+        ['PRODUCT_INTEREST', 'COMPARISON'].includes(input.commercialIntent) ||
+        /producto|cobertura|prima|tasa|condici[oó]n|exclusi[oó]n|vida flex|pensi[oó]n|seguro/.test(
+          normalized,
+        );
+      if (salesIntent) retrievalLayers.push('SALES_INTELLIGENCE');
+      if (productIntent) retrievalLayers.push('PRODUCT_TRUTH');
+      if (!retrievalLayers.length) retrievalLayers.push('SALES_INTELLIGENCE');
+    }
     const candidateTools = [
       ...new Set(ordered.flatMap((capability) => CAPABILITY_TOOLS[capability])),
     ];
@@ -240,6 +257,7 @@ export class HenryCapabilityRouter {
       capability: ordered[0]!,
       candidateTools,
       selectedTools,
+      retrievalLayers,
       reason: `commercial=${input.commercialIntent};stage=${input.stage};page=${input.runtimeContext.page.pageType};signals=${ordered.join('+')}`,
     };
   }
@@ -258,6 +276,14 @@ export class HenryToolBudget {
   consume(kind: HenryToolKind) {
     if (!this.canConsume(kind)) return false;
     kind === 'READ' ? (this.reads += 1) : (this.mutations += 1);
+    return true;
+  }
+  consumeMany(kind: HenryToolKind, count: number) {
+    if (!Number.isInteger(count) || count < 0) return false;
+    if (count === 0) return true;
+    if (this.used + count > this.maxTotal) return false;
+    if (kind === 'MUTATION' && this.mutations + count > this.maxMutations) return false;
+    kind === 'READ' ? (this.reads += count) : (this.mutations += count);
     return true;
   }
   get used() {
@@ -290,4 +316,57 @@ export class HenryToolCallCache {
   set(fingerprint: string, output: Record<string, unknown>) {
     this.values.set(fingerprint, output);
   }
+}
+
+export function knowledgeToolInputs(
+  toolName: string,
+  args: Record<string, unknown>,
+  layers: HenryKnowledgeEvidenceLayer[],
+) {
+  if (toolName !== 'search_knowledge' || args.evidenceLayer || layers.length < 2) return [args];
+  return layers.map((evidenceLayer) => ({ ...args, evidenceLayer }));
+}
+
+export function mergeKnowledgeToolOutputs(
+  outputs: Array<{ layer?: HenryKnowledgeEvidenceLayer; output: Record<string, unknown> }>,
+): Record<string, unknown> {
+  if (outputs.length === 1) return outputs[0]!.output;
+  const resultMap = new Map<string, unknown>();
+  for (const { layer, output } of outputs) {
+    const laneResults = Array.isArray(output.results) ? output.results : [];
+    for (const item of laneResults) {
+      const annotated = item && typeof item === 'object' ? { ...item, evidenceLayer: layer } : item;
+      const candidate = item as { citation?: { chunkId?: unknown } } | null;
+      const chunkId = candidate?.citation?.chunkId;
+      const key = typeof chunkId === 'string' ? chunkId : `${layer}:${resultMap.size}`;
+      if (!resultMap.has(key)) resultMap.set(key, annotated);
+    }
+  }
+  const results = [...resultMap.values()];
+  const contextMap = new Map<string, unknown>();
+  for (const { layer, output } of outputs) {
+    const laneContext = Array.isArray(output.context) ? output.context : [];
+    for (const item of laneContext) {
+      const candidate = item as { citation?: { chunkId?: unknown } } | null;
+      const chunkId = candidate?.citation?.chunkId;
+      const key = typeof chunkId === 'string' ? chunkId : `${layer}:${contextMap.size}`;
+      if (!contextMap.has(key)) contextMap.set(key, item);
+    }
+  }
+  const context = [...contextMap.values()];
+  const statuses = outputs.map(({ output }) => output.answerStatus);
+  return {
+    answerStatus: statuses.includes('CONFLICT')
+      ? 'CONFLICT'
+      : results.length
+        ? 'GROUNDED'
+        : 'INSUFFICIENT',
+    results,
+    context,
+    retrievalLayers: outputs.map(({ layer, output }) => ({
+      layer,
+      answerStatus: output.answerStatus ?? 'INSUFFICIENT',
+      resultCount: Array.isArray(output.results) ? output.results.length : 0,
+    })),
+  };
 }

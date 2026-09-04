@@ -21,9 +21,15 @@ export class RagOrchestratorService {
   ) {
     const retrieval = await this.knowledge.search(question, actor, options);
     if (retrieval.answerStatus === 'INSUFFICIENT')
-      return { ...retrieval, groundedAnswer: KNOWLEDGE_NOT_FOUND, context: [] };
+      return {
+        ...retrieval,
+        evidenceLayer: options?.evidenceLayer,
+        groundedAnswer: KNOWLEDGE_NOT_FOUND,
+        context: [],
+      };
     return {
       ...retrieval,
+      evidenceLayer: options?.evidenceLayer,
       groundedAnswer: null,
       context: retrieval.results.map((item) => ({
         content: item.content,

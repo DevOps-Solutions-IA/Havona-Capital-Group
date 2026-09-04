@@ -1073,7 +1073,10 @@ export class KnowledgeService {
           document: {
             ...(options?.collectionId ? { collectionId: options.collectionId } : {}),
             classification: { in: this.classifications(actor) as any },
-            collection: { henryEnabled: scope.henryEnabled },
+            collection: {
+              henryEnabled: scope.henryEnabled,
+              isActive: scope.henryEnabled,
+            },
           },
         },
       },
@@ -1150,6 +1153,7 @@ export class KnowledgeService {
       content: row.content,
       citation: {
         documentId: row.version.document.id,
+        collectionKey: row.version.document.collection.key,
         title: row.version.document.title,
         version: row.version.version,
         section: row.section,

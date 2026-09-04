@@ -3,6 +3,7 @@ export type HenryEvidenceLayer = 'PRODUCT_TRUTH' | 'SALES_INTELLIGENCE' | 'COMPL
 export type HenryTypedEvidence = {
   layer: HenryEvidenceLayer;
   documentId: string;
+  collectionKey?: string;
   title: string;
   sourceType: string;
   authorityRank: number;
@@ -37,7 +38,17 @@ export class HenryEvidenceContext {
         typeof raw.currentStatus !== 'string'
       )
         continue;
-      const layer = this.layer(raw.sourceType, raw.authorityRank, raw.title);
+      const requestedLayer =
+        typeof (item as Record<string, unknown>).evidenceLayer === 'string'
+          ? (item as Record<string, unknown>).evidenceLayer
+          : output.evidenceLayer;
+      const derivedLayer = this.layer(raw.sourceType, raw.authorityRank, raw.title);
+      const layer =
+        requestedLayer === 'SALES_INTELLIGENCE'
+          ? 'SALES_INTELLIGENCE'
+          : requestedLayer === 'COMPLIANCE'
+            ? 'COMPLIANCE'
+            : derivedLayer;
       const conflicts = Array.isArray(raw.conflicts)
         ? raw.conflicts
             .map((conflict) =>
@@ -50,6 +61,7 @@ export class HenryEvidenceContext {
       const typed: HenryTypedEvidence = {
         layer,
         documentId: raw.documentId,
+        collectionKey: typeof raw.collectionKey === 'string' ? raw.collectionKey : undefined,
         title: raw.title,
         sourceType: raw.sourceType,
         authorityRank: raw.authorityRank,
@@ -75,6 +87,16 @@ export class HenryEvidenceContext {
 
   hasAny() {
     return this.evidence.size > 0;
+  }
+
+  collections() {
+    return [
+      ...new Set(
+        [...this.evidence.values()]
+          .map((item) => item.collectionKey)
+          .filter((item): item is string => Boolean(item)),
+      ),
+    ];
   }
 
   private layer(sourceType: string, authorityRank: number, title: string): HenryEvidenceLayer {

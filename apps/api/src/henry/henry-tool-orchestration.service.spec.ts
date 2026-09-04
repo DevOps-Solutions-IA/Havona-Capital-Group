@@ -6,6 +6,8 @@ import {
   HenryToolAuthorizationService,
   HenryToolBudget,
   HenryToolCallCache,
+  knowledgeToolInputs,
+  mergeKnowledgeToolOutputs,
 } from './henry-tool-orchestration.service';
 
 const definition = (name: string): AIToolDefinition => ({
@@ -72,9 +74,7 @@ describe('Henry enterprise tool orchestration', () => {
         prospectAssociated: true,
         availableDefinitions: new Set(definitions.map((item) => item.name)),
       }),
-    ).toEqual(
-      expect.objectContaining({ action: 'REJECT', ruleId: 'TOOL-NOT-ALLOWLISTED-001' }),
-    );
+    ).toEqual(expect.objectContaining({ action: 'REJECT', ruleId: 'TOOL-NOT-ALLOWLISTED-001' }));
   });
 
   it('reduce 77 definitions a las capabilities de Sales Knowledge', () => {
@@ -99,6 +99,100 @@ describe('Henry enterprise tool orchestration', () => {
       'list_authorized_products',
     ]);
     expect(selection.selectedTools).toHaveLength(3);
+    expect(selection.retrievalLayers).toEqual(['SALES_INTELLIGENCE', 'PRODUCT_TRUTH']);
+  });
+
+  it('planifica un solo carril para preguntas exclusivamente comerciales o de producto', () => {
+    const sales = router.select({
+      content: '¿Cómo manejo una objeción sin presionar?',
+      stage: 'OBJECTION',
+      commercialIntent: 'OBJECTION',
+      runtimeContext: context(['search_knowledge']),
+      definitions,
+      authorization,
+      prospectAssociated: false,
+    });
+    const product = router.select({
+      content: '¿Qué cobertura tiene Vida Flex MAX?',
+      stage: 'DISCOVERY',
+      commercialIntent: 'PRODUCT_INTEREST',
+      runtimeContext: context(['search_knowledge']),
+      definitions,
+      authorization,
+      prospectAssociated: false,
+    });
+    expect(sales.retrievalLayers).toEqual(['SALES_INTELLIGENCE']);
+    expect(product.retrievalLayers).toEqual(['PRODUCT_TRUTH']);
+  });
+
+  it('expande deterministicamente una consulta híbrida y conserva ambos resultados', () => {
+    const inputs = knowledgeToolInputs('search_knowledge', { query: 'Vida Flex MAX está caro' }, [
+      'SALES_INTELLIGENCE',
+      'PRODUCT_TRUTH',
+    ]);
+    expect(inputs).toEqual([
+      { query: 'Vida Flex MAX está caro', evidenceLayer: 'SALES_INTELLIGENCE' },
+      { query: 'Vida Flex MAX está caro', evidenceLayer: 'PRODUCT_TRUTH' },
+    ]);
+    expect(
+      mergeKnowledgeToolOutputs([
+        {
+          layer: 'SALES_INTELLIGENCE',
+          output: { answerStatus: 'GROUNDED', results: [{ id: 'training' }], context: [] },
+        },
+        {
+          layer: 'PRODUCT_TRUTH',
+          output: { answerStatus: 'GROUNDED', results: [{ id: 'contract' }], context: [] },
+        },
+      ]),
+    ).toEqual(
+      expect.objectContaining({
+        answerStatus: 'GROUNDED',
+        results: [
+          { id: 'training', evidenceLayer: 'SALES_INTELLIGENCE' },
+          { id: 'contract', evidenceLayer: 'PRODUCT_TRUTH' },
+        ],
+        retrievalLayers: [
+          expect.objectContaining({ layer: 'SALES_INTELLIGENCE', resultCount: 1 }),
+          expect.objectContaining({ layer: 'PRODUCT_TRUTH', resultCount: 1 }),
+        ],
+      }),
+    );
+  });
+
+  it('deduplica por chunk canónico resultados y contexto recuperados en dos carriles', () => {
+    const citation = { chunkId: 'chunk-1' };
+    const merged = mergeKnowledgeToolOutputs([
+      {
+        layer: 'SALES_INTELLIGENCE',
+        output: {
+          answerStatus: 'GROUNDED',
+          results: [{ content: 'evidencia', citation }],
+          context: [{ content: 'evidencia', citation }],
+        },
+      },
+      {
+        layer: 'PRODUCT_TRUTH',
+        output: {
+          answerStatus: 'GROUNDED',
+          results: [{ content: 'evidencia', citation }],
+          context: [{ content: 'evidencia', citation }],
+        },
+      },
+    ]);
+    expect(merged.results).toHaveLength(1);
+    expect(merged.context).toHaveLength(1);
+  });
+
+  it('rechaza en ejecución una tool conocida que no fue seleccionada para el turno', () => {
+    expect(
+      authorization.evaluate({
+        toolName: 'create_task',
+        runtimeContext: context(['create_task']),
+        prospectAssociated: true,
+        availableDefinitions: new Set(['search_knowledge']),
+      }),
+    ).toEqual(expect.objectContaining({ action: 'REJECT', ruleId: 'TOOL-NOT-ALLOWLISTED-001' }));
   });
 
   it('mantiene mutaciones sujetas a prospecto y presupuesto separado', () => {
@@ -114,6 +208,8 @@ describe('Henry enterprise tool orchestration', () => {
     expect(budget.consume('MUTATION')).toBe(true);
     expect(budget.consume('MUTATION')).toBe(false);
     expect(budget.consume('READ')).toBe(true);
+    expect(budget.consumeMany('READ', 2)).toBe(true);
+    expect(budget.consumeMany('READ', 1)).toBe(false);
   });
 
   it('deduplica argumentos semánticamente iguales sin consumir otro call', () => {
@@ -158,6 +254,32 @@ describe('Henry typed evidence', () => {
     evidence.ingest('search_knowledge', result('CAPACITACION', 5, 'Objection Intelligence'));
     expect(evidence.snapshot().salesIntelligence).toHaveLength(1);
     expect(evidence.hasProductTruth()).toBe(false);
+  });
+
+  it('respeta el carril Sales solicitado aunque la fuente corporativa tenga autoridad técnica', () => {
+    const evidence = new HenryEvidenceContext();
+    const output = result('CORPORATIVO', 4, 'HAVONA Sales Foundations', 'CURRENT');
+    evidence.ingest('search_knowledge', {
+      ...output,
+      evidenceLayer: 'SALES_INTELLIGENCE',
+    });
+    expect(evidence.snapshot().salesIntelligence).toHaveLength(1);
+    expect(evidence.snapshot().productTruth).toHaveLength(0);
+  });
+
+  it('registra las colecciones de evidencia sin duplicarlas', () => {
+    const evidence = new HenryEvidenceContext();
+    const output = result('CONTRACTUAL', 2, 'Vida Flex MAX', 'CURRENT');
+    const withCollection = {
+      ...output,
+      results: output.results.map((item) => ({
+        ...item,
+        citation: { ...item.citation, collectionKey: 'palig-approved' },
+      })),
+    };
+    evidence.ingest('search_knowledge', withCollection);
+    evidence.ingest('search_knowledge', withCollection);
+    expect(evidence.collections()).toEqual(['palig-approved']);
   });
 
   it('evidencia contractual/official establece Product Truth', () => {
