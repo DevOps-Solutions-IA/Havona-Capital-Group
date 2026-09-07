@@ -100,9 +100,9 @@ describe('Henry Hybrid RAG autenticado con identidades sintéticas', () => {
 
     const collection = await knowledge.createCollection(
       {
-      key: `henry-hybrid-e2e-${randomUUID()}`,
-      name: 'TEST Henry Hybrid RAG',
-      allowedRoles: ['CONSULTOR', 'GERENTE', 'SUPER_ADMIN'],
+        key: `henry-hybrid-e2e-${randomUUID()}`,
+        name: 'TEST Henry Hybrid RAG',
+        allowedRoles: ['CONSULTOR', 'GERENTE', 'SUPER_ADMIN'],
       },
       admin,
     );
