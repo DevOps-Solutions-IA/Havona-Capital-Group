@@ -125,6 +125,19 @@ describe('Henry enterprise tool orchestration', () => {
     expect(product.retrievalLayers).toEqual(['PRODUCT_TRUTH']);
   });
 
+  it('planifica Product Truth y Compliance para una garantía material', () => {
+    const selection = router.select({
+      content: '¿Puedo decir que Vida Flex MAX garantiza rentabilidad?',
+      stage: 'DISCOVERY',
+      commercialIntent: 'PRODUCT_INTEREST',
+      runtimeContext: context(['search_knowledge']),
+      definitions,
+      authorization,
+      prospectAssociated: false,
+    });
+    expect(selection.retrievalLayers).toEqual(['PRODUCT_TRUTH', 'COMPLIANCE']);
+  });
+
   it('expande deterministicamente una consulta híbrida y conserva ambos resultados', () => {
     const inputs = knowledgeToolInputs('search_knowledge', { query: 'Vida Flex MAX está caro' }, [
       'SALES_INTELLIGENCE',
@@ -158,6 +171,12 @@ describe('Henry enterprise tool orchestration', () => {
         ],
       }),
     );
+  });
+
+  it('tipa también una consulta de un solo carril antes de ejecutarla', () => {
+    expect(
+      knowledgeToolInputs('search_knowledge', { query: 'cobertura Vida Flex' }, ['PRODUCT_TRUTH']),
+    ).toEqual([{ query: 'cobertura Vida Flex', evidenceLayer: 'PRODUCT_TRUTH' }]);
   });
 
   it('deduplica por chunk canónico resultados y contexto recuperados en dos carriles', () => {

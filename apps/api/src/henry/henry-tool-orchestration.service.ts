@@ -230,8 +230,13 @@ export class HenryCapabilityRouter {
         /producto|cobertura|prima|tasa|condici[oó]n|exclusi[oó]n|vida flex|pensi[oó]n|seguro/.test(
           normalized,
         );
+      const complianceIntent =
+        /garant(?:iza|izado|izada|[iía])|cumplimiento|compliance|legal|promet(?:er|o)|sin riesgo|rentabilidad/.test(
+          normalized,
+        );
       if (salesIntent) retrievalLayers.push('SALES_INTELLIGENCE');
       if (productIntent) retrievalLayers.push('PRODUCT_TRUTH');
+      if (complianceIntent) retrievalLayers.push('COMPLIANCE');
       if (!retrievalLayers.length) retrievalLayers.push('SALES_INTELLIGENCE');
     }
     const candidateTools = [
@@ -323,7 +328,7 @@ export function knowledgeToolInputs(
   args: Record<string, unknown>,
   layers: HenryKnowledgeEvidenceLayer[],
 ) {
-  if (toolName !== 'search_knowledge' || args.evidenceLayer || layers.length < 2) return [args];
+  if (toolName !== 'search_knowledge' || args.evidenceLayer || layers.length === 0) return [args];
   return layers.map((evidenceLayer) => ({ ...args, evidenceLayer }));
 }
 
