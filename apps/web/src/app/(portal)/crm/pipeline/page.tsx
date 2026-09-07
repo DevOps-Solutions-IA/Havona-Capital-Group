@@ -6,8 +6,12 @@ import { PageHeader } from '@/components/page';
 import { api, messageOf } from '@/lib/api';
 import type { ApiPage, Opportunity, Stage } from '@/lib/crm';
 import { priorityLabel } from '@/lib/crm';
+import { formatMoney } from '@/lib/crm';
+import { useAuth } from '@/lib/auth';
+import { OpportunityFinancialForm } from '@/components/crm/opportunity-financial-form';
 type Lane = { items: Opportunity[]; page: number; total: number };
 export default function PipelinePage() {
+  const { can } = useAuth();
   const [stages, setStages] = useState<Stage[]>([]),
     [lanes, setLanes] = useState<Record<string, Lane>>({}),
     [error, setError] = useState(''),
@@ -104,8 +108,34 @@ export default function PipelinePage() {
                       <p>{priorityLabel[item.priority]}</p>
                       <Link href={`/crm/prospectos/${item.prospect.id}`}>{item.title}</Link>
                       <span>
-                        {item.prospect.name} · {item.prospect.interest.replaceAll('-', ' ')}
+                        {item.prospect.name} ·{' '}
+                        {item.customerNeed?.name ??
+                          `Interés legacy: ${item.prospect.interest.replaceAll('-', ' ')}`}
                       </span>
+                      <div className="mt-3 space-y-1 text-xs text-slate-600">
+                        <strong className="block text-sm text-slate-950">
+                          {item.amount && item.currency
+                            ? formatMoney(item.amount, item.currency)
+                            : 'Monto desconocido'}
+                        </strong>
+                        <span>
+                          {item.expectedCloseDate
+                            ? `Cierre esperado: ${item.expectedCloseDate.slice(0, 10)}`
+                            : 'Sin fecha esperada'}
+                        </span>
+                        <span className="block">
+                          {item.forecastCategory
+                            ? `Forecast: ${item.forecastCategory}`
+                            : 'Sin categoría de forecast'}
+                        </span>
+                        <span className="block">
+                          {item.authorizedProduct
+                            ? `Producto PALIG autorizado: ${item.authorizedProduct.name}`
+                            : item.authorizedSolution
+                              ? `Solución autorizada: ${item.authorizedSolution.name}`
+                              : 'Discovery sin producto asociado'}
+                        </span>
+                      </div>
                       <SelectField
                         label={`Etapa de ${item.title}`}
                         value={item.stage.id}
@@ -118,6 +148,14 @@ export default function PipelinePage() {
                           </option>
                         ))}
                       </SelectField>
+                      {can('crm.opportunities') && (
+                        <details className="mt-3">
+                          <summary className="cursor-pointer text-sm font-semibold text-brand-700">
+                            Datos financieros
+                          </summary>
+                          <OpportunityFinancialForm opportunity={item} onSaved={load} />
+                        </details>
+                      )}
                     </article>
                   ))
                 )}

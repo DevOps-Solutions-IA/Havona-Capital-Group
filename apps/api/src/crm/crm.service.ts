@@ -2,11 +2,13 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { ActivityType, OpportunityStatus, Prisma, TaskStatus } from '@havona/database';
 import { AuditContext, AuditService } from '../audit/audit.service';
 import { PrismaService } from '../common/prisma.service';
+import { AutomationEventBus } from '../automations/automation-event-bus.service';
 
 type Actor = { id: string; permissions: string[] };
 type DbClient = Prisma.TransactionClient | PrismaService;
@@ -16,6 +18,7 @@ export class CrmService {
   constructor(
     private readonly db: PrismaService,
     private readonly audit: AuditService,
+    @Optional() private readonly eventBus?: AutomationEventBus,
   ) {}
   private global(actor: Actor) {
     return actor.permissions.includes('crm.read_all');
@@ -68,6 +71,85 @@ export class CrmService {
     });
     if (!linked)
       throw new UnprocessableEntityException('La oportunidad no pertenece al prospecto indicado');
+  }
+  private async resolveCommercialContext(
+    input: {
+      customerNeedKey?: string | null;
+      authorizedSolutionId?: string | null;
+      authorizedProductId?: string | null;
+    },
+    db: DbClient = this.db,
+  ) {
+    const customerNeed = input.customerNeedKey
+      ? await db.customerNeed.findFirst({
+          where: { key: input.customerNeedKey as any, status: 'ACTIVE' },
+          select: { id: true, key: true },
+        })
+      : null;
+    if (input.customerNeedKey && !customerNeed)
+      throw new UnprocessableEntityException(
+        'La necesidad no pertenece a la taxonomía PALIG activa',
+      );
+    const requestedProduct = input.authorizedProductId
+      ? await db.authorizedProduct.findFirst({
+          where: {
+            id: input.authorizedProductId,
+            carrier: 'PAN_AMERICAN_LIFE_COLOMBIA',
+            status: 'ACTIVE',
+          },
+          select: { id: true },
+        })
+      : null;
+    if (input.authorizedProductId && !requestedProduct)
+      throw new UnprocessableEntityException(
+        'Producto no autorizado para comercialización en HAVONA',
+      );
+    const solution = input.authorizedSolutionId
+      ? await db.authorizedSolution.findFirst({
+          where: { id: input.authorizedSolutionId, status: 'ACTIVE' },
+          include: {
+            product: { select: { id: true, carrier: true, status: true } },
+            needMappings: {
+              where: { status: 'ACTIVE' },
+              select: { customerNeedId: true },
+            },
+          },
+        })
+      : null;
+    if (input.authorizedSolutionId && !solution)
+      throw new UnprocessableEntityException(
+        'Solución no autorizada para comercialización en HAVONA',
+      );
+    if (solution && !customerNeed)
+      throw new UnprocessableEntityException(
+        'Una solución autorizada requiere necesidad de cliente',
+      );
+    if (
+      solution &&
+      !solution.needMappings.some((mapping) => mapping.customerNeedId === customerNeed!.id)
+    )
+      throw new UnprocessableEntityException(
+        'La solución no está autorizada para la necesidad indicada',
+      );
+    if (
+      solution?.product &&
+      (solution.product.carrier !== 'PAN_AMERICAN_LIFE_COLOMBIA' ||
+        solution.product.status !== 'ACTIVE')
+    )
+      throw new UnprocessableEntityException(
+        'La solución referencia un producto no comercializable',
+      );
+    if (solution?.productId && requestedProduct && solution.productId !== requestedProduct.id)
+      throw new UnprocessableEntityException('Producto y solución autorizada no corresponden');
+    if (solution && !solution.productId && requestedProduct)
+      throw new UnprocessableEntityException(
+        'La solución aún no tiene producto PALIG autorizado asociado',
+      );
+    return {
+      customerNeedId: customerNeed?.id ?? null,
+      authorizedSolutionId: solution?.id ?? null,
+      authorizedProductId: solution?.productId ?? requestedProduct?.id ?? null,
+    };
   }
   private context(request: any): AuditContext {
     return {
@@ -184,7 +266,18 @@ export class CrmService {
 
   async updateProspect(id: string, input: any, actor: Actor, request: any) {
     await this.prospect(id, actor);
-    return this.db.$transaction(async (tx) => {
+    const previous = await this.db.prospect.findUniqueOrThrow({
+      where: { id },
+      select: {
+        status: true,
+        assignments: {
+          where: { endedAt: null },
+          select: { assigneeId: true },
+          take: 1,
+        },
+      },
+    });
+    const updated = await this.db.$transaction(async (tx) => {
       const row = await tx.prospect.update({ where: { id }, data: input });
       await tx.activity.create({
         data: {
@@ -204,6 +297,21 @@ export class CrmService {
       );
       return row;
     });
+    if (input.status && input.status !== previous.status)
+      await this.eventBus?.publish({
+        eventId: `prospect:stage:${id}:${updated.updatedAt.toISOString()}`,
+        type: 'PROSPECT_STAGE_CHANGED',
+        entityType: 'Prospect',
+        entityId: id,
+        actorUserId: actor.id,
+        payload: {
+          prospectId: id,
+          assignedUserId: previous.assignments[0]?.assigneeId,
+          previousStatus: previous.status,
+          newStatus: updated.status,
+        },
+      });
+    return updated;
   }
 
   async assignments(prospectId: string, actor: Actor) {
@@ -223,7 +331,7 @@ export class CrmService {
       throw new ForbiddenException('No puede asignar prospectos');
     await this.prospect(prospectId, actor);
     await this.eligibleUser(assigneeId);
-    return this.db.$transaction(async (tx) => {
+    const assigned = await this.db.$transaction(async (tx) => {
       const current = await tx.assignment.findFirst({ where: { prospectId, endedAt: null } });
       if (current?.assigneeId === assigneeId) return current;
       if (current)
@@ -254,6 +362,15 @@ export class CrmService {
       );
       return assignment;
     });
+    await this.eventBus?.publish({
+      eventId: `prospect:assigned:${prospectId}:${assigned.id}`,
+      type: 'PROSPECT_ASSIGNED',
+      entityType: 'Prospect',
+      entityId: prospectId,
+      actorUserId: actor.id,
+      payload: { prospectId, assignedUserId: assigneeId },
+    });
+    return assigned;
   }
 
   async opportunities(query: any, actor: Actor) {
@@ -263,6 +380,9 @@ export class CrmService {
       ownerId: query.ownerId,
       status: query.status,
       priority: query.priority,
+      customerNeed: query.customerNeedKey ? { key: query.customerNeedKey } : undefined,
+      authorizedSolutionId: query.authorizedSolutionId,
+      authorizedProductId: query.authorizedProductId,
     };
     const [data, total] = await this.db.$transaction([
       this.db.opportunity.findMany({
@@ -274,6 +394,9 @@ export class CrmService {
           stage: true,
           prospect: { select: { id: true, name: true, interest: true, city: true } },
           owner: { select: { id: true, name: true } },
+          customerNeed: true,
+          authorizedSolution: true,
+          authorizedProduct: true,
         },
       }),
       this.db.opportunity.count({ where }),
@@ -288,7 +411,11 @@ export class CrmService {
   }
   async createOpportunity(input: any, actor: Actor, request: any) {
     await this.prospect(input.prospectId, actor);
-    return this.db.$transaction(async (tx) => {
+    const expectedCloseDate = this.businessDate(input.expectedCloseDate);
+    if (input.amount && !input.currency)
+      throw new UnprocessableEntityException('La moneda es obligatoria cuando existe monto');
+    const created = await this.db.$transaction(async (tx) => {
+      const commercialContext = await this.resolveCommercialContext(input, tx);
       const stage = await tx.pipelineStage.findFirstOrThrow({
         where: { isActive: true },
         orderBy: { position: 'asc' },
@@ -303,8 +430,43 @@ export class CrmService {
           ownerId: assignment?.assigneeId,
           title: input.title,
           priority: input.priority,
+          ...commercialContext,
+          amount: input.amount ? new Prisma.Decimal(input.amount) : null,
+          currency: input.amount ? input.currency : null,
+          expectedCloseDate,
+          probability:
+            input.probability === undefined || input.probability === null
+              ? null
+              : new Prisma.Decimal(input.probability),
+          forecastCategory: input.forecastCategory,
+          amountSource: input.amount ? 'MANUAL' : null,
+          expectedCloseSource: expectedCloseDate ? 'MANUAL' : null,
+          probabilitySource:
+            input.probability === undefined || input.probability === null ? null : 'MANUAL',
+          forecastCategorySource: input.forecastCategory ? 'MANUAL' : null,
+          financialUpdatedAt:
+            input.amount || expectedCloseDate || input.probability != null || input.forecastCategory
+              ? new Date()
+              : null,
+          financialUpdatedById:
+            input.amount || expectedCloseDate || input.probability != null || input.forecastCategory
+              ? actor.id
+              : null,
         },
       });
+      const initialFinancials = this.financialSnapshot(row);
+      for (const [field, value] of Object.entries(initialFinancials))
+        if (value !== null)
+          await tx.opportunityFinancialHistory.create({
+            data: {
+              opportunityId: row.id,
+              field,
+              oldValue: Prisma.JsonNull,
+              newValue: value as Prisma.InputJsonValue,
+              source: 'MANUAL',
+              changedById: actor.id,
+            },
+          });
       await tx.opportunityStageHistory.create({
         data: { opportunityId: row.id, newStageId: stage.id, changedById: actor.id },
       });
@@ -322,11 +484,29 @@ export class CrmService {
         'Opportunity',
         row.id,
         this.context(request),
-        { prospectId: input.prospectId, stageId: stage.id },
+        {
+          prospectId: input.prospectId,
+          stageId: stage.id,
+          financialFields: initialFinancials,
+          commercialContext,
+        },
         tx,
       );
       return row;
     });
+    await this.eventBus?.publish({
+      eventId: `opportunity:created:${created.id}`,
+      type: 'OPPORTUNITY_CREATED',
+      entityType: 'Opportunity',
+      entityId: created.id,
+      actorUserId: actor.id,
+      payload: {
+        opportunityId: created.id,
+        prospectId: input.prospectId,
+        assignedUserId: created.ownerId,
+      },
+    });
+    return created;
   }
 
   async opportunityDetail(id: string, actor: Actor) {
@@ -345,8 +525,205 @@ export class CrmService {
             changedBy: { select: { id: true, name: true } },
           },
         },
+        financialHistory: {
+          orderBy: { createdAt: 'desc' },
+          include: { changedBy: { select: { id: true, name: true } } },
+        },
+        customerNeed: true,
+        authorizedSolution: true,
+        authorizedProduct: true,
       },
     });
+  }
+  async updateOpportunityCommercialContext(id: string, input: any, actor: Actor, request: any) {
+    const current = await this.opportunity(id, actor);
+    const existing = await this.db.opportunity.findUniqueOrThrow({
+      where: { id },
+      include: { customerNeed: true },
+    });
+    const desired = {
+      customerNeedKey:
+        input.customerNeedKey === undefined
+          ? (existing.customerNeed?.key ?? null)
+          : input.customerNeedKey,
+      authorizedSolutionId:
+        input.authorizedSolutionId === undefined
+          ? existing.authorizedSolutionId
+          : input.authorizedSolutionId,
+      authorizedProductId:
+        input.authorizedProductId === undefined
+          ? existing.authorizedProductId
+          : input.authorizedProductId,
+    };
+    const { updated, context } = await this.db.$transaction(async (tx) => {
+      const resolved = await this.resolveCommercialContext(desired, tx);
+      const row = await tx.opportunity.update({ where: { id }, data: resolved });
+      await this.audit.record(
+        'CRM_OPPORTUNITY_COMMERCIAL_CONTEXT_UPDATED',
+        'Opportunity',
+        id,
+        this.context(request),
+        {
+          previous: {
+            customerNeedId: existing.customerNeedId,
+            authorizedSolutionId: existing.authorizedSolutionId,
+            authorizedProductId: existing.authorizedProductId,
+          },
+          next: resolved,
+        },
+        tx,
+      );
+      return { updated: row, context: resolved };
+    });
+    await this.eventBus?.publish({
+      eventId: `opportunity:commercial-context:${id}:${updated.updatedAt.toISOString()}`,
+      type: 'OPPORTUNITY_COMMERCIAL_CONTEXT_UPDATED',
+      entityType: 'Opportunity',
+      entityId: id,
+      actorUserId: actor.id,
+      payload: {
+        opportunityId: id,
+        prospectId: current.prospectId,
+        assignedUserId: current.ownerId,
+        changedFields: Object.keys(context),
+      },
+    });
+    return updated;
+  }
+  async updateOpportunityFinancials(id: string, input: any, actor: Actor, request: any) {
+    const current = await this.opportunity(id, actor);
+    const expectedCloseDate =
+      input.expectedCloseDate === undefined
+        ? current.expectedCloseDate
+        : this.businessDate(input.expectedCloseDate);
+    const amount =
+      input.amount === undefined
+        ? current.amount
+        : input.amount === null
+          ? null
+          : new Prisma.Decimal(input.amount);
+    const currency = amount
+      ? input.currency === undefined
+        ? current.currency
+        : input.currency
+      : null;
+    if (amount && !currency)
+      throw new UnprocessableEntityException('La moneda es obligatoria cuando existe monto');
+    if (!amount && input.currency)
+      throw new UnprocessableEntityException('No se puede registrar moneda sin monto');
+    const probability =
+      input.probability === undefined
+        ? current.probability
+        : input.probability === null
+          ? null
+          : new Prisma.Decimal(input.probability);
+    const forecastCategory =
+      input.forecastCategory === undefined ? current.forecastCategory : input.forecastCategory;
+    const next = {
+      amount,
+      currency,
+      expectedCloseDate,
+      probability,
+      forecastCategory,
+    };
+    const before = this.financialSnapshot(current);
+    const after = this.financialSnapshot(next);
+    const changes = Object.keys(after).filter(
+      (field) => before[field as keyof typeof before] !== after[field as keyof typeof after],
+    );
+    if (!changes.length) return current;
+    const updated = await this.db.$transaction(async (tx) => {
+      const row = await tx.opportunity.update({
+        where: { id },
+        data: {
+          ...next,
+          amountSource: changes.includes('amount') ? (amount ? 'MANUAL' : null) : undefined,
+          expectedCloseSource: changes.includes('expectedCloseDate')
+            ? expectedCloseDate
+              ? 'MANUAL'
+              : null
+            : undefined,
+          probabilitySource: changes.includes('probability')
+            ? probability != null
+              ? 'MANUAL'
+              : null
+            : undefined,
+          forecastCategorySource: changes.includes('forecastCategory')
+            ? forecastCategory
+              ? 'MANUAL'
+              : null
+            : undefined,
+          financialUpdatedAt: new Date(),
+          financialUpdatedById: actor.id,
+        },
+      });
+      for (const field of changes)
+        await tx.opportunityFinancialHistory.create({
+          data: {
+            opportunityId: id,
+            field,
+            oldValue:
+              before[field as keyof typeof before] === null
+                ? Prisma.JsonNull
+                : (before[field as keyof typeof before] as Prisma.InputJsonValue),
+            newValue:
+              after[field as keyof typeof after] === null
+                ? Prisma.JsonNull
+                : (after[field as keyof typeof after] as Prisma.InputJsonValue),
+            source: 'MANUAL',
+            reason: input.reason,
+            changedById: actor.id,
+          },
+        });
+      await this.audit.record(
+        'CRM_OPPORTUNITY_FINANCIALS_UPDATED',
+        'Opportunity',
+        id,
+        this.context(request),
+        {
+          changes: changes.map((field) => ({
+            field,
+            oldValue: before[field as keyof typeof before],
+            newValue: after[field as keyof typeof after],
+          })),
+        },
+        tx,
+      );
+      return row;
+    });
+    await this.eventBus?.publish({
+      eventId: `opportunity:financials:${id}:${updated.updatedAt.toISOString()}`,
+      type: 'OPPORTUNITY_FINANCIALS_UPDATED',
+      entityType: 'Opportunity',
+      entityId: id,
+      actorUserId: actor.id,
+      payload: {
+        opportunityId: id,
+        prospectId: current.prospectId,
+        assignedUserId: current.ownerId,
+        changedFields: changes,
+      },
+    });
+    return updated;
+  }
+
+  private businessDate(value?: string | null) {
+    if (!value) return null;
+    const date = new Date(`${value}T00:00:00.000Z`);
+    if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value)
+      throw new UnprocessableEntityException('Fecha de cierre esperada inválida');
+    return date;
+  }
+  private financialSnapshot(row: any) {
+    return {
+      amount: row.amount == null ? null : row.amount.toString(),
+      currency: row.currency ?? null,
+      expectedCloseDate: row.expectedCloseDate
+        ? row.expectedCloseDate.toISOString().slice(0, 10)
+        : null,
+      probability: row.probability == null ? null : row.probability.toString(),
+      forecastCategory: row.forecastCategory ?? null,
+    };
   }
   async moveOpportunity(id: string, input: any, actor: Actor, request: any) {
     const current = await this.opportunity(id, actor);
@@ -371,7 +748,7 @@ export class CrmService {
     if (current.status !== OpportunityStatus.OPEN)
       throw new UnprocessableEntityException('Una oportunidad cerrada no puede reabrirse');
     if (current.stageId === target.id && current.status === status) return current;
-    return this.db.$transaction(async (tx) => {
+    const moved = await this.db.$transaction(async (tx) => {
       const row = await tx.opportunity.update({
         where: { id },
         data: { stageId: target.id, status, closedAt },
@@ -422,6 +799,23 @@ export class CrmService {
       }
       return row;
     });
+    await this.eventBus?.publish({
+      eventId: `opportunity:stage:${id}:${moved.updatedAt.toISOString()}`,
+      type: 'OPPORTUNITY_STAGE_CHANGED',
+      entityType: 'Opportunity',
+      entityId: id,
+      actorUserId: actor.id,
+      payload: {
+        opportunityId: id,
+        prospectId: current.prospectId,
+        assignedUserId: current.ownerId,
+        previousStageId: current.stageId,
+        newStageId: target.id,
+        stage: target.key,
+        status,
+      },
+    });
+    return moved;
   }
 
   async tasks(query: any, actor: Actor) {
@@ -453,32 +847,54 @@ export class CrmService {
     await this.prospect(input.prospectId, actor);
     if (input.assigneeId !== actor.id && !actor.permissions.includes('crm.tasks.manage'))
       throw new ForbiddenException('No puede crear tareas para otro usuario');
-    return this.db.$transaction(async (tx) => {
-      await this.eligibleUser(input.assigneeId, tx);
-      await this.validateOpportunityLink(input.prospectId, input.opportunityId, tx);
-      const row = await tx.task.create({
-        data: { ...input, dueAt: new Date(input.dueAt), createdById: actor.id },
+    const { idempotencyKey, ...taskInput } = input;
+    if (idempotencyKey) {
+      const existing = await this.db.task.findUnique({ where: { id: idempotencyKey } });
+      if (existing) return existing;
+    }
+    try {
+      return await this.db.$transaction(async (tx) => {
+        await this.eligibleUser(taskInput.assigneeId, tx);
+        await this.validateOpportunityLink(taskInput.prospectId, taskInput.opportunityId, tx);
+        const row = await tx.task.create({
+          data: {
+            ...taskInput,
+            ...(idempotencyKey ? { id: idempotencyKey } : {}),
+            dueAt: new Date(taskInput.dueAt),
+            createdById: actor.id,
+          },
+        });
+        await tx.activity.create({
+          data: {
+            prospectId: input.prospectId,
+            opportunityId: input.opportunityId,
+            actorId: actor.id,
+            type: ActivityType.TASK_CREATED,
+            summary: `Tarea creada: ${input.title}`,
+            metadata: { taskId: row.id },
+          },
+        });
+        await this.audit.record(
+          'CRM_TASK_CREATED',
+          'Task',
+          row.id,
+          this.context(request),
+          { prospectId: input.prospectId, assigneeId: input.assigneeId },
+          tx,
+        );
+        return row;
       });
-      await tx.activity.create({
-        data: {
-          prospectId: input.prospectId,
-          opportunityId: input.opportunityId,
-          actorId: actor.id,
-          type: ActivityType.TASK_CREATED,
-          summary: `Tarea creada: ${input.title}`,
-          metadata: { taskId: row.id },
-        },
-      });
-      await this.audit.record(
-        'CRM_TASK_CREATED',
-        'Task',
-        row.id,
-        this.context(request),
-        { prospectId: input.prospectId, assigneeId: input.assigneeId },
-        tx,
-      );
-      return row;
-    });
+    } catch (error) {
+      if (
+        !idempotencyKey ||
+        !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+        error.code !== 'P2002'
+      )
+        throw error;
+      const existing = await this.db.task.findUnique({ where: { id: idempotencyKey } });
+      if (!existing) throw error;
+      return existing;
+    }
   }
   async taskStatus(id: string, status: TaskStatus, actor: Actor, request: any) {
     const task = await this.db.task.findFirst({

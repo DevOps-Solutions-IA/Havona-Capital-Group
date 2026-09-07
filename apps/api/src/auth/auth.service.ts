@@ -1,13 +1,13 @@
 import { Injectable, OnModuleDestroy, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { Queue } from 'bullmq';
-import Redis from 'ioredis';
 import { createOpaqueToken, hashPassword, hashToken, verifyPassword } from '@havona/auth';
 import { PrismaService } from '../common/prisma.service';
+import { createRedisClient } from '../common/redis-client';
 import { AuditService, AuditContext } from '../audit/audit.service';
 const MAX_ATTEMPTS=5, LOCK_MINUTES=15, SESSION_HOURS=12;
 const includeAccess={roles:{include:{role:{include:{permissions:{include:{permission:true}}}}}}} as const;
 @Injectable() export class AuthService implements OnModuleDestroy {
- private readonly redis=new Redis(process.env.REDIS_URL??'redis://localhost:6379',{maxRetriesPerRequest:null,lazyConnect:true});
+ private readonly redis=createRedisClient({maxRetriesPerRequest:null,lazyConnect:true});
  private readonly emailQueue=new Queue('email',{connection:this.redis});
  constructor(private readonly db:PrismaService,private readonly audit:AuditService){}
  async onModuleDestroy(){await this.emailQueue.close();this.redis.disconnect()}
