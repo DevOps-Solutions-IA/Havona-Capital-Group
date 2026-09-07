@@ -3,7 +3,7 @@ import { Test } from '@nestjs/testing';
 import { hashPassword } from '@havona/auth';
 import cookieParser from 'cookie-parser';
 import { randomUUID } from 'node:crypto';
-import request, { SuperAgentTest } from 'supertest';
+import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { AI_PROVIDER, type AICompletionResult } from '../src/ai/ai-provider';
 import { FakeAIProvider } from '../src/ai/fake-ai.provider';
@@ -18,7 +18,7 @@ type SyntheticIdentity = {
 };
 
 type AuthenticatedAgent = {
-  agent: SuperAgentTest;
+  agent: ReturnType<typeof request.agent>;
   csrf: string;
 };
 
